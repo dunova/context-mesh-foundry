@@ -3,4 +3,4 @@ Description=Unified Context Healthcheck (user)
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash %h/.local/share/silent-context-foundry/scripts/context_healthcheck.sh --quiet
+ExecStart=/bin/bash %h/.local/share/context-mesh-foundry/scripts/context_healthcheck.sh --quiet

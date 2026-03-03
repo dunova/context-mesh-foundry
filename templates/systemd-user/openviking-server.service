@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/.local/share/silent-context-foundry/scripts
+WorkingDirectory=%h/.local/share/context-mesh-foundry/scripts
 Environment=LITELLM_LOCAL_MODEL_COST_MAP=True
 Environment=OPENVIKING_SKIP_PIP=1
-ExecStart=/bin/bash %h/.local/share/silent-context-foundry/scripts/start_openviking.sh
+ExecStart=/bin/bash %h/.local/share/context-mesh-foundry/scripts/start_openviking.sh
 Restart=always
 RestartSec=3
 

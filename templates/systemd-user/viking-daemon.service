@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/.local/share/silent-context-foundry/scripts
-ExecStart=/usr/bin/env python3 %h/.local/share/silent-context-foundry/scripts/viking_daemon.py
+WorkingDirectory=%h/.local/share/context-mesh-foundry/scripts
+ExecStart=/usr/bin/env python3 %h/.local/share/context-mesh-foundry/scripts/viking_daemon.py
 Restart=always
 RestartSec=3
 
