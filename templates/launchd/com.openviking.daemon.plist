@@ -19,6 +19,10 @@
     <key>VIKING_ANTIGRAVITY_INGEST_MODE</key><string>final_only</string>
     <key>VIKING_ANTIGRAVITY_QUIET_SEC</key><string>240</string>
     <key>VIKING_ANTIGRAVITY_MIN_DOC_BYTES</key><string>500</string>
+    <key>VIKING_CYCLE_BUDGET_SEC</key><string>8</string>
+    <key>VIKING_INDEX_SYNC_MIN_INTERVAL_SEC</key><string>20</string>
+    <key>VIKING_ERROR_BACKOFF_MAX_SEC</key><string>30</string>
+    <key>VIKING_LOOP_JITTER_SEC</key><string>0.7</string>
   </dict>
   <key>ProgramArguments</key>
   <array>

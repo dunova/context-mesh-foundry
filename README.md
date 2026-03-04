@@ -14,54 +14,24 @@ Shell history is also a goldmine of context (commands tried, paths explored, deb
 
 ## What This Does
 
-Silent Context Foundry gives all your AI terminals a **shared, persistent, searchable memory**. It works by connecting three open-source systems into a single pipeline, and can optionally add a fourth manager layer (Agent Orchestrator) for parallel execution automation:
+Silent Context Foundry gives all your AI terminals a **shared, persistent, searchable memory**.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Your Machine                                 │
-│                                                                     │
-│  Claude Code ──┐                                                    │
-│  Codex ────────┤                                                    │
-│  OpenCode ─────┤    ┌──────────────┐    ┌────────────┐              │
-│  Kilo ─────────┼───>│ Viking Daemon │───>│ OpenViking │              │
-│  Antigravity ──┤    │ (watch+clean) │    │ (vectorize)│              │
-│  Shell (.zsh/  │    └──────────────┘    └─────┬──────┘              │
-│   .bash) ──────┘           │                  │                     │
-│                      Local MD files     Semantic Search              │
-│                            │                  │                     │
-│                            │           ┌──────┴──────┐              │
-│                            │           │  MCP Server  │             │
-│                            │           │  (4 tools)   │             │
-│                            │           └──────┬──────┘              │
-│                            │                  │                     │
-│                      ┌─────┴──────┐     Any MCP Client              │
-│                      │ OneContext  │    (Claude Code,                │
-│                      │ (timeline) │     Cursor, etc.)               │
-│                      └────────────┘                                 │
-└─────────────────────────────────────────────────────────────────────┘
-```
+As of 2026-03, the default runtime is **recall-lite** (low-power, low-blocking):
 
-**In plain language (base 3-system stack):**
+1. `recall` indexes local histories incrementally (Codex/Claude/OpenCode/Kilo/Shell/Antigravity).
+2. `onecontext` command is kept as a compatibility shim (backed by `recall`, no upstream dependency).
+3. `openviking_mcp.py` is **recall-first**. OpenViking semantic search is optional and non-blocking.
+4. `context_healthcheck.sh` defaults to non-intrusive checks; deep legacy checks are opt-in.
 
-1. A background **daemon** watches your terminal histories in real time (Claude Code, Codex, OpenCode, Kilo, Gemini Antigravity, zsh/bash). When a session goes idle, the daemon sanitizes the content (stripping API keys, tokens, passwords) and saves it as a local Markdown file.
+Legacy heavy stack (OneContext/Aline daemon chain) is no longer required for normal operation.
 
-2. **OpenViking** picks up these files and vectorizes them -- turning raw text into searchable semantic embeddings.
-
-3. An **MCP server** exposes 4 tools that any MCP-compatible AI client can call:
-   - `query_viking_memory` -- semantic search across all your past sessions
-   - `search_onecontext_history` -- search OneContext's structured timeline (events, sessions, turns)
-   - `save_conversation_memory` -- explicitly save important conclusions or summaries
-   - `context_system_health` -- check if all components are running
-
-4. **OneContext** (optional) provides a structured timeline database of all your AI interactions, searchable by event, session, or individual turn.
-
-**Net effect:** when you start a new Claude Code session and ask "what did I try last week to fix the auth bug?", the MCP server searches across ALL your past terminal sessions -- regardless of which AI tool you used -- and returns the relevant context.
+**Net effect:** when you ask "what did I try last week to fix the auth bug?", MCP can still retrieve cross-terminal context, but with much lower background overhead and less risk of multi-agent stalls.
 
 ## Optional 4th Layer: Agent Orchestrator (AO)
 
 SCF gives your AI tools shared memory and process discipline (with GSD), but it does not manage multiple coding-agent sessions for you. If your bottleneck is now "babysitting agents" (tabs, branches, CI failures, review comments), add **Agent Orchestrator (AO)** as a manager layer:
 
-- **SCF (OneContext + OpenViking + GSD)** = memory + context retrieval + execution discipline
+- **SCF (Recall + OpenViking(optional) + GSD)** = memory + context retrieval + execution discipline
 - **AO** = parallel session orchestration + PR/CI/review plumbing automation
 
 This repo includes an AO integration pack under `integrations/agent-orchestrator/` (templates, bridge scripts, and progressive-disclosure skills).
@@ -70,9 +40,9 @@ This repo includes an AO integration pack under `integrations/agent-orchestrator
 
 Use SCF + AO as a layered system instead of a single monolith:
 
-1. **Memory Layer (OneContext + OpenViking)**
-- OneContext = exact, structured history lookup (event/session/turn)
-- OpenViking = semantic recall across terminals and shell history
+1. **Memory Layer (Recall + OpenViking optional)**
+- Recall = exact/local history lookup (session/turn/content)
+- OpenViking = optional semantic recall across terminals and shell history
 
 2. **Discipline Layer (GSD)**
 - Forces discuss -> plan -> execute -> verify
@@ -128,13 +98,13 @@ Use SCF + AO as a layered system instead of a single monolith:
 | Project | What it does | Repository |
 |---------|-------------|------------|
 | **OpenViking** | Local vector database + semantic search engine. Stores files, vectorizes them, and provides a search API. | [volcengine/OpenViking](https://github.com/volcengine/OpenViking) |
-| **OneContext** | Timeline-structured database of AI interactions. Records events, sessions, and conversation turns. | [dunova/OneContext (active mirror)](https://github.com/dunova/OneContext) |
+| **Recall** | Lightweight local history index/search, now used as the default exact retrieval backend. | [arjunkmrm/recall](https://github.com/arjunkmrm/recall) |
 | **GSD** | "Get Shit Done" -- an execution discipline framework. Forces AI agents to follow discuss → plan → execute → verify instead of ad-hoc problem solving. Requires context warmup (check OneContext + OpenViking first), evidence-based verification, and clear role separation in multi-agent collaboration. | [gsd-build/get-shit-done](https://github.com/gsd-build/get-shit-done) |
 | **Agent Orchestrator (optional)** | Orchestrates parallel coding agents and automates session/PR/CI/review workflows. | [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator) |
 
 This repo does **not** ship upstream source code. It provides the **integration layer** that makes them work together as a unified system: the daemon that watches and sanitizes, the MCP bridge, the deployment scripts, the health checks, and (optionally) an AO manager-layer integration pack.
 
-**Why GSD matters in this stack:** OneContext and OpenViking give your AI tools memory. GSD gives them *discipline*. Without it, an AI that can search past sessions will still skip verification, ignore old decisions, and jump straight to answers without evidence. GSD enforces the workflow: warm up context first, plan before executing, verify with proof before claiming done.
+**Why GSD matters in this stack:** Recall/OpenViking give your AI tools memory. GSD gives them *discipline*. Without it, an AI that can search past sessions will still skip verification, ignore old decisions, and jump straight to answers without evidence. GSD enforces the workflow: warm up context first, plan before executing, verify with proof before claiming done.
 
 ## What Problems Does the Integration Solve?
 
@@ -146,7 +116,7 @@ The upstream tools are strong individually but don't work together out of the bo
 | Raw terminal history contains secrets | Regex-based scrubbing of API keys, tokens, passwords, PEM blocks, AWS keys, Slack tokens before any export |
 | OpenViking might be offline when daemon wants to export | Local pending queue with automatic retry |
 | Service startup race conditions (port conflicts) | Port-busy detection, health-wait loops, ordered reload |
-| No unified search across OneContext + OpenViking | MCP server bridges both: structured timeline + semantic search |
+| No unified search across exact + semantic layers | MCP server bridges both: recall exact search + optional semantic search |
 | Config generator scripts on NAS/network paths can hang | Timeout protection, ownership validation |
 | Log files grow unbounded | Rotating file handlers, healthcheck-triggered truncation |
 | File permission leaks | chmod 700 on data dirs, chmod 600 on exported files, ownership checks on source files |
@@ -156,7 +126,7 @@ The upstream tools are strong individually but don't work together out of the bo
 - **OS**: macOS or Linux
 - **Python**: 3.11+
 - **OpenViking**: installed or installable via pip (`pip install openviking`)
-- **Optional**: OneContext/Aline CLI in `PATH`, `sqlite3`, `rsync`, `gh`
+- **Optional**: OpenViking runtime, `sqlite3`, `rsync`, `gh`
 - **API Key**: Gemini API key (for OpenViking's embedding model)
 
 ## Quick Start
@@ -172,9 +142,14 @@ cd silent-context-foundry
 
 ```bash
 cp .env.example .env
-# Edit .env -- at minimum set GEMINI_API_KEY
+# Edit .env
+```
 
-# Configure OpenViking
+`GEMINI_API_KEY` is only required when you enable OpenViking semantic search.
+
+```bash
+
+# Optional: configure OpenViking (semantic mode only)
 mkdir -p ~/.openviking_data
 cp examples/ov.conf.template.json ~/.openviking_data/ov.conf
 # Replace ${OPENVIKING_DATA_DIR} with ~/.openviking_data
@@ -214,16 +189,14 @@ systemctl --user enable --now context-healthcheck.timer
 bash scripts/context_healthcheck.sh --deep
 ```
 
-A healthy output looks like:
+A healthy output (lite mode) looks like:
 ```
-Processes:
-  ✅ viking_daemon: running (PID 12345)
-  ✅ openviking-server: running (PID 12346)
-  ✅ openviking-api: HTTP 200
-  ✅ openviking-deep-probe: HTTP 200
-  ✅ onecontext-search: callable (aline)
+Core:
+  ✅ launchd com.context.recall-lite 已加载
+  ✅ onecontext 兼容入口可用
+  ✅ recall 健康检查通过
 
-🟢 All systems nominal.
+🟢 Context Lite checks passed.
 ```
 
 ### 5. Connect MCP to your AI tool
@@ -249,8 +222,8 @@ The MCP server runs over stdio and exposes 4 tools. Once connected, your AI can 
 
 See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for known failures and fixes. Start with:
 
-1. OpenViking crash loops caused by `litellm` version drift.
-2. `realign` import failures in launchd/systemd watcher/worker daemons.
+1. OpenViking crash loops caused by `litellm` version drift (semantic mode).
+2. Legacy `realign` import failures in old watcher/worker daemons.
 3. MCP script path drift across clients (`~/.claude/settings.json`, `~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.openclaw/workspace/config/mcporter.json`).
 
 Latest upstream sync notes: [`docs/UPSTREAM_SYNC_2026-03-05.md`](docs/UPSTREAM_SYNC_2026-03-05.md).

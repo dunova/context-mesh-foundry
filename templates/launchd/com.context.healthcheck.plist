@@ -4,11 +4,7 @@
 <dict>
   <key>Label</key><string>com.context.healthcheck</string>
   <key>EnvironmentVariables</key>
-  <dict>
-    <key>OPENVIKING_MCP_FORCE_TRIM</key><string>1</string>
-    <key>OPENVIKING_MCP_MAX_PROCS</key><string>1</string>
-    <key>OPENVIKING_MCP_STALE_SEC</key><string>1800</string>
-  </dict>
+  <dict/>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>

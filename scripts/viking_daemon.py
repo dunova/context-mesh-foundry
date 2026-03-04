@@ -17,6 +17,8 @@ import os
 import re
 import stat
 import subprocess
+import atexit
+import random
 try:
     import resource as _resource_mod
 except ImportError:
@@ -94,6 +96,10 @@ IDLE_SLEEP_CAP_SEC = max(POLL_INTERVAL_SEC, int(os.environ.get("VIKING_IDLE_SLEE
 HEARTBEAT_INTERVAL_SEC = max(10, int(os.environ.get("VIKING_HEARTBEAT_INTERVAL_SEC", "600")))
 FAST_POLL_INTERVAL_SEC = max(1, int(os.environ.get("VIKING_FAST_POLL_INTERVAL_SEC", "3")))
 PENDING_RETRY_INTERVAL_SEC = max(5, int(os.environ.get("VIKING_PENDING_RETRY_INTERVAL_SEC", "60")))
+CYCLE_BUDGET_SEC = max(1, int(os.environ.get("VIKING_CYCLE_BUDGET_SEC", "8")))
+ERROR_BACKOFF_MAX_SEC = max(2, int(os.environ.get("VIKING_ERROR_BACKOFF_MAX_SEC", "30")))
+LOOP_JITTER_SEC = max(0.0, float(os.environ.get("VIKING_LOOP_JITTER_SEC", "0.7")))
+INDEX_SYNC_MIN_INTERVAL_SEC = max(5, int(os.environ.get("VIKING_INDEX_SYNC_MIN_INTERVAL_SEC", "20")))
 MAX_TRACKED_SESSIONS = int(os.environ.get("VIKING_MAX_TRACKED_SESSIONS", "240"))
 MAX_FILE_CURSORS = int(os.environ.get("VIKING_MAX_FILE_CURSORS", "800"))
 SESSION_TTL_SEC = int(os.environ.get("VIKING_SESSION_TTL_SEC", "7200"))
@@ -237,6 +243,9 @@ _sh.setLevel(logging.WARNING)
 _sh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 logger.addHandler(_sh)
 
+LOCK_FILE = LOG_DIR / "viking_daemon.lock"
+_LOCK_FD = None
+
 # ---------------------------------------------------------------------------
 # Lazy httpx import
 # ---------------------------------------------------------------------------
@@ -262,6 +271,59 @@ def _handle_signal(signum, _frame):
 
 signal.signal(signal.SIGTERM, _handle_signal)
 signal.signal(signal.SIGINT, _handle_signal)
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _release_single_instance_lock():
+    global _LOCK_FD
+    try:
+        if _LOCK_FD is not None:
+            os.close(_LOCK_FD)
+            _LOCK_FD = None
+    except Exception:
+        pass
+    try:
+        if LOCK_FILE.exists():
+            LOCK_FILE.unlink()
+    except Exception:
+        pass
+
+
+def _acquire_single_instance_lock() -> bool:
+    global _LOCK_FD
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(2):
+        try:
+            _LOCK_FD = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(_LOCK_FD, str(os.getpid()).encode("utf-8"))
+            os.fsync(_LOCK_FD)
+            atexit.register(_release_single_instance_lock)
+            return True
+        except FileExistsError:
+            try:
+                raw = LOCK_FILE.read_text(encoding="utf-8").strip()
+                pid = int(raw) if raw else 0
+            except Exception:
+                pid = 0
+            if pid > 0 and _pid_alive(pid):
+                logger.error("Another viking_daemon instance is running (pid=%s), exiting.", pid)
+                return False
+            try:
+                LOCK_FILE.unlink()
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.error("Failed to acquire daemon lock: %s", exc)
+            return False
+    logger.error("Failed to acquire daemon lock after stale cleanup.")
+    return False
 
 
 def _count_antigravity_language_servers() -> int:
@@ -298,6 +360,8 @@ class SessionTracker:
         self._last_claude_transcript_scan = 0.0
         self._last_antigravity_scan = 0.0
         self._last_antigravity_busy_log = 0.0
+        self._last_index_sync = 0.0
+        self._index_dirty = False
         self._cached_codex_session_files: list[str] = []
         self._cached_claude_transcript_files: list[str] = []
         self._cached_antigravity_dirs: list[str] = []
@@ -996,6 +1060,20 @@ class SessionTracker:
             del self.file_cursors[key]
         logger.info("Cleaned %d file cursors.", remove_n)
 
+    def maybe_sync_index(self, force: bool = False):
+        if not self._index_dirty and not force:
+            return
+        now = time.time()
+        if not force and now - self._last_index_sync < INDEX_SYNC_MIN_INTERVAL_SEC:
+            return
+        try:
+            sync_index_from_storage()
+            self._index_dirty = False
+            self._last_index_sync = now
+        except Exception as exc:
+            self._error_count += 1
+            logger.warning("sync_index_from_storage failed: %s", exc)
+
     # -- export -----------------------------------------------------------
     def _export(self, sid: str, data: dict[str, Any], title_prefix: str = ""):
         source = data["source"]
@@ -1026,10 +1104,8 @@ class SessionTracker:
         try:
             file_path.write_text(formatted, encoding="utf-8")
             os.chmod(file_path, 0o600)
-            try:
-                sync_index_from_storage()
-            except Exception:
-                pass
+            self._index_dirty = True
+            self.maybe_sync_index()
         except OSError as exc:
             logger.error("Failed to write local file %s: %s", file_path, exc)
             return False
@@ -1241,6 +1317,8 @@ class SessionTracker:
 
 def main():
     os.umask(0o077)
+    if not _acquire_single_instance_lock():
+        raise SystemExit(1)
     logger.info("Starting OpenViking Hardened Daemon v4.0")
     logger.info("OpenViking URL: %s", OPENVIKING_URL)
     logger.info("Codex sessions path: %s", CODEX_SESSIONS)
@@ -1249,7 +1327,8 @@ def main():
         "Idle=%ds Poll=%ds FastPoll=%ds PendingRetry=%ds Heartbeat=%ds ShellMonitor=%s"
         " CodexScan=%ds ClaudeScan=%ds AntigravityScan=%ds"
         " AGIngest=%s AGQuiet=%ds AGMinDoc=%dB AGSuspendBusy=%s AGBusyThreshold=%d"
-        " Monitors={claude_history:%s,codex_history:%s,opencode:%s,kilo:%s,codex_session:%s,claude_transcripts:%s,antigravity:%s}",
+        " Monitors={claude_history:%s,codex_history:%s,opencode:%s,kilo:%s,codex_session:%s,claude_transcripts:%s,antigravity:%s}"
+        " CycleBudget=%ss IndexSyncMin=%ss BackoffMax=%ss Jitter=%ss",
         IDLE_TIMEOUT_SEC,
         POLL_INTERVAL_SEC,
         FAST_POLL_INTERVAL_SEC,
@@ -1271,33 +1350,58 @@ def main():
         "on" if ENABLE_CODEX_SESSION_MONITOR else "off",
         "on" if ENABLE_CLAUDE_TRANSCRIPTS_MONITOR else "off",
         "on" if ENABLE_ANTIGRAVITY_MONITOR else "off",
+        CYCLE_BUDGET_SEC,
+        INDEX_SYNC_MIN_INTERVAL_SEC,
+        ERROR_BACKOFF_MAX_SEC,
+        LOOP_JITTER_SEC,
     )
 
     tracker = SessionTracker()
     cycle = 0
+    consecutive_errors = 0
 
     while not _shutdown:
+        had_error = False
         try:
+            cycle_started = time.monotonic()
+            budget_deadline = cycle_started + CYCLE_BUDGET_SEC
             tracker.refresh_sources()
             tracker.poll_jsonl_sources()
             tracker.poll_shell_sources()
-            tracker.poll_codex_sessions()
-            tracker.poll_claude_transcripts()
-            tracker.poll_antigravity()
+            if time.monotonic() < budget_deadline:
+                tracker.poll_codex_sessions()
+            if time.monotonic() < budget_deadline:
+                tracker.poll_claude_transcripts()
+            if time.monotonic() < budget_deadline:
+                tracker.poll_antigravity()
             tracker.check_and_export_idle()
+            tracker.maybe_sync_index()
             tracker.maybe_retry_pending()
             tracker.heartbeat()
 
             cycle += 1
             if cycle % 60 == 0:
                 tracker.cleanup_cursors()
+                tracker.maybe_sync_index(force=True)
                 tracker.maybe_retry_pending()
 
         except Exception as exc:
+            had_error = True
             logger.exception("Unhandled error in main loop: %s", exc)
 
-        time.sleep(tracker.next_sleep_interval())
+        if had_error:
+            consecutive_errors += 1
+        else:
+            consecutive_errors = 0
 
+        sleep_s = float(tracker.next_sleep_interval())
+        if consecutive_errors > 0:
+            sleep_s += min(float(ERROR_BACKOFF_MAX_SEC), float(2 ** min(consecutive_errors, 6)))
+        if LOOP_JITTER_SEC > 0:
+            sleep_s += random.uniform(0.0, LOOP_JITTER_SEC)
+        time.sleep(max(1.0, sleep_s))
+
+    tracker.maybe_sync_index(force=True)
     if tracker._http_client:
         try:
             tracker._http_client.close()

@@ -8,6 +8,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import threading
 from typing import Any
 
 import httpx
@@ -134,6 +135,39 @@ SQLITE_CONNECT_TIMEOUT_SEC = max(0.5, float(os.environ.get("OPENVIKING_SQLITE_CO
 OPENVIKING_ENABLE_SEMANTIC_QUERY = str(
     os.environ.get("OPENVIKING_ENABLE_SEMANTIC_QUERY", "0")
 ).strip().lower() in {"1", "true", "yes", "on"}
+OPENVIKING_LOCAL_SCAN_CACHE_TTL_SEC = max(
+    5, int(os.environ.get("OPENVIKING_LOCAL_SCAN_CACHE_TTL_SEC", "30"))
+)
+OPENVIKING_LOCAL_SCAN_MAX_FILES = max(
+    50, int(os.environ.get("OPENVIKING_LOCAL_SCAN_MAX_FILES", "400"))
+)
+OPENVIKING_LOCAL_SCAN_HARD_CAP = max(
+    OPENVIKING_LOCAL_SCAN_MAX_FILES, int(os.environ.get("OPENVIKING_LOCAL_SCAN_HARD_CAP", "2000"))
+)
+OPENVIKING_LOCAL_SCAN_READ_BYTES = max(
+    4096, int(os.environ.get("OPENVIKING_LOCAL_SCAN_READ_BYTES", "120000"))
+)
+OPENVIKING_HEALTH_CACHE_TTL_SEC = max(
+    10, int(os.environ.get("OPENVIKING_HEALTH_CACHE_TTL_SEC", "120"))
+)
+
+
+def _resolve_recall_script() -> str:
+    candidates = [
+        os.path.expanduser("~/.agents/skills/recall/scripts/recall.py"),
+        os.path.expanduser("~/.codex/skills/recall/scripts/recall.py"),
+        os.path.expanduser("~/.claude/skills/recall/scripts/recall.py"),
+    ]
+    for script in candidates:
+        if os.path.exists(script):
+            return script
+    return ""
+
+
+RECALL_SCRIPT_PATH = _resolve_recall_script()
+_LOCAL_SCAN_CACHE: dict[str, Any] = {"expires_at": 0.0, "files": [], "root_mtime": 0.0}
+_HEALTH_CACHE: dict[str, Any] = {"expires_at": 0.0, "payload": None}
+_CACHE_LOCK = threading.Lock()
 
 # ─── Intent Pre-filter (memU-inspired, zero network dependency) ───────────────
 # Exact no-retrieve token set – kept deliberately tight so we never drop a
@@ -313,27 +347,64 @@ def _secure_write_text(path: str, text: str) -> None:
         f.write(text)
 
 
+def _safe_mtime(path: str) -> float:
+    try:
+        return os.path.getmtime(path)
+    except Exception:
+        return 0.0
+
+
+def _list_shared_files_cached(root: str) -> list[str]:
+    now = time.monotonic()
+    root_mtime = _safe_mtime(root)
+    with _CACHE_LOCK:
+        cached_files = _LOCAL_SCAN_CACHE.get("files", [])
+        if (
+            _LOCAL_SCAN_CACHE.get("expires_at", 0.0) > now
+            and float(_LOCAL_SCAN_CACHE.get("root_mtime", 0.0)) == float(root_mtime)
+            and cached_files
+        ):
+            return list(cached_files)
+
+    files: list[str] = []
+    reached_cap = False
+    for base, _, names in os.walk(root):
+        for name in names:
+            if name.startswith("."):
+                continue
+            if not name.lower().endswith((".md", ".txt", ".json", ".jsonl", ".log")):
+                continue
+            files.append(os.path.join(base, name))
+            if len(files) >= OPENVIKING_LOCAL_SCAN_HARD_CAP:
+                reached_cap = True
+                break
+        if reached_cap:
+            break
+
+    if files:
+        files.sort(key=_safe_mtime, reverse=True)
+        files = files[:OPENVIKING_LOCAL_SCAN_MAX_FILES]
+
+    with _CACHE_LOCK:
+        _LOCAL_SCAN_CACHE["files"] = list(files)
+        _LOCAL_SCAN_CACHE["root_mtime"] = float(root_mtime)
+        _LOCAL_SCAN_CACHE["expires_at"] = now + OPENVIKING_LOCAL_SCAN_CACHE_TTL_SEC
+    return files
+
+
 def _local_exact_resource_matches(query: str, limit: int = 3) -> list[dict[str, Any]]:
     root = os.path.join(LOCAL_STORAGE_ROOT, "resources", "shared")
     if not os.path.isdir(root):
         return []
 
-    files: list[str] = []
-    for base, _, names in os.walk(root):
-        for name in names:
-            if name.startswith("."):
-                continue
-            if name.lower().endswith((".md", ".txt", ".json", ".jsonl", ".log")):
-                files.append(os.path.join(base, name))
-
+    files = _list_shared_files_cached(root)
     if not files:
         return []
 
-    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     matches: list[dict[str, Any]] = []
     ql = query.lower()
 
-    for path in files[:400]:
+    for path in files:
         hit_in = None
         snippet = ""
         rel_path = os.path.relpath(path, root)
@@ -343,7 +414,7 @@ def _local_exact_resource_matches(query: str, limit: int = 3) -> list[dict[str, 
         else:
             try:
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    text = f.read(120_000)
+                    text = f.read(OPENVIKING_LOCAL_SCAN_READ_BYTES)
             except Exception:
                 continue
             idx = text.lower().find(ql)
@@ -402,9 +473,7 @@ def _try_cli_search(query: str, search_type: str, limit: int, no_regex: bool) ->
     candidates = [
         os.environ.get("ONECONTEXT_BIN", ""),
         "onecontext",
-        "aline",
-        os.path.expanduser("~/.local/bin/aline"),
-        os.path.expanduser("~/.npm-global/bin/onecontext"),
+        os.path.expanduser("~/.local/bin/onecontext"),
     ]
 
     for candidate in candidates:
@@ -449,7 +518,93 @@ def _try_cli_search(query: str, search_type: str, limit: int, no_regex: bool) ->
         if stdout:
             return f"--- ONECONTEXT SEARCH RESULTS (cli: {os.path.basename(cmd_path)}) ---\n{stdout}"
 
+    if RECALL_SCRIPT_PATH:
+        cmd = [
+            sys.executable,
+            RECALL_SCRIPT_PATH,
+            query,
+            "--backend",
+            "recall",
+            "--type",
+            search_type,
+            "--limit",
+            str(limit),
+        ]
+        if no_regex:
+            cmd.append("--no-regex")
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=ONECONTEXT_CLI_TIMEOUT_SEC,
+            )
+        except Exception:
+            return ""
+        stdout = (result.stdout or "").strip()
+        if result.returncode == 0 and stdout and "No matches found" not in stdout:
+            return f"--- ONECONTEXT SEARCH RESULTS (recall fallback) ---\n{stdout}"
+
     return ""
+
+
+def _probe_recall_health() -> dict[str, Any]:
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        if _HEALTH_CACHE.get("expires_at", 0.0) > now and _HEALTH_CACHE.get("payload") is not None:
+            return dict(_HEALTH_CACHE["payload"])
+
+    if not RECALL_SCRIPT_PATH:
+        payload = {"ok": False, "error": "recall.py not found"}
+        with _CACHE_LOCK:
+            _HEALTH_CACHE["payload"] = payload
+            _HEALTH_CACHE["expires_at"] = now + OPENVIKING_HEALTH_CACHE_TTL_SEC
+        return payload
+    try:
+        result = subprocess.run(
+            [sys.executable, RECALL_SCRIPT_PATH, "--health"],
+            capture_output=True,
+            text=True,
+            timeout=12,
+        )
+    except Exception as exc:
+        payload = {"ok": False, "error": str(exc)}
+        with _CACHE_LOCK:
+            _HEALTH_CACHE["payload"] = payload
+            _HEALTH_CACHE["expires_at"] = now + OPENVIKING_HEALTH_CACHE_TTL_SEC
+        return payload
+
+    output = (result.stdout or "").strip()
+    if result.returncode != 0:
+        payload = {"ok": False, "error": output or (result.stderr or "").strip()}
+        with _CACHE_LOCK:
+            _HEALTH_CACHE["payload"] = payload
+            _HEALTH_CACHE["expires_at"] = now + OPENVIKING_HEALTH_CACHE_TTL_SEC
+        return payload
+
+    start = output.find("{")
+    end = output.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            payload = json.loads(output[start : end + 1])
+            result_payload = {
+                "ok": bool(payload.get("recall_db_exists")),
+                "sessions": payload.get("total_sessions", 0),
+                "messages": payload.get("total_messages", 0),
+                "indexed_this_run": payload.get("indexed_this_run", 0),
+                "db": payload.get("recall_db"),
+            }
+            with _CACHE_LOCK:
+                _HEALTH_CACHE["payload"] = result_payload
+                _HEALTH_CACHE["expires_at"] = now + OPENVIKING_HEALTH_CACHE_TTL_SEC
+            return result_payload
+        except Exception:
+            pass
+    payload = {"ok": "Indexed" in output or "total_sessions" in output, "raw": output[:300]}
+    with _CACHE_LOCK:
+        _HEALTH_CACHE["payload"] = payload
+        _HEALTH_CACHE["expires_at"] = now + OPENVIKING_HEALTH_CACHE_TTL_SEC
+    return payload
 
 
 def _sqlite_search(query: str, search_type: str, limit: int, no_regex: bool) -> str:
@@ -641,50 +796,50 @@ def query_viking_memory(query: str, limit: int = 3) -> str:
     """
     if not _decide_retrieval_intent(query):
         return "Intent Check: Query categorized as common affirmation/chat. Skipped memory retrieval to save context."
-    if not OPENVIKING_ENABLE_SEMANTIC_QUERY:
-        return (
-            "Semantic query disabled by OPENVIKING_ENABLE_SEMANTIC_QUERY=0. "
-            "Use search_onecontext_history(...) for primary retrieval."
-        )
 
     safe_limit = max(1, min(int(limit), 50))
-    payload = {
-        "query": query,
-        "target_uri": "viking://resources",
-        "limit": safe_limit,
-    }
+    output = []
 
-    try:
-        output = []
+    # Lightweight local-first retrieval.
+    exact_matches = _local_exact_resource_matches(query, limit=max(1, safe_limit))
+    if exact_matches:
+        output.append("--- LOCAL MEMORY MATCHES ---")
+        for item in exact_matches:
+            output.append(json.dumps(item, ensure_ascii=False, indent=2))
+        return "\n".join(output)
 
-        # Hybrid retrieval: exact local scan for opaque IDs/tags, then semantic API.
-        if _looks_like_identifier_query(query):
-            exact_matches = _local_exact_resource_matches(query, limit=max(1, safe_limit))
-            if exact_matches:
-                output.append("--- EXACT LOCAL RESOURCE MATCHES (ID/TAG fallback) ---")
-                for item in exact_matches:
-                    output.append(json.dumps(item, ensure_ascii=False, indent=2))
+    # Keep previous semantic behavior optional; do not require it.
+    if OPENVIKING_ENABLE_SEMANTIC_QUERY:
+        payload = {
+            "query": query,
+            "target_uri": "viking://resources",
+            "limit": safe_limit,
+        }
+        try:
+            response = HTTP_CLIENT.post(f"{OPENVIKING_URL}/search/find", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("status") == "ok":
+                resources = data.get("result", {}).get("resources", [])
+                memories = data.get("result", {}).get("memories", [])
+                if resources:
+                    output.append("--- FOUND RESOURCES ---")
+                    for r in resources:
+                        output.append(json.dumps(r, ensure_ascii=False, indent=2))
+                if memories:
+                    output.append("--- FOUND MEMORIES ---")
+                    for m in memories:
+                        output.append(json.dumps(m, ensure_ascii=False, indent=2))
+                if output:
+                    return "\n".join(output)
+        except Exception:
+            pass
 
-        response = HTTP_CLIENT.post(f"{OPENVIKING_URL}/search/find", json=payload)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("status") == "ok":
-            resources = data.get("result", {}).get("resources", [])
-            memories = data.get("result", {}).get("memories", [])
-            if resources:
-                output.append("--- FOUND RESOURCES ---")
-                for r in resources:
-                    output.append(json.dumps(r, ensure_ascii=False, indent=2))
-            if memories:
-                output.append("--- FOUND MEMORIES ---")
-                for m in memories:
-                    output.append(json.dumps(m, ensure_ascii=False, indent=2))
-            if output:
-                return "\n".join(output)
-            return "No relevant context found in OpenViking."
-        return f"API returned non-ok status: {data}"
-    except Exception as e:
-        return f"Failed to query OpenViking: {str(e)}"
+    # Final fallback: search session history via recall/onecontext-compatible chain.
+    history = search_onecontext_history(query=query, search_type="content", limit=min(safe_limit, 10), no_regex=True)
+    if not _onecontext_no_match(history):
+        return "--- HISTORY CONTENT FALLBACK ---\n" + history
+    return "No relevant context found in local memory and history."
 
 
 @mcp.tool()
@@ -807,47 +962,29 @@ def search_onecontext_history(query: str, search_type: str = "all", limit: int =
 @mcp.tool()
 def context_system_health() -> str:
     """
-    Unified health snapshot for OneContext + OpenViking + daemon.
+    Unified health snapshot for recall-lite + onecontext compatibility.
     """
     report: dict[str, Any] = {
         "checked_at": datetime.now().isoformat(),
-        "openviking": {"ok": False},
-        "onecontext": {"ok": False},
-        "daemon": {"ok": False},
+        "recall_lite": {"ok": False},
+        "onecontext_compat": {"ok": False},
+        "openviking_optional": {"ok": False},
     }
 
+    report["recall_lite"] = _probe_recall_health()
+
+    onecontext_bin = shutil.which("onecontext") or os.path.expanduser("~/.local/bin/onecontext")
+    onecontext_ok = bool(onecontext_bin and os.path.exists(onecontext_bin))
+    report["onecontext_compat"] = {"ok": onecontext_ok, "bin": onecontext_bin if onecontext_ok else None}
+
+    # Optional probe only; do not fail whole health if old stack is down.
     try:
-        resp = HTTP_CLIENT.get(f"{OPENVIKING_ROOT_URL}/health", timeout=5)
-        if resp.status_code == 200:
-            report["openviking"] = {"ok": True, "status_code": 200, "probe": "GET /health"}
-        else:
-            deep = HTTP_CLIENT.post(
-                f"{OPENVIKING_URL}/search/find",
-                json={"query": "__healthcheck__", "target_uri": "viking://resources", "limit": 1},
-                timeout=8,
-            )
-            report["openviking"] = {
-                "ok": deep.status_code == 200,
-                "status_code": deep.status_code,
-                "probe": "POST /api/v1/search/find",
-            }
+        resp = HTTP_CLIENT.get(f"{OPENVIKING_ROOT_URL}/health", timeout=3)
+        report["openviking_optional"] = {"ok": resp.status_code == 200, "status_code": resp.status_code}
     except Exception as exc:
-        report["openviking"] = {"ok": False, "error": str(exc)}
+        report["openviking_optional"] = {"ok": False, "error": str(exc)}
 
-    cli_result = _try_cli_search("__healthcheck__", "all", 1, True)
-    report["onecontext"] = {"ok": bool(cli_result), "mode": "cli" if cli_result else "sqlite_fallback"}
-    if not cli_result:
-        fallback = _sqlite_search("__healthcheck__", "all", 1, True)
-        report["onecontext"]["fallback_probe"] = "ok" if "sqlite fallback" in fallback.lower() else "no_match"
-
-    try:
-        daemon = subprocess.run(["pgrep", "-f", "viking_daemon.py"], capture_output=True, text=True, timeout=5)
-        pids = [x.strip() for x in daemon.stdout.splitlines() if x.strip()]
-        report["daemon"] = {"ok": bool(pids), "pids": pids[:5]}
-    except Exception as exc:
-        report["daemon"] = {"ok": False, "error": str(exc)}
-
-    report["all_ok"] = bool(report["openviking"]["ok"] and report["onecontext"]["ok"] and report["daemon"]["ok"])
+    report["all_ok"] = bool(report["recall_lite"].get("ok") and report["onecontext_compat"].get("ok"))
     return json.dumps(report, ensure_ascii=False, indent=2)
 
 

@@ -156,6 +156,10 @@ patches = [
             'VIKING_ANTIGRAVITY_INGEST_MODE': 'final_only',
             'VIKING_ANTIGRAVITY_QUIET_SEC': '240',
             'VIKING_ANTIGRAVITY_MIN_DOC_BYTES': '500',
+            'VIKING_CYCLE_BUDGET_SEC': '8',
+            'VIKING_INDEX_SYNC_MIN_INTERVAL_SEC': '20',
+            'VIKING_ERROR_BACKOFF_MAX_SEC': '30',
+            'VIKING_LOOP_JITTER_SEC': '0.7',
         },
     ),
     (
@@ -178,9 +182,7 @@ patches = [
         None,
         {
             'UNIFIED_CONTEXT_STORAGE_ROOT': os.environ.get('UNIFIED_CONTEXT_STORAGE_ROOT', str(home / '.unified_context_data')),
-            'OPENVIKING_MCP_FORCE_TRIM': '1',
-            'OPENVIKING_MCP_MAX_PROCS': '1',
-            'OPENVIKING_MCP_STALE_SEC': '1800',
+            'RECALL_SCRIPT': str(home / '.agents' / 'skills' / 'recall' / 'scripts' / 'recall.py'),
         },
     ),
 ]
