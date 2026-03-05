@@ -259,6 +259,7 @@ def _onecontext_no_match(result_text: str) -> bool:
     markers = [
         "Found 0 matches",
         "No matches found",
+        "No matching messages found",
         "Search Results for:",
         "Regex Search:",
         "Error searching:",
@@ -652,7 +653,7 @@ def _sqlite_search(query: str, search_type: str, limit: int, no_regex: bool) -> 
                 (hard_limit,),
             ).fetchall()
             for r in rows:
-                text = f"{r['title'] or ''}\n{r['description'] or ''}"
+                text = f"{r['id'] or ''}\n{r['title'] or ''}\n{r['description'] or ''}"
                 if _matched(text):
                     results.append(
                         {
@@ -674,7 +675,7 @@ def _sqlite_search(query: str, search_type: str, limit: int, no_regex: bool) -> 
                 (hard_limit,),
             ).fetchall()
             for r in rows:
-                text = f"{r['session_title'] or ''}\n{r['session_summary'] or ''}"
+                text = f"{r['id'] or ''}\n{r['session_title'] or ''}\n{r['session_summary'] or ''}"
                 if _matched(text):
                     results.append(
                         {
@@ -696,7 +697,10 @@ def _sqlite_search(query: str, search_type: str, limit: int, no_regex: bool) -> 
                 (hard_limit * 2,),
             ).fetchall()
             for r in rows:
-                text = f"{r['llm_title'] or ''}\n{r['user_message'] or ''}\n{r['assistant_summary'] or ''}"
+                text = (
+                    f"{r['id'] or ''}\n{r['session_id'] or ''}\n"
+                    f"{r['llm_title'] or ''}\n{r['user_message'] or ''}\n{r['assistant_summary'] or ''}"
+                )
                 if _matched(text):
                     results.append(
                         {
@@ -719,7 +723,7 @@ def _sqlite_search(query: str, search_type: str, limit: int, no_regex: bool) -> 
                 (max(hard_limit, 40),),
             ).fetchall()
             for r in rows:
-                text = r["content_excerpt"] or ""
+                text = f"{r['turn_id'] or ''}\n{r['session_id'] or ''}\n{r['content_excerpt'] or ''}"
                 if _matched(text):
                     results.append(
                         {
