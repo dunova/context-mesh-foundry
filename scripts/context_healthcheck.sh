@@ -65,9 +65,9 @@ check_recall_runtime() {
     onecontext_bin="$(command -v onecontext 2>/dev/null || true)"
 
     if [ -n "$onecontext_bin" ]; then
-        report_ok "onecontext 兼容入口可用：$onecontext_bin"
+        report_ok "legacy exact-search shim 可用：$onecontext_bin"
     else
-        report_warn "onecontext 兼容入口不可用（建议提供 ~/.local/bin/onecontext）"
+        report_warn "legacy exact-search shim 不可用（如需兼容回退，可提供 ~/.local/bin/onecontext）"
     fi
 
     if [ ! -f "$recall_script" ]; then

@@ -12,7 +12,7 @@
 
 3. 检索层。  
 • `openviking_mcp.py` 暴露 MCP 工具。  
-• OneContext 走精确检索，OpenViking 走语义检索。  
+• recall-first 走精确检索，OpenViking 走语义检索，legacy shim 只做回退。  
 
 4. 交互层。  
 • `memory_viewer.py` 提供 `search/timeline/batch` API。  

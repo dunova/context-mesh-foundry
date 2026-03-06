@@ -1,6 +1,6 @@
 # Troubleshooting & Integration Gotchas
 
-This document summarizes known issues, integration blind spots, and troubleshooting steps for the OneContext + OpenViking + GSD ecosystem, especially when deployed across multiple local AI terminals.
+This document summarizes known issues, integration blind spots, and troubleshooting steps for the recall-first + OpenViking + GSD ecosystem, including the legacy timeline compatibility layer.
 
 > **Note**: All paths referenced below are standard/relative forms. Actual deployment paths vary based on your environment configurations.
 
@@ -85,4 +85,4 @@ Ensure all active client config sources reference the same absolute script path.
 ## 5. General Diagnosis Advice
 1. **Healthcheck Command**: Always run the included `context_healthcheck.sh --deep`. It probes `/health` and forces a dummy query against `/api/v1/search/find`.
 2. **Reviewing Logs**: Keep an eye on `.context_system/logs/` or `journalctl --user -u viking-daemon`.
-3. **Empty Searches?**: If `onecontext search` finds nothing for "today", verify the actual JSONL sources (like `history.jsonl`) are being actively modified by your terminals. Sometimes terminals change their implicit storage paths.
+3. **Empty Searches?**: If the legacy compatibility search finds nothing for "today", verify the actual JSONL sources (like `history.jsonl`) are being actively modified by your terminals. Sometimes terminals change their implicit storage paths.
