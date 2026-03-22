@@ -59,16 +59,9 @@ check_launchd_recall_lite() {
 }
 
 check_recall_runtime() {
-    local recall_script onecontext_bin out
+    local recall_script out
 
     recall_script="${RECALL_SCRIPT:-$HOME/.agents/skills/recall/scripts/recall.py}"
-    onecontext_bin="$(command -v onecontext 2>/dev/null || true)"
-
-    if [ -n "$onecontext_bin" ]; then
-        report_ok "legacy exact-search shim 可用：$onecontext_bin"
-    else
-        report_warn "legacy exact-search shim 不可用（如需兼容回退，可提供 ~/.local/bin/onecontext）"
-    fi
 
     if [ ! -f "$recall_script" ]; then
         report_fail "recall 脚本缺失：$recall_script"
@@ -84,6 +77,8 @@ check_recall_runtime() {
     else
         report_fail "recall 健康检查失败"
     fi
+
+    report_ok "上下文主链路：recall.py + 本地 context_cli（无 MCP）"
 }
 
 check_openviking_optional() {
@@ -139,9 +134,9 @@ check_deep_legacy_runtime() {
     local pids
     pids="$(pgrep -f 'viking_daemon.py|openviking_mcp.py|openviking-server' 2>/dev/null || true)"
     if [ -n "$pids" ]; then
-        report_ok "deep 进程探针命中：$(echo "$pids" | tr '\n' ' ' | sed 's/  */ /g')"
+        report_warn "检测到旧 OpenViking/MCP 进程残留：$(echo "$pids" | tr '\n' ' ' | sed 's/  */ /g')"
     else
-        report_warn "deep 进程探针未命中旧运行时（若为 recall-lite 架构可忽略）"
+        report_ok "未检测到旧 OpenViking/MCP 进程残留"
     fi
 }
 

@@ -11,14 +11,17 @@ CLAUDE_GSD_LINK="${CLAUDE_GSD_LINK:-$HOME_DIR/.claude/get-shit-done}"
 UNIFIED_CONTEXT_STORAGE_ROOT="${UNIFIED_CONTEXT_STORAGE_ROOT:-${OPENVIKING_STORAGE_ROOT:-$HOME_DIR/.unified_context_data}}"
 PATCH_LAUNCHD="${PATCH_LAUNCHD:-1}"
 RELOAD_LAUNCHD="${RELOAD_LAUNCHD:-1}"
+APPLY_CONTEXT_POLICY="${APPLY_CONTEXT_POLICY:-1}"
 
 OV_SCRIPT_TARGETS=(
   "$HOME_DIR/.codex/skills/openviking-memory-sync/scripts"
+  "$HOME_DIR/.claude/skills/openviking-memory-sync/scripts"
   "$HOME_DIR/.gemini/antigravity/skills/openviking-memory-sync/scripts"
   "$HOME_DIR/.agents/skills/openviking-memory-sync/scripts"
 )
 
 GSD_RUNTIME_TARGETS=(
+  "$HOME_DIR/.claude/skills/gsd-v1"
   "$HOME_DIR/.gemini/antigravity/skills/gsd-v1"
   "$HOME_DIR/.agents/skills/gsd-v1"
 )
@@ -99,12 +102,18 @@ fi
 
 if [ -f "$REPO_ROOT/integrations/gsd/workflows/health.md" ]; then
   for wf_target in \
+    "$HOME_DIR/.claude/skills/gsd-v1/workflows/health.md" \
     "$HOME_DIR/.gemini/antigravity/skills/gsd-v1/workflows/health.md" \
     "$HOME_DIR/.agents/skills/gsd-v1/workflows/health.md" \
     "$HOME_DIR/.codex/skills/gsd-v1/workflows/health.md"
   do
     sync_file_if_parent_exists "$REPO_ROOT/integrations/gsd/workflows/health.md" "$wf_target"
   done
+fi
+
+if [ "$APPLY_CONTEXT_POLICY" = "1" ] && [ -f "$REPO_ROOT/scripts/apply_context_first_policy.sh" ]; then
+  log "applying context-first policy to terminal entry files"
+  bash "$REPO_ROOT/scripts/apply_context_first_policy.sh" || log "warning: context-first policy apply failed"
 fi
 
 if [ "$PATCH_LAUNCHD" = "1" ] && command -v launchctl >/dev/null 2>&1; then

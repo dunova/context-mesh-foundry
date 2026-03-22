@@ -853,6 +853,10 @@ def save_conversation_memory(title: str, content: str, tags: list[str] | str | N
 
     formatted_content = f"# {title}\n\nTags: {', '.join(tags)}\nDate: {datetime.now().isoformat()}\n\n{content}\n"
     _secure_write_text(file_path, formatted_content)
+    with _CACHE_LOCK:
+        _LOCAL_SCAN_CACHE["expires_at"] = 0.0
+        _LOCAL_SCAN_CACHE["files"] = []
+        _LOCAL_SCAN_CACHE["root_mtime"] = 0.0
 
     target = uri.rsplit("/", 1)[0]
     payload = {

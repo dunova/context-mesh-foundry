@@ -10,7 +10,7 @@ if [ -z "$QUERY" ] || [ "$QUERY" = "-h" ] || [ "$QUERY" = "--help" ]; then
 Usage: $(basename "$0") <query> [mode] [limit]
 
 Run SCF context prewarm for GSD workflows:
-  1) Exact recall / legacy compatibility search (required)
+  1) OneContext exact search (required)
   2) OpenViking health hint / semantic follow-up guidance
 
 Examples:
@@ -32,7 +32,7 @@ elif command -v aline >/dev/null 2>&1; then
 fi
 
 if [ -z "$OC_BIN" ]; then
-  log "legacy exact-search shim not found; skipping compatibility search"
+  log "onecontext/aline not found; skipping exact search"
 else
   log "running exact history search via $OC_BIN"
   set +e
