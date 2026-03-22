@@ -231,51 +231,243 @@ context-mesh-foundry/
 │   ├── launchd/                      # macOS LaunchAgent plists
 │   └── systemd-user/                 # Linux systemd user services
 ├── integrations/
-│   └── gsd/workflows/                # GSD health workflow
-├── examples/
-│   └── ov.conf.template.json         # OpenViking config template
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── TROUBLESHOOTING.md
-│   └── ...
-├── .env.example
-├── SECURITY.md
-└── CONTRIBUTING.md
-```
-
-## Security
-
-- **No secrets in this repo.** CI scans for common key patterns on every push.
-- **Secret scrubbing:** The daemon redacts API keys, tokens, passwords, PEM private keys, AWS access keys, and Slack tokens before exporting any content.
-- **Safe secrets parsing:** `start_openviking.sh` parses `KEY=VALUE` files without `source`, preventing shell injection.
-- **File permissions:** Data directories are chmod 700, exported files are chmod 600.
-- **TLS enforcement:** Remote OpenViking URLs must use HTTPS (localhost is exempt).
-
-See [SECURITY.md](SECURITY.md) for the full threat model.
-
-## Environment Variables
-
-See [`.env.example`](.env.example) for all configurable environment variables.
-
-## Troubleshooting
-
-See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for known failures and fixes.
-
-## License
-
-[GPL-3.0](LICENSE)
-
----
+│   └── gsd/workflows/---
 
 ## 问题是什么
 
-现代 AI 辅助开发会产生很多并行会话 — Claude Code、Codex CLI、OpenCode、终端 Shell… 每个都从零上下文开始，一个会话中的决策、调试历史和架构约束对下一个会话不可见。
+现代 AI 辅助开发会产生很多并行会话 — Claude Code、Codex CLI、OpenCode、终端 Shell… 每个都从零上下文开始。一个会话中的决策、调试历史和架构约束对下一个会话是不可见的，导致 AI 反复犯错或需要你重复喂背景。
 
 ## 这个项目做了什么
 
 Context Mesh Foundry (CMF) 是一个**本地优先、无 MCP 依赖、零 Docker 运行**的上下文持久层。它将三个子系统缝合成统一的记忆网格：
 
 1. **recall.py** — 跨所有 AI 会话历史的混合搜索（SQLite 索引 + 正则）
+2. **context_cli.py** — 轻量 CLI，支持 search / semantic / save / health — **默认入口**
+3. **viking_daemon.py** — 后台守护进程，监控终端/AI 历史并将清洗后的内容导出到本地存储。
+
+### 🚀 零 Docker / 纯 Python 协议
+
+与许多需要 Docker 运行复杂向量数据库（Milvus、Chroma）的上下文系统不同，CMF 设计为**服务器可选**：
+
+- **默认模式**：完全作为本地 Python 脚本运行。使用本地 SQLite 索引和标准文件搜索。无需 Docker，无需后台服务器，无额外开销。
+- **高级模式（可选）**：如果你已经在运行 [OpenViking](https://github.com/Open-Wise/OpenViking) 服务器，CMF 可以自动同步到服务器以支持高维语义搜索。但对于 90% 的场景，纯本地模式更快且足够好用。
+
+### 三段式预热协议（强制执行）
+
+每个 AI 会话在执行任务前，应遵循以下检索顺序：
+
+```
+1. Recall 精确检索       （必做，查找具体 session 或代码片段）
+2. 本地语义检索          （仅 recall 未命中时，查找宽泛概念）
+3. 代码库扫描            （最后手段，针对当前文件的定向扫描）
+```
+
+未经 recall 预热就做全盘穷举扫描（如 `rg` 扫 `~/` 或 `/Volumes/*`）是**被禁止的**。
+
+## 系统架构
+
+```
+┌─────────────────────────────────────────────┐
+│              AI 终端 / Agent                 │
+│     (Claude Code, Codex CLI, OpenCode…)     │
+└──────────────┬──────────────────────────────┘
+               │  调用 python3 context_cli.py
+               ▼
+┌─────────────────────────────────────────────┐
+│           context_cli.py (CLI 入口)         │
+│   • search: recall.py → 本地文件扫描        │
+│   • semantic: 语义匹配 (可选对接 OpenViking) │
+│   • save: 持久化保存关键决策与约束           │
+│   • health: 全栈健康自检                    │
+└──────────────┬──────────────────────────────┘
+               │
+       ┌───────┴───────┐
+       ▼               ▼
+┌────────────┐  ┌─────────────────┐
+│  recall.py │  │  OpenViking API │
+│  (SQLite   │  │  (可选向量引擎)   │
+│   混合索引) │  │                 │
+└────────────┘  └─────────────────┘
+       ▲
+       │  空闲时自动归档
+┌──────┴──────────────────────────────────────┐
+│           viking_daemon.py (守护进程)        │
+│   • 监控: Claude, Codex, OpenCode, Shell... │
+│   • 清洗: 15+ 种隐私/密钥脱敏模式            │
+│   • 导出: 格式化 Markdown → 本地/远程存储    │
+│   • 队列: 离线时自动存入 .pending/ 等待重试  │
+└─────────────────────────────────────────────┘
+```
+
+### GSD 集成
+
+与 [GSD 工作流](https://github.com/dunova/get-shit-done)（`discuss → plan → execute → verify`）配合使用时，每个阶段都会通过 `context_cli.py` 自动预热上下文：
+
+- **discuss 阶段**: 强制执行 recall 检索历史。
+- **plan 阶段**: 执行 recall 并可选补全语义背景。
+- **health 阶段**: 通过 `context_healthcheck.sh` 监控系统运行状态。
+
+## 模块地图
+
+### 核心运行时 (Core Runtime)
+
+| 脚本 | 用途 |
+|--------|---------|
+| `context_cli.py` | **默认 CLI 入口** — 负责搜索、语义查询、保存记忆和健康检查 |
+| `viking_daemon.py` | 后台守护进程：实时监控 → 脱敏清洗 → 自动归档 |
+| `openviking_mcp.py` | 旧版 MCP 兼容层 (保留作为参考，非默认路径) |
+| `context_healthcheck.sh` | 针对整个上下文系统栈的全面健康检查 |
+| `start_openviking.sh` | 安全启动 OpenViking 服务的脚本 (处理端口、配置、重试) |
+| `unified_context_deploy.sh` | 部署工具：同步脚本、安装 launchd/systemd、自动重载 |
+| `scf_context_prewarm.sh` | Shell 助手，用于在 GSD 动作执行前预热上下文 |
+
+### 记忆管理 (Memory Tools)
+
+| 脚本 | 用途 |
+|--------|---------|
+| `memory_index.py` | 本地记忆文件的索引、去重与元数据更新 |
+| `memory_viewer.py` | 本地记忆浏览器，用于查看和搜索已存的上下文 |
+| `memory_hit_first_regression.py` | 回归测试套件，验证检索命中的准确度 |
+| `export_memories.py` | 将本地记忆导出为可迁移格式 |
+| `import_memories.py` | 从备份导入历史记忆 |
+| `start_memory_viewer.sh` | 启动记忆浏览器 |
+
+### 上下文优先策略 (Context-First Policy)
+
+| 脚本 | 用途 |
+|--------|---------|
+| `apply_context_first_policy.sh` | 将 "询问上下文优先" 协议写入 AI 终端配置 |
+| `verify_context_first_policy.sh` | 验证各终端是否严格执行该检索协议 |
+| `e2e_quality_gate.py` | 端到端质量门禁，监控整个流水线的数据完整性 |
+| `test_context_cli.py` | `context_cli.py` 的单元测试 |
+
+### 辅助工具 (Utilities)
+
+| 脚本 | 用途 |
+|--------|---------|
+| `onecontext_maintenance.py` | OneContext (旧版) 数据维护工具 |
+| `run_onecontext_maintenance.sh` | 上述工具的 Wrapper 脚本 |
+| `patch_openviking_semantic_processor.py` | 针对 VLM 的可选静默补丁 |
+
+## 系统要求
+
+- Python 3.10+
+- (可选) [OpenViking](https://github.com/Open-Wise/OpenViking) 服务器已启动 (默认: `http://127.0.0.1:8090`)
+- macOS (launchd) 或 Linux (systemd) 用于自动运行守护进程
+- [recall.py](https://github.com/dunova/get-shit-done) (归属于 GSD 技能生态)
+
+## 快速开始
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/dunova/context-mesh-foundry.git
+cd context-mesh-foundry
+```
+
+### 2. 环境配置
+
+```bash
+cp .env.example .env
+# 编辑 .env — 设置 OPENVIKING_URL、存储路径等
+```
+
+### 3a. 部署 (macOS)
+
+```bash
+bash scripts/unified_context_deploy.sh
+```
+
+此操作将：
+- 将脚本同步到 `~/.codex/skills/openviking-memory-sync/scripts/`
+- 安装 LaunchAgent 常驻服务 (daemon, server, healthcheck)
+- 自动重载服务
+
+### 3b. 部署 (Linux systemd)
+
+```bash
+cp templates/systemd-user/*.service ~/.config/systemd/user/
+cp templates/systemd-user/*.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now viking-daemon.service openviking-server.service context-healthcheck.timer
+```
+
+### 4. 验证运行状态
+
+```bash
+python3 scripts/context_cli.py health
+```
+
+### 5. 开始使用
+
+```bash
+# 跨所有 AI 终端历史进行精确搜索
+python3 scripts/context_cli.py search "身份验证 bug" --type all --limit 20 --literal
+
+# 语义检索 (利用本地语义索引或 OpenViking)
+python3 scripts/context_cli.py semantic "数据库迁移的决策记录" --limit 5
+
+# 保存重要决策
+python3 scripts/context_cli.py save --title "DB 选型" --content "由于本地化场景选择了 SQLite" --tags "architecture,db"
+
+# 运行健康检查
+python3 scripts/context_cli.py health
+```
+
+## 守护进程工作原理
+
+守护进程 (`viking_daemon.py`) 在后台常驻运行：
+
+1. **自动发现**: 扫描 Claude Code、Codex、OpenCode、Kilo 以及普通的 Shell 历史 (zsh/bash)。同时监听 Codex 会话目录和 Gemini Antigravity 的 brain 文档。
+2. **实时增量读取**: 使用 inode 感知的游标检测文件新增行、轮转或截断，无需重复读取整个大文件。
+3. **脱敏清洗**: 应用 15+ 种正则表达式自动剔除 API 密钥 (`sk-*`, `ghp_*`, `AIza*`)、Token、密码、AWS 密钥、Slack 令牌和 PEM 私钥块。
+4. **延迟自动归档**: 当会话空闲 5 分钟 (可配) 且包含足够多消息时，自动生成 Markdown 摘要并存入本地存储。如果有 OpenViking 服务器，则同步发起 HTTP 推送。
+5. **重试机制**: 如果 OpenViking 离线，文件会被暂存在 `.pending/` 目录，并在下一次成功导出时自动重试补投。
+6. **自适应能效**: 靠近“导出阈值”时加快扫描频率，系统静止时降低频率至每 10 分钟一次 (夜间模式)，极致省电省 CPU。
+
+## 目录结构
+
+```
+context-mesh-foundry/
+├── scripts/
+│   ├── context_cli.py                # 默认 CLI 入口
+│   ├── viking_daemon.py              # 后台守护进程
+│   ├── openviking_mcp.py             # 旧版 MCP 桥接器 (仅供参考)
+│   ├── context_healthcheck.sh        # 全局健康自检
+│   ├── start_openviking.sh           # OpenViking 启动器
+│   ├── unified_context_deploy.sh     # 部署与同步脚本
+│   ├── scf_context_prewarm.sh        # 上下文预热助手
+│   ├── memory_index.py               # 记忆检索索引管理
+│   ├── ...                           # 其他工具
+├── templates/
+│   ├── launchd/                      # macOS 服务模板
+│   └── systemd-user/                 # Linux 服务模板
+├── integrations/
+│   └── gsd/workflows/                # GSD 工作流集成文档
+├── ...
+└── .env.example                      # 环境变量模板
+```
+
+## 安全与隐私
+
+- **无机密上传**: 守护进程在本地通过正则表达式强行拦截并剔除 API 密钥、密码、私钥等 15 种敏感信息。
+- **权限隔离**: 数据目录默认为 `chmod 700`，生成的 Markdown 记忆文件为 `chmod 600`。
+- **环境安全**: `start_openviking.sh` 解析配置时不使用 `source`，防止 Shell 注入。
+
+详见 [SECURITY.md](SECURITY.md)。
+
+## 环境变量
+
+具体配置项见 [`.env.example`](.env.example)。
+
+## 故障排除
+
+遇到运行异常请参考 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)。
+
+## 许可证
+
+[GPL-3.0](LICENSE)
+ 正则）
 2. **context_cli.py** — 轻量 CLI，支持 search / semantic / save / health — **默认入口**
 3. **viking_daemon.py** — 后台守护进程，监控终端/AI 历史并将清洗后的内容导出到本地存储。
 
