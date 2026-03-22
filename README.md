@@ -71,6 +71,20 @@ Context Mesh Foundry (CMF) 是一个**本地优先、无 MCP 依赖、零 Docker
 └─────────────────────────────────────────────┘
 ```
 
+```mermaid
+graph TD
+    A["AI 终端 / Agents<br/>(Claude Code, Codex, OpenCode...)"] -->|python3 context_cli.py| B["context_cli.py (核心网关)"]
+    subgraph "存储与索引 (Memory Core)"
+        C["recall.py (SQLite 精确索引)"]
+        D["OpenViking API (向量语义库)"]
+    end
+    B --> C
+    B --> D
+    E["viking_daemon.py (后台脱敏进程)"] -.->|自动归档| C
+    E -.->|隐私清洗 & 数据导出| E
+    F[终端历史 / Shell History] --> E
+```
+
 ### GSD 集成
 
 与 [GSD 工作流](https://github.com/dunova/get-shit-done)（`discuss → plan → execute → verify`）配合使用时，每个阶段都会通过 `context_cli.py` 自动预热上下文：
@@ -270,6 +284,20 @@ Blind whole-disk scans (`~/`, `/Volumes/*`) without prior recall are **forbidden
 │   • Exports: markdown → local storage       │
 │   • Queues failures to .pending/            │
 └─────────────────────────────────────────────┘
+```
+
+```mermaid
+graph TD
+    A["AI Terminals / Agents<br/>(Claude Code, Codex, OpenCode...)"] -->|python3 context_cli.py| B["context_cli.py (CLI Gateway)"]
+    subgraph "Memory Core"
+        C["recall.py (SQLite Precise Index)"]
+        D["OpenViking API (Vector Store)"]
+    end
+    B --> C
+    B --> D
+    E["viking_daemon.py (Daemon Process)"] -.->|Auto-Archive| C
+    E -.->|Privacy Scrubbing & Export| E
+    F[Terminal History / Shell History] --> E
 ```
 
 ### GSD Integration
