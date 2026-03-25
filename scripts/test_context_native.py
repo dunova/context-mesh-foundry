@@ -54,7 +54,7 @@ class ContextNativeTests(unittest.TestCase):
         cached = {"available_backends": ["go"], "go": {"ok": True}}
         with mock.patch.object(context_native, "_load_health_cache", return_value=cached):
             with mock.patch.object(context_native, "run_native_scan") as mock_run:
-                payload = context_native.health_payload()
+                payload = context_native.health_payload(probe=True)
         self.assertEqual(payload, cached)
         mock_run.assert_not_called()
 

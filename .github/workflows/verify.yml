@@ -35,7 +35,7 @@ jobs:
 
       - name: Python tests
         run: |
-          python -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py
+          python -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py scripts/test_context_native.py
 
       - name: Quality gate
         run: |

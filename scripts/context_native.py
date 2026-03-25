@@ -354,14 +354,17 @@ def main() -> int:
     return result.returncode
 
 
-def health_payload() -> dict[str, Any]:
-    cached = _load_health_cache()
-    if cached is not None:
-        return cached
+def health_payload(*, probe: bool = False) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "available_backends": available_backends(),
         "default_target_dir": DEFAULT_TARGET_DIR,
     }
+    if not probe:
+        payload["probe_mode"] = "disabled-by-default"
+        return payload
+    cached = _load_health_cache()
+    if cached is not None:
+        return cached
     for backend in payload["available_backends"]:
         try:
             result = run_native_scan(backend=backend, json_output=True, limit=1, release=(backend == "rust"), timeout=120)
@@ -372,6 +375,7 @@ def health_payload() -> dict[str, Any]:
             }
         except Exception as exc:
             payload[backend] = {"ok": False, "error": str(exc)}
+    payload["probe_mode"] = "executed"
     _store_health_cache(payload)
     return payload
 
