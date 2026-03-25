@@ -476,7 +476,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  mode: {args.mode}")
         print(f"  iterations: {args.iterations} warmup: {args.warmup}")
         print(f"  search limit: {args.search_limit}")
-        print("  source cache TTL:", env_vars["CONTEXT_MESH_SOURCE_CACHE_TTL_SEC"], "sec")
+        print("  source cache TTL:", env_vars["CONTEXTGO_SOURCE_CACHE_TTL_SEC"], "sec")
         mode_sequence = _build_mode_sequence(args.mode)
         results_by_mode: list[tuple[str, list[BenchmarkStats]]] = []
         for index, mode in enumerate(mode_sequence):
@@ -495,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
                 "search_limit": args.search_limit,
                 "iterations": args.iterations,
                 "warmup": args.warmup,
-                "source_cache_ttl_sec": int(env_vars["CONTEXT_MESH_SOURCE_CACHE_TTL_SEC"]),
+                "source_cache_ttl_sec": int(env_vars["CONTEXTGO_SOURCE_CACHE_TTL_SEC"]),
             }
             if args.mode == "both" and len(results_by_mode) == 2:
                 benchmark_payload = {
