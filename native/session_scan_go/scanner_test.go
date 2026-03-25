@@ -7,6 +7,9 @@ func TestNoiseFilter(t *testing.T) {
 	if !filter.IsNoise("this line mentions marker text") {
 		t.Fatalf("expected noise marker to be detected")
 	}
+	if !filter.IsNoise("## heading style noise") {
+		t.Fatalf("expected noise prefix to be detected")
+	}
 	if filter.IsNoise("clean, helpful line") {
 		t.Fatalf("did not expect clean line to be marked as noise")
 	}

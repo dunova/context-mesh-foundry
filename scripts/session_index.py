@@ -62,6 +62,13 @@ NATIVE_NOISE_MARKERS = (
 )
 
 
+def _normalize_file_path(path: Path) -> str:
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
+
+
 def _is_noise_text(text: str) -> bool:
     compact = re.sub(r"\s+", " ", str(text or "")).strip()
     if not compact:
@@ -485,7 +492,8 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
 
         for source_type, path in _iter_sources():
             scanned += 1
-            file_path = str(path)
+            canonical_path = _normalize_file_path(path)
+            file_path = canonical_path
             seen_paths.add(file_path)
             try:
                 stat = path.stat()
@@ -493,7 +501,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
                 continue
             row = conn.execute(
                 "SELECT file_mtime, file_size FROM session_documents WHERE file_path = ?",
-                (file_path,),
+                (canonical_path,),
             ).fetchone()
             if row and int(row[0]) == int(stat.st_mtime) and int(row[1]) == int(stat.st_size):
                 continue
@@ -518,7 +526,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
                     updated_at_epoch = excluded.updated_at_epoch
                 """,
                 (
-                    doc.file_path,
+                    canonical_path,
                     doc.source_type,
                     doc.session_id,
                     doc.title,
@@ -528,7 +536,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
                     doc.file_mtime,
                     doc.file_size,
                     now_epoch,
-                ),
+                )
             )
             if row:
                 updated += 1
@@ -664,7 +672,7 @@ def _fetch_session_docs_by_paths(conn: sqlite3.Connection, file_paths: Iterable[
     for raw_path in file_paths:
         if not raw_path:
             continue
-        path_str = str(raw_path)
+        path_str = _normalize_file_path(Path(str(raw_path)))
         if path_str in seen:
             continue
         seen.add(path_str)
@@ -684,7 +692,7 @@ def _enrich_native_rows(rows: list[dict[str, Any]], conn: sqlite3.Connection, te
     enriched: list[dict[str, Any]] = []
     for row in rows:
         enriched_row = dict(row)
-        file_path = str(row.get("file_path") or "")
+        file_path = _normalize_file_path(Path(str(row.get("file_path") or ""))) if row.get("file_path") else ""
         doc = docs.get(file_path)
         if doc:
             enriched_row["source_type"] = doc["source_type"]

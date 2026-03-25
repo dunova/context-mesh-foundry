@@ -15,11 +15,11 @@ def resolve_install_root() -> Path:
         base = Path(explicit).expanduser()
         return base if base.name == "scripts" else base / "scripts"
 
-    default_root = Path.home() / ".local" / "share" / "contextmesh" / "scripts"
-    legacy_root = Path.home() / ".local" / "share" / "context-mesh-foundry" / "scripts"
-    if (default_root / "context_cli.py").exists() or not legacy_root.exists():
-        return default_root
-    return legacy_root
+    primary_root = Path.home() / ".local" / "share" / "context-mesh-foundry" / "scripts"
+    fallback_root = Path.home() / ".local" / "share" / "contextmesh" / "scripts"
+    if (primary_root / "context_cli.py").exists() or not fallback_root.exists():
+        return primary_root
+    return fallback_root
 
 
 INSTALL_ROOT = resolve_install_root()

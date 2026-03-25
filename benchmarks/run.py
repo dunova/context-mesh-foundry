@@ -223,6 +223,9 @@ def _benchmark(action: Callable[[], object], warmup: int, iterations: int) -> li
     return durations[warmup:]
 
 
+MAX_SAMPLE_LINES = 5
+
+
 def _summarize_stats(name: str, durations: list[float], sample: str | None) -> BenchmarkStats:
     mean = statistics.mean(durations)
     minimum = min(durations)
@@ -309,7 +312,12 @@ def _print_sample(label: str, output: str | None) -> None:
     if not output:
         print("  <no output captured>")
         return
-    print(textwrap.indent(output.strip(), "  "))
+    lines = output.strip().splitlines()
+    display = lines[:MAX_SAMPLE_LINES]
+    for line in display:
+        print("  " + line)
+    if len(lines) > MAX_SAMPLE_LINES:
+        print(f"  ... ({len(lines) - MAX_SAMPLE_LINES} more lines truncated)")
 
 
 def _build_comparison_summary(
@@ -341,14 +349,25 @@ def _print_comparison_text(comparisons: list[dict[str, float | None]]) -> None:
     if not comparisons:
         return
     print("\nBenchmark Comparison (python vs native)")
+    header = (
+        "  "
+        + "name".ljust(32)
+        + "python".rjust(10)
+        + "native".rjust(10)
+        + "diff".rjust(10)
+        + "ratio".rjust(10)
+    )
+    print(header)
     for entry in comparisons:
         ratio = entry["mean_ratio"]
-        ratio_str = f" ratio={ratio:.2f}x" if ratio is not None else ""
+        ratio_str = f"{ratio:.2f}x" if ratio is not None else "n/a"
         print(
             "  "
-            f"{entry['name']}: python={entry['python_mean_ms']:.1f}ms "
-            f"native={entry['native_mean_ms']:.1f}ms diff={entry['mean_diff_ms']:.1f}ms"
-            f"{ratio_str}"
+            + entry["name"].ljust(32)
+            + f"{entry['python_mean_ms']:10.1f}"
+            + f"{entry['native_mean_ms']:10.1f}"
+            + f"{entry['mean_diff_ms']:10.1f}"
+            + f"{ratio_str:>10}"
         )
 
 

@@ -14,10 +14,26 @@ var DefaultNoiseMarkers = []string{
 	"### available skills",
 	"prompt engineer and agent skill optimizer",
 	"current skill name:",
+	"base directory for this skill:",
 	"skill.md",
 	"python -m pytest",
 	"benchmarks/run.py",
 	"<instructions>",
+	"chunk id:",
+	"wall time:",
+	"process exited with code",
+	"original token count:",
+	"\noutput:",
+}
+
+var DefaultNoisePrefixes = []string{
+	"##",
+	"```",
+	"> ",
+	"- [",
+	"* ",
+	"http",
+	"https",
 }
 
 const defaultSnippetLimit = 220
@@ -68,8 +84,10 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 			continue
 		}
 		summary.Lines++
+		parsedJSON := false
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(line), &payload); err == nil {
+			parsedJSON = true
 			if sid := extractSessionID(payload); sid != "" {
 				summary.SessionID = sid
 			}
@@ -83,7 +101,7 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 				}
 			}
 		}
-		if summary.Snippet == "" && !matcher.QueryEmpty() {
+		if summary.Snippet == "" && !matcher.QueryEmpty() && !parsedJSON {
 			if snippet, ok := matcher.Match(line); ok {
 				summary.Snippet = snippet
 				matchFound = true
@@ -94,7 +112,8 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 }
 
 type NoiseFilter struct {
-	markers []string
+	markers  []string
+	prefixes []string
 }
 
 func NewNoiseFilter(markers []string) *NoiseFilter {
@@ -105,14 +124,26 @@ func NewNoiseFilter(markers []string) *NoiseFilter {
 			normalized = append(normalized, marker)
 		}
 	}
-	return &NoiseFilter{markers: normalized}
+	prefixes := make([]string, 0, len(DefaultNoisePrefixes))
+	for _, prefix := range DefaultNoisePrefixes {
+		prefix = strings.ToLower(strings.TrimSpace(prefix))
+		if prefix != "" {
+			prefixes = append(prefixes, prefix)
+		}
+	}
+	return &NoiseFilter{markers: normalized, prefixes: prefixes}
 }
 
 func (f *NoiseFilter) IsNoise(line string) bool {
-	if f == nil || len(f.markers) == 0 {
+	if f == nil {
 		return false
 	}
-	line = strings.ToLower(line)
+	line = strings.ToLower(strings.TrimSpace(line))
+	for _, prefix := range f.prefixes {
+		if prefix != "" && strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
 	for _, marker := range f.markers {
 		if marker != "" && strings.Contains(line, marker) {
 			return true

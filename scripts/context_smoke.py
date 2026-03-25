@@ -21,9 +21,21 @@ def run_cmd(args: list[str], timeout: int = 60) -> tuple[int, str, str]:
 
 def test_health(cli_path: Path) -> dict:
     rc, out, err = run_cmd([sys.executable, str(cli_path), "health"])
-    text = out or err
-    payload = json.loads(text)
-    return {"name": "health", "rc": rc, "ok": bool(payload.get("all_ok")), "detail": payload}
+    text = (out or err).strip()
+    detail = {}
+    try:
+        payload = json.loads(text)
+        detail = payload
+        ok = bool(payload.get("all_ok"))
+        error = None
+    except json.JSONDecodeError as exc:
+        payload = None
+        ok = False
+        error = str(exc)
+    if error:
+        detail["error"] = error
+        detail["raw"] = text
+    return {"name": "health", "rc": rc, "ok": ok, "detail": detail}
 
 
 def test_quality_gate(quality_gate_path: Path) -> dict:
@@ -39,7 +51,11 @@ def test_healthcheck(healthcheck_path: Path) -> dict:
         "name": "healthcheck",
         "rc": rc,
         "ok": rc == 0,
-        "detail": text[:400],
+        "detail": {
+            "output": text[:400],
+            "stderr": err[:400],
+            "stdout": out[:400],
+        },
     }
 
 

@@ -46,6 +46,15 @@ class NativeRunResult:
             payload = json.loads(text)
         except Exception as exc:
             self._payload_error = str(exc)
+            snippet = self._find_json_snippet(text)
+            if snippet:
+                try:
+                    payload = json.loads(snippet)
+                    self._payload_cache = payload
+                    return payload
+                except Exception as nested:
+                    self._payload_error = f"{self._payload_error}; fallback parse failed: {nested}"
+                    return None
             return None
         if isinstance(payload, dict):
             self._payload_cache = payload
@@ -71,6 +80,15 @@ class NativeRunResult:
         if self.returncode != 0 and not errors:
             errors.append(f"native backend exited with code {self.returncode}")
         return errors
+
+    def _find_json_snippet(self, text: str) -> str | None:
+        start = text.find("{")
+        if start == -1:
+            return None
+        end = text.rfind("}")
+        if end == -1 or end <= start:
+            return None
+        return text[start : end + 1]
 
 
 def extract_matches(result: NativeRunResult) -> list[dict[str, Any]]:

@@ -167,6 +167,7 @@ class SessionIndexTests(unittest.TestCase):
     def test_fetch_session_docs_by_paths_skips_duplicates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "session_index.db"
+            canonical = session_index._normalize_file_path(Path("/tmp/dedup.jsonl"))
             with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
                 session_index.ensure_session_db()
                 conn = sqlite3.connect(db_path)
@@ -179,7 +180,7 @@ class SessionIndexTests(unittest.TestCase):
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
-                            "/tmp/dedup.jsonl",
+                            canonical,
                             "codex_session",
                             "dedup",
                             "Dedup Session",
@@ -196,14 +197,15 @@ class SessionIndexTests(unittest.TestCase):
                     docs = session_index._fetch_session_docs_by_paths(
                         conn, ["/tmp/dedup.jsonl", "/tmp/dedup.jsonl"]
                     )
-                    self.assertIn("/tmp/dedup.jsonl", docs)
-                    self.assertEqual(docs["/tmp/dedup.jsonl"]["session_id"], "dedup")
+                    self.assertIn(canonical, docs)
+                    self.assertEqual(docs[canonical]["session_id"], "dedup")
                 finally:
                     conn.close()
 
     def test_enrich_native_rows_uses_index_document(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "session_index.db"
+            canonical = session_index._normalize_file_path(Path("/tmp/native.jsonl"))
             with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
                 session_index.ensure_session_db()
                 conn = sqlite3.connect(db_path)
@@ -216,7 +218,7 @@ class SessionIndexTests(unittest.TestCase):
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
-                            "/tmp/native.jsonl",
+                            canonical,
                             "codex_session",
                             "native-sample",
                             "Native Session Title",
@@ -231,13 +233,64 @@ class SessionIndexTests(unittest.TestCase):
                     conn.commit()
                     conn.row_factory = sqlite3.Row
                     rows = [
-                        {"file_path": "/tmp/native.jsonl", "snippet": "fallback snippet", "source_type": "native_session"}
+                        {"file_path": canonical, "snippet": "fallback snippet", "source_type": "native_session"}
                     ]
                     enriched = session_index._enrich_native_rows(rows, conn, ["NotebookLM"], limit=5)
                     self.assertEqual(enriched[0]["session_id"], "native-sample")
                     self.assertIn("NotebookLM", enriched[0]["snippet"])
                 finally:
                     conn.close()
+
+    def test_sync_session_index_canonicalizes_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "session_index.db"
+            fake_dir = Path(tmpdir) / "src"
+            fake_dir.mkdir(parents=True, exist_ok=True)
+            real_file = fake_dir / "sample.jsonl"
+            real_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "canonical-session",
+                                    "cwd": "/tmp/canonical",
+                                    "timestamp": "2026-03-25T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "canonical NotebookLM content"},
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            alias = fake_dir / "alias.jsonl"
+            alias.symlink_to(real_file)
+            with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
+                original_iter = session_index._iter_sources
+                try:
+                    session_index._iter_sources = lambda: [
+                        ("codex_session", alias),
+                        ("codex_session", real_file),
+                    ]
+                    stats = session_index.sync_session_index(force=True)
+                finally:
+                    session_index._iter_sources = original_iter
+            self.assertEqual(stats["added"], 1)
+            self.assertEqual(stats["updated"], 0)
+            conn = sqlite3.connect(db_path)
+            try:
+                rows = conn.execute("SELECT file_path FROM session_documents").fetchall()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0][0], str(real_file.resolve()))
+            finally:
+                conn.close()
 
 
 if __name__ == "__main__":
