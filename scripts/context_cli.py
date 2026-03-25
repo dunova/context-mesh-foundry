@@ -137,7 +137,7 @@ def _source_freshness() -> dict:
     return payload
 
 
-def _archived_bridge_process_count() -> int:
+def _optional_remote_process_count() -> int:
     try:
         proc = subprocess.run(
             ["pgrep", "-f", "contextgo-remote"],
@@ -348,7 +348,7 @@ def run(args: argparse.Namespace) -> int:
             "remote_sync_policy": {
                 "enabled": ENABLE_REMOTE_MEMORY_HTTP,
                 "mode": "optional-http" if ENABLE_REMOTE_MEMORY_HTTP else "disabled-by-policy",
-                "archived_bridge_processes": _archived_bridge_process_count(),
+                "optional_remote_processes": _optional_remote_process_count(),
             },
             "native_backends": context_native.health_payload(),
             "all_ok": bool(recall_payload.get("session_index_db_exists")),
