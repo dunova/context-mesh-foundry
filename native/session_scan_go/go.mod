@@ -1,3 +1,3 @@
-module contextmesh/session_scan_go
+module contextgo/session_scan_go
 
 go 1.25

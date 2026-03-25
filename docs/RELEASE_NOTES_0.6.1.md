@@ -45,12 +45,18 @@ python3 -m benchmarks --mode both --iterations 1 --warmup 0 --query benchmark --
 ```bash
 bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py benchmarks/*.py
-python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py scripts/test_context_native.py
+python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_context_native.py scripts/test_context_smoke.py scripts/test_session_index.py
 python3 scripts/e2e_quality_gate.py
 python3 scripts/context_cli.py smoke
 python3 scripts/smoke_installed_runtime.py
-go test ./...
+cd native/session_scan_go && go test ./...
+cd native/session_scan && CARGO_INCREMENTAL=0 cargo test
 ```
+
+补充说明：
+
+- `context_cli.py smoke` 现在已经包含 `native_scan` 合同校验，会分别对 Rust / Go backend 做最小 fixture 实跑，不再只看 CLI 健康。
+- Go 原生扫描与 Rust 原生扫描都已经统一到当前调用侧 workdir 语义，避免把当前仓库优化线程误当成历史召回结果。
 
 ## Migration Note
 
