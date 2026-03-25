@@ -240,9 +240,16 @@ def run(args: argparse.Namespace) -> int:
         os.environ["CONTEXT_VIEWER_PORT"] = str(args.port)
         if args.token:
             os.environ["CONTEXT_VIEWER_TOKEN"] = str(args.token)
-        viewer_module.HOST = os.environ["CONTEXT_VIEWER_HOST"]
-        viewer_module.PORT = int(os.environ["CONTEXT_VIEWER_PORT"])
-        viewer_module.VIEWER_TOKEN = os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip()
+        if hasattr(viewer_module, "apply_runtime_config"):
+            viewer_module.apply_runtime_config(
+                os.environ["CONTEXT_VIEWER_HOST"],
+                int(os.environ["CONTEXT_VIEWER_PORT"]),
+                os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip(),
+            )
+        else:
+            viewer_module.HOST = os.environ["CONTEXT_VIEWER_HOST"]
+            viewer_module.PORT = int(os.environ["CONTEXT_VIEWER_PORT"])
+            viewer_module.VIEWER_TOKEN = os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip()
         viewer_module.main()
         return 0
 

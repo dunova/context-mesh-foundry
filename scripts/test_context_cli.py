@@ -92,9 +92,11 @@ class ContextCliTests(unittest.TestCase):
         args = context_cli.build_parser().parse_args(["serve", "--host", "127.0.0.1", "--port", "40001"])
         viewer = mock.Mock()
         viewer.main.return_value = None
+        viewer.apply_runtime_config = mock.Mock()
         with mock.patch.object(context_cli, "_load_memory_viewer", return_value=viewer):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
+        viewer.apply_runtime_config.assert_called_once()
         viewer.main.assert_called_once()
 
     def test_maintain_subcommand_delegates(self) -> None:
