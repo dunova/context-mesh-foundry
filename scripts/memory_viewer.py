@@ -7,6 +7,7 @@ from datetime import datetime
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
@@ -41,10 +42,26 @@ MAX_POST_BYTES = env_int("CONTEXT_MESH_VIEWER_MAX_POST_BYTES", "CONTEXT_VIEWER_M
 MAX_BATCH_IDS = env_int("CONTEXT_MESH_VIEWER_MAX_BATCH_IDS", "CONTEXT_VIEWER_MAX_BATCH_IDS", default=500, minimum=1)
 SSE_INTERVAL_SEC = env_float("CONTEXT_MESH_VIEWER_SSE_INTERVAL_SEC", "CONTEXT_VIEWER_SSE_INTERVAL_SEC", default=1.0, minimum=0.2)
 SSE_MAX_TICKS = env_int("CONTEXT_MESH_VIEWER_SSE_MAX_TICKS", "CONTEXT_VIEWER_SSE_MAX_TICKS", default=120, minimum=1)
+SYNC_MIN_INTERVAL_SEC = env_float("CONTEXT_MESH_VIEWER_SYNC_MIN_INTERVAL_SEC", default=5.0, minimum=0.0)
+_SYNC_STATE = {"at": 0.0, "payload": None}
+_SYNC_LOCK = threading.Lock()
 
 
 def _json_bytes(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def _maybe_sync_index() -> dict:
+    now = time.monotonic()
+    with _SYNC_LOCK:
+        cached = _SYNC_STATE.get("payload")
+        if SYNC_MIN_INTERVAL_SEC > 0 and cached is not None and (_SYNC_STATE.get("at", 0.0) + SYNC_MIN_INTERVAL_SEC) > now:
+            return dict(cached)
+    payload = sync_index_from_storage()
+    with _SYNC_LOCK:
+        _SYNC_STATE["at"] = now
+        _SYNC_STATE["payload"] = dict(payload)
+    return payload
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -109,7 +126,7 @@ es.onmessage = (e)=>{ try{ const d=JSON.parse(e.data); document.title='Context M
             return
 
         if parsed.path == "/api/health":
-            sync = sync_index_from_storage()
+            sync = _maybe_sync_index()
             self._send_json(200, {"ok": True, "checked_at": datetime.now().isoformat(), "sync": sync, **index_stats()})
             return
 
@@ -119,7 +136,7 @@ es.onmessage = (e)=>{ try{ const d=JSON.parse(e.data); document.title='Context M
             limit = self._parse_int(qs.get("limit", ["20"])[0] or "20", 20, 1, 200)
             offset = self._parse_int(qs.get("offset", ["0"])[0] or "0", 0, 0, 100000)
             source_type = (qs.get("source_type", ["all"])[0] or "all").strip()
-            sync = sync_index_from_storage()
+            sync = _maybe_sync_index()
             rows = search_index(query=query, limit=limit, offset=offset, source_type=source_type)
             self._send_json(200, {"sync": sync, "count": len(rows), "results": rows})
             return
@@ -129,7 +146,7 @@ es.onmessage = (e)=>{ try{ const d=JSON.parse(e.data); document.title='Context M
             anchor = self._parse_int(qs.get("anchor", ["0"])[0] or "0", 0, 0, 10_000_000)
             before = self._parse_int(qs.get("depth_before", ["3"])[0] or "3", 3, 0, 20)
             after = self._parse_int(qs.get("depth_after", ["3"])[0] or "3", 3, 0, 20)
-            sync = sync_index_from_storage()
+            sync = _maybe_sync_index()
             rows = timeline_index(anchor_id=anchor, depth_before=before, depth_after=after) if anchor > 0 else []
             self._send_json(200, {"sync": sync, "count": len(rows), "timeline": rows})
             return
@@ -143,7 +160,7 @@ es.onmessage = (e)=>{ try{ const d=JSON.parse(e.data); document.title='Context M
             self.end_headers()
             for _ in range(SSE_MAX_TICKS):
                 try:
-                    sync = sync_index_from_storage()
+                    sync = _maybe_sync_index()
                     data = {"at": datetime.now().isoformat(), "sync": sync, **index_stats()}
                     chunk = f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
                     self.wfile.write(chunk)
@@ -180,7 +197,7 @@ es.onmessage = (e)=>{ try{ const d=JSON.parse(e.data); document.title='Context M
                 self._send_json(400, {"ok": False, "error": "too many ids"})
                 return
             limit = self._parse_int(str(data.get("limit") or "100"), 100, 1, 300)
-            sync = sync_index_from_storage()
+            sync = _maybe_sync_index()
             parsed_ids = []
             for x in ids:
                 try:

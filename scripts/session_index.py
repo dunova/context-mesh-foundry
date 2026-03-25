@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import time
 from typing import Any, Iterable
 
 try:
@@ -23,6 +24,7 @@ except ImportError:  # pragma: no cover
 SESSION_DB_PATH_ENV = "SESSION_INDEX_DB_PATH"
 MAX_CONTENT_CHARS = env_int("CMF_SESSION_MAX_CONTENT_CHARS", "CONTEXT_MESH_SESSION_MAX_CONTENT_CHARS", default=24000, minimum=4000)
 SYNC_MIN_INTERVAL_SEC = env_int("CMF_SESSION_SYNC_MIN_INTERVAL_SEC", "CONTEXT_MESH_SESSION_SYNC_MIN_INTERVAL_SEC", default=15, minimum=0)
+SOURCE_CACHE_TTL_SEC = env_int("CONTEXT_MESH_SOURCE_CACHE_TTL_SEC", default=10, minimum=0)
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where",
     "which", "who", "how", "please", "search", "session", "history", "continue", "find",
@@ -37,6 +39,7 @@ SOURCE_WEIGHT = {
     "shell_zsh": 2,
     "shell_bash": 2,
 }
+_SOURCE_CACHE: dict[str, Any] = {"expires_at": 0.0, "items": [], "home": None}
 
 
 def _is_noise_text(text: str) -> bool:
@@ -308,7 +311,20 @@ def _parse_shell_history(path: Path, source_type: str) -> SessionDocument | None
 
 
 def _iter_sources() -> list[tuple[str, Path]]:
-    home = _home()
+    now = time.monotonic()
+    cached_items = _SOURCE_CACHE.get("items") or []
+    current_home = str(_home())
+    cached_home = _SOURCE_CACHE.get("home")
+    if (
+        SOURCE_CACHE_TTL_SEC > 0
+        and _SOURCE_CACHE.get("expires_at", 0.0) > now
+        and cached_items
+        and cached_home == current_home
+        and all(Path(path).exists() for _, path in cached_items)
+    ):
+        return list(cached_items)
+
+    home = Path(current_home)
     items: list[tuple[str, Path]] = []
     roots = [
         ("codex_session", home / ".codex" / "sessions"),
@@ -330,6 +346,10 @@ def _iter_sources() -> list[tuple[str, Path]]:
     for source_type, path in flat_files:
         if path.is_file():
             items.append((source_type, path))
+    if SOURCE_CACHE_TTL_SEC > 0:
+        _SOURCE_CACHE["items"] = list(items)
+        _SOURCE_CACHE["expires_at"] = now + SOURCE_CACHE_TTL_SEC
+        _SOURCE_CACHE["home"] = current_home
     return items
 
 
