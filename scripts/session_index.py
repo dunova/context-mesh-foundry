@@ -102,7 +102,33 @@ SEARCH_NOISE_MARKERS = (
     "通过了 `python3 scripts/context_cli.py smoke`",
     "go test ./...",
     "python3 -m benchmarks --mode both",
-)
+    "已预热",
+    "样本定位",
+    "不要改文件。输出",
+    "只读。审查",
+    "只读。定位为什么",
+    "远端对齐确认",
+    "未纳入本次提交",
+    "已查看并收口当前子 agent",
+    "状态汇总：",
+    "已关闭且有有效产出",
+    "我先按仓库要求做上下文预热",
+    "我先做“全局一致性同步”检查",
+    "主链不再是瓶颈",
+    "现在真正该优化的是",
+    "native 搜索结果质量",
+    "不是再融合，而是",
+    "我继续的话，就沿这条质量线往下打",
+    "把 rust `native-scan` 结果里的",
+    "我继续直接提主链结果质量",
+    "我先复跑主链",
+    "再决定要不要进一步做字段级过滤",
+    "现在不是“能不能跑”的问题",
+    "让它质量更好，能替代旧逻辑",
+    "我继续。",
+    "我现在直接复跑主链",
+    "我再强制重建一次索引",
+    )
 
 
 def _normalize_file_path(path: Path) -> str:
@@ -143,6 +169,24 @@ def _is_noise_text(text: str) -> bool:
         return True
     if "随后我又把本地安装态重新部署到" in compact:
         return True
+    if "已预热" in compact and "样本定位" in compact:
+        return True
+    if "已查看并收口当前子 agent" in compact:
+        return True
+    if "主链不再是瓶颈" in compact and "native 搜索结果质量" in compact:
+        return True
+    if "我继续的话，就沿这条质量线往下打" in compact:
+        return True
+    if "我继续直接提主链结果质量" in compact:
+        return True
+    if "我先复跑主链" in compact:
+        return True
+    if "我现在直接复跑主链" in compact:
+        return True
+    if "我再强制重建一次索引" in compact:
+        return True
+    if "让它质量更好，能替代旧逻辑" in compact:
+        return True
     return False
 
 
@@ -158,6 +202,22 @@ def _search_noise_penalty(*parts: str) -> int:
         penalty += 60
     if "chunk id:" in haystack or "wall time:" in haystack:
         penalty += 120
+    lines = [line.strip() for line in haystack.splitlines() if line.strip()]
+    short_token_lines = sum(
+        1 for line in lines
+        if len(line) <= 40 and " " not in line and line.count("/") < 2 and line.count("-") <= 3
+    )
+    if short_token_lines >= 5:
+        penalty += 200
+    if "drwx" in haystack or "rwxr-xr-x" in haystack or "\ntotal " in haystack:
+        penalty += 200
+    meta_terms = ("notebooklm", "search", "session_index", "native-scan")
+    if all(term in haystack for term in meta_terms):
+        penalty += 240
+    if ("我先" in haystack or "我继续" in haystack) and (
+        "search" in haystack or "native-scan" in haystack or "session_index" in haystack
+    ):
+        penalty += 240
     return penalty
 
 

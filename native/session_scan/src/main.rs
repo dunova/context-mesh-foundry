@@ -42,6 +42,32 @@ const NOISE_MARKERS: &[&str] = &[
     "通过了 `python3 scripts/context_cli.py smoke`",
     "go test ./...",
     "python3 -m benchmarks --mode both",
+    "已预热",
+    "样本定位",
+    "不要改文件。输出",
+    "只读。审查",
+    "只读。定位为什么",
+    "远端对齐确认",
+    "未纳入本次提交",
+    "已查看并收口当前子 agent",
+    "状态汇总：",
+    "已关闭且有有效产出",
+    "我先按仓库要求做上下文预热",
+    "我先做“全局一致性同步”检查",
+    "主链不再是瓶颈",
+    "现在真正该优化的是",
+    "native 搜索结果质量",
+    "不是再融合，而是",
+    "我继续的话，就沿这条质量线往下打",
+    "把 rust `native-scan` 结果里的",
+    "我继续直接提主链结果质量",
+    "我先复跑主链",
+    "再决定要不要进一步做字段级过滤",
+    "现在不是“能不能跑”的问题",
+    "让它质量更好，能替代旧逻辑",
+    "我继续。",
+    "我现在直接复跑主链",
+    "我再强制重建一次索引",
     "skill.md",
     "python -m pytest",
     "benchmarks/run.py",
@@ -383,6 +409,12 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
     let metadata = file
         .metadata()
         .with_context(|| format!("无法读取元数据 {}", item.path.display()))?;
+    let modified_epoch = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
 
     let mut session_id = item
         .path
@@ -393,11 +425,20 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
 
     let mut first_timestamp = None;
     let mut last_timestamp = None;
+    let mut session_cwd: Option<String> = None;
     let mut lines = 0usize;
     let query_lower = query.trim().to_lowercase();
     let mut snippet = None;
     let mut matched = query_lower.is_empty();
     let mut match_field = None;
+    let current_workdir = std::env::current_dir()
+        .ok()
+        .and_then(|path| path.canonicalize().ok().or(Some(path)))
+        .map(|path| path.to_string_lossy().to_string());
+    let now_epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
 
     let reader = BufReader::new(file);
     for line in reader.lines() {
@@ -416,6 +457,23 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             if let Some(id) = extract_session_id(&json) {
                 session_id = id;
             }
+            if session_cwd.is_none() {
+                session_cwd = extract_cwd(&json);
+                if !query_lower.is_empty() {
+                    if let (Some(current_workdir), Some(session_cwd)) =
+                        (current_workdir.as_deref(), session_cwd.as_deref())
+                    {
+                        let normalized_session_cwd = std::path::Path::new(session_cwd)
+                            .canonicalize()
+                            .ok()
+                            .map(|path| path.to_string_lossy().to_string())
+                            .unwrap_or_else(|| session_cwd.to_string());
+                        if normalized_session_cwd == current_workdir {
+                            anyhow::bail!("skip current workdir session");
+                        }
+                    }
+                }
+            }
             if let Some(ts) = extract_timestamp(&json) {
                 if first_timestamp.is_none() {
                     first_timestamp = Some(ts.clone());
@@ -424,7 +482,19 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             }
             if !query_lower.is_empty() && snippet.is_none() {
                 for detail in extract_text_candidates(&json) {
+                    if should_skip_meta_text(
+                        current_workdir.as_deref(),
+                        session_cwd.as_deref(),
+                        modified_epoch,
+                        now_epoch,
+                        &detail.text,
+                    ) {
+                        continue;
+                    }
                     if let Some(candidate) = matched_snippet(&detail.text, &query_lower, 220) {
+                        if should_skip_meta_candidate(&candidate) {
+                            continue;
+                        }
                         if is_noise_line(&candidate.to_lowercase()) {
                             continue;
                         }
@@ -437,6 +507,9 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             }
         } else if !query_lower.is_empty() && snippet.is_none() {
             if let Some(candidate) = matched_snippet(&line, &query_lower, 220) {
+                if should_skip_meta_candidate(&candidate) {
+                    continue;
+                }
                 if is_noise_line(&candidate.to_lowercase()) {
                     continue;
                 }
@@ -499,9 +572,79 @@ fn is_noise_line(line: &str) -> bool {
     if NOISE_MARKERS.iter().any(|marker| lower.contains(marker)) {
         return true;
     }
-    NOISE_PREFIXES
+    if NOISE_PREFIXES
         .iter()
         .any(|prefix| lower.starts_with(prefix))
+    {
+        return true;
+    }
+    let lines = lower
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    let short_token_lines = lines
+        .iter()
+        .filter(|line| line.len() <= 40 && !line.contains(' ') && line.matches('/').count() < 2 && line.matches('-').count() <= 3)
+        .count();
+    if short_token_lines >= 5 {
+        return true;
+    }
+    if lower.contains("drwx") || lower.contains("rwxr-xr-x") || lower.contains("\ntotal ") {
+        return true;
+    }
+    if (lower.contains("我先") || lower.contains("我继续"))
+        && (lower.contains("search") || lower.contains("native-scan") || lower.contains("session_index"))
+    {
+        return true;
+    }
+    lower.contains("notebooklm")
+        && lower.contains("search")
+        && lower.contains("session_index")
+        && lower.contains("native-scan")
+}
+
+fn should_skip_meta_text(
+    _current_workdir: Option<&str>,
+    session_cwd: Option<&str>,
+    _modified_epoch: u64,
+    _now_epoch: u64,
+    text: &str,
+) -> bool {
+    let Some(current_workdir) = _current_workdir else {
+        return false;
+    };
+    let Some(session_cwd) = session_cwd else {
+        return false;
+    };
+    let normalized_session_cwd = std::path::Path::new(session_cwd)
+        .canonicalize()
+        .ok()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| session_cwd.to_string());
+    let trimmed = text.trim();
+    let looks_like_meta = (trimmed.starts_with('我')
+        || trimmed.starts_with("我继续")
+        || trimmed.starts_with("我现在")
+        || trimmed.starts_with("已"))
+        && (trimmed.contains("search")
+            || trimmed.contains("native-scan")
+            || trimmed.contains("session_index")
+            || trimmed.contains("索引"));
+    looks_like_meta && normalized_session_cwd == current_workdir
+}
+
+fn should_skip_meta_candidate(text: &str) -> bool {
+    let trimmed = text.trim();
+    (trimmed.starts_with('我')
+        || trimmed.starts_with("我继续")
+        || trimmed.starts_with("我现在")
+        || trimmed.starts_with("已")
+        || trimmed.starts_with("继续"))
+        && (trimmed.contains("search")
+            || trimmed.contains("native-scan")
+            || trimmed.contains("session_index")
+            || trimmed.contains("索引"))
 }
 
 fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
@@ -572,6 +715,12 @@ fn extract_timestamp(value: &Value) -> Option<String> {
         .or_else(|| nested_str(value, &["createdAt"]))
         .or_else(|| nested_str(value, &["created_at"]))
         .or_else(|| nested_str(value, &["time"]))
+        .map(|s| s.to_string())
+}
+
+fn extract_cwd(value: &Value) -> Option<String> {
+    nested_str(value, &["payload", "cwd"])
+        .or_else(|| nested_str(value, &["cwd"]))
         .map(|s| s.to_string())
 }
 

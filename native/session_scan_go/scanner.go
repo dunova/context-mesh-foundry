@@ -41,6 +41,32 @@ var DefaultNoiseMarkers = []string{
 	"通过了 `python3 scripts/context_cli.py smoke`",
 	"go test ./...",
 	"python3 -m benchmarks --mode both",
+	"已预热",
+	"样本定位",
+	"不要改文件。输出",
+	"只读。审查",
+	"只读。定位为什么",
+	"远端对齐确认",
+	"未纳入本次提交",
+	"已查看并收口当前子 agent",
+	"状态汇总：",
+	"已关闭且有有效产出",
+	"我先按仓库要求做上下文预热",
+	"我先做“全局一致性同步”检查",
+	"主链不再是瓶颈",
+	"现在真正该优化的是",
+	"native 搜索结果质量",
+	"不是再融合，而是",
+	"我继续的话，就沿这条质量线往下打",
+	"把 rust `native-scan` 结果里的",
+	"我继续直接提主链结果质量",
+	"我先复跑主链",
+	"再决定要不要进一步做字段级过滤",
+	"现在不是“能不能跑”的问题",
+	"让它质量更好，能替代旧逻辑",
+	"我继续。",
+	"我现在直接复跑主链",
+	"我再强制重建一次索引",
 	"skill.md",
 	"python -m pytest",
 	"benchmarks/run.py",
@@ -174,6 +200,33 @@ func (f *NoiseFilter) IsNoise(line string) bool {
 		if marker != "" && strings.Contains(line, marker) {
 			return true
 		}
+	}
+	lines := strings.Split(line, "\n")
+	shortTokenLines := 0
+	for _, item := range lines {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if len(item) <= 40 && !strings.Contains(item, " ") && strings.Count(item, "/") < 2 && strings.Count(item, "-") <= 3 {
+			shortTokenLines++
+		}
+	}
+	if shortTokenLines >= 5 {
+		return true
+	}
+	if strings.Contains(line, "drwx") || strings.Contains(line, "rwxr-xr-x") || strings.Contains(line, "\ntotal ") {
+		return true
+	}
+	if strings.Contains(line, "notebooklm") &&
+		strings.Contains(line, "search") &&
+		strings.Contains(line, "session_index") &&
+		strings.Contains(line, "native-scan") {
+		return true
+	}
+	if (strings.Contains(line, "我先") || strings.Contains(line, "我继续")) &&
+		(strings.Contains(line, "search") || strings.Contains(line, "native-scan") || strings.Contains(line, "session_index")) {
+		return true
 	}
 	return false
 }
