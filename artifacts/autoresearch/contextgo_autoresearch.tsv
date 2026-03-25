@@ -1,0 +1,3 @@
+round	timestamp	stability	recall	token_efficiency	total_score	decision	note
+R001	2026-03-26T04:08:10	50	100	88	75.1	ITERATE	baseline-after-smoke-compaction
+R002	2026-03-26T04:09:22	100	100	88	97.6	KEEP	retry-stable-smoke-eval

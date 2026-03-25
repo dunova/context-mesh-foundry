@@ -110,6 +110,25 @@ def _configure_viewer_module(module, host: str, port: int, token: str) -> None:
     setattr(module, "VIEWER_TOKEN", token_value)
 
 
+def _compact_smoke_payload(payload: dict[str, object]) -> dict[str, object]:
+    results = []
+    for item in payload.get("results", []):
+        if not isinstance(item, dict):
+            continue
+        row = {
+            "name": item.get("name"),
+            "ok": item.get("ok"),
+            "rc": item.get("rc"),
+        }
+        if not item.get("ok"):
+            row["detail"] = item.get("detail")
+        results.append(row)
+    return {
+        "summary": payload.get("summary"),
+        "results": results,
+    }
+
+
 def _source_freshness() -> dict:
     antigravity_candidates = sorted(
         (HOME / ".gemini" / "antigravity" / "brain").glob("*/walkthrough.md"),
@@ -211,11 +230,12 @@ def build_parser() -> argparse.ArgumentParser:
     native_scan.add_argument("--json", action="store_true")
     native_scan.add_argument("--debug-build", action="store_true")
 
-    sub.add_parser(
+    smoke = sub.add_parser(
         "smoke",
         help="Run the ContextGO smoke gate",
         description="Run the smoke gate that checks CLI, viewer, and memory flows end to end.",
     )
+    smoke.add_argument("--verbose", action="store_true", help="Print full smoke payload")
 
     sub.add_parser("health", help="Check context system health")
     return parser
@@ -333,7 +353,8 @@ def run(args: argparse.Namespace) -> int:
 
     if args.command == "smoke":
         payload = context_smoke.run_smoke(Path(__file__).resolve().parent / "context_cli.py", Path(__file__).resolve().parent / "e2e_quality_gate.py")
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        output = payload if args.verbose else _compact_smoke_payload(payload)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         failed = [item for item in payload["results"] if not item["ok"]]
         return 1 if failed else 0
 

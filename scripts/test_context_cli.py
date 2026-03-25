@@ -159,7 +159,7 @@ class ContextCliTests(unittest.TestCase):
 
     def test_smoke_subcommand_delegates(self) -> None:
         args = context_cli.build_parser().parse_args(["smoke"])
-        payload = {"results": [{"name": "health", "ok": True}]}
+        payload = {"summary": {"status": "pass"}, "results": [{"name": "health", "ok": True, "rc": 0, "detail": {"x": 1}}]}
         with mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload) as mock_run:
             with mock.patch("builtins.print") as mock_print:
                 rc = context_cli.run(args)
@@ -167,6 +167,17 @@ class ContextCliTests(unittest.TestCase):
         mock_run.assert_called_once()
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
         self.assertIn('"health"', printed)
+        self.assertNotIn('"x"', printed)
+
+    def test_smoke_subcommand_verbose_prints_full_payload(self) -> None:
+        args = context_cli.build_parser().parse_args(["smoke", "--verbose"])
+        payload = {"summary": {"status": "pass"}, "results": [{"name": "health", "ok": True, "rc": 0, "detail": {"x": 1}}]}
+        with mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload):
+            with mock.patch("builtins.print") as mock_print:
+                rc = context_cli.run(args)
+        self.assertEqual(rc, 0)
+        printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
+        self.assertIn('"x": 1', printed)
 
     def test_package_import_context_cli(self) -> None:
         sys.path.insert(0, str(SCRIPT_DIR.parent))
