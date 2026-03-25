@@ -90,6 +90,9 @@ func collectFiles(roots []WorkItem) []WorkItem {
 			if err != nil || info == nil || info.IsDir() {
 				return nil
 			}
+			if shouldSkipPath(path) {
+				return nil
+			}
 			ext := strings.ToLower(filepath.Ext(path))
 			if ext == ".jsonl" || ext == ".json" {
 				items = append(items, WorkItem{Source: root.Source, Path: path})
@@ -98,6 +101,11 @@ func collectFiles(roots []WorkItem) []WorkItem {
 		})
 	}
 	return items
+}
+
+func shouldSkipPath(path string) bool {
+	lowerPath := strings.ToLower(path)
+	return strings.Contains(lowerPath, "/skills/") || strings.Contains(lowerPath, "skills-repo")
 }
 
 func scan(items []WorkItem, threads int, query string, limit int, scanner *SessionScanner) ([]SessionSummary, bool) {

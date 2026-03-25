@@ -99,3 +99,15 @@ func TestNoiseFilterSkipsMetaChatter(t *testing.T) {
 		t.Fatalf("expected active-session meta chatter to be filtered")
 	}
 }
+
+func TestShouldSkipPath(t *testing.T) {
+	if !shouldSkipPath("/Users/dunova/.codex/skills/notebooklm/SKILL.md") {
+		t.Fatalf("expected skills path to be skipped")
+	}
+	if !shouldSkipPath("/Users/dunova/.claude/projects/-Users-dunova-skills-repo/a.jsonl") {
+		t.Fatalf("expected skills-repo path to be skipped")
+	}
+	if shouldSkipPath("/Users/dunova/.codex/sessions/2026/03/test.jsonl") {
+		t.Fatalf("did not expect normal session path to be skipped")
+	}
+}

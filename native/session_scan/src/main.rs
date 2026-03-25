@@ -365,10 +365,18 @@ struct SourceAggregate<'a> {
 const VALID_EXTENSIONS: &[&str] = &["json", "jsonl"];
 
 fn is_valid_extension(path: &Path) -> bool {
+    let lower_path = path.to_string_lossy().to_lowercase();
+    if should_skip_path(&lower_path) {
+        return false;
+    }
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| VALID_EXTENSIONS.contains(&ext))
         .unwrap_or(false)
+}
+
+fn should_skip_path(lower_path: &str) -> bool {
+    lower_path.contains("/skills/") || lower_path.contains("skills-repo")
 }
 
 fn main() -> Result<()> {
@@ -834,6 +842,13 @@ mod tests {
     fn is_noise_line_attack_prefixes() {
         assert!(is_noise_line("## 目录"));
         assert!(is_noise_line("```rust"));
+    }
+
+    #[test]
+    fn should_skip_path_filters_skills_sources() {
+        assert!(should_skip_path("/users/dunova/.codex/skills/notebooklm/skill.md"));
+        assert!(should_skip_path("/users/dunova/.claude/projects/-users-dunova-skills-repo/a.jsonl"));
+        assert!(!should_skip_path("/users/dunova/.codex/sessions/2026/03/test.jsonl"));
     }
 
     #[test]
