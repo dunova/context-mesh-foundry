@@ -95,6 +95,58 @@ class SessionIndexTests(unittest.TestCase):
                         self.assertGreaterEqual(stats["scanned"], 1)
                         self.assertEqual(stats["added"], 0)
 
+    def test_native_search_rows_when_enabled(self) -> None:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        with mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"):
+            with mock.patch.object(
+                session_index.context_native,
+                "run_native_scan",
+                return_value=mock_result,
+            ) as mock_run:
+                with mock.patch.object(
+                    session_index.context_native,
+                    "extract_matches",
+                    return_value=[
+                        {
+                            "source": "codex_session",
+                            "session_id": "abc",
+                            "path": "/tmp/a.jsonl",
+                            "snippet": "NotebookLM match",
+                        }
+                    ],
+                ):
+                    rows = session_index._native_search_rows("NotebookLM", limit=5)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["session_id"], "abc")
+        mock_run.assert_called_once()
+
+    def test_native_search_rows_filters_agents_noise(self) -> None:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        with mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"):
+            with mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result):
+                with mock.patch.object(
+                    session_index.context_native,
+                    "extract_matches",
+                    return_value=[
+                        {
+                            "source": "codex_session",
+                            "session_id": "noise",
+                            "path": "/tmp/noise.jsonl",
+                            "snippet": "# AGENTS.md instructions for /tmp NotebookLM",
+                        },
+                        {
+                            "source": "codex_session",
+                            "session_id": "clean",
+                            "path": "/tmp/clean.jsonl",
+                            "snippet": "NotebookLM integration decision",
+                        },
+                    ],
+                ):
+                    rows = session_index._native_search_rows("NotebookLM", limit=5)
+        self.assertEqual([row["session_id"] for row in rows], ["clean"])
+
 
 if __name__ == "__main__":
     unittest.main()

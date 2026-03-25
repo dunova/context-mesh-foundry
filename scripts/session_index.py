@@ -16,15 +16,18 @@ from typing import Any, Iterable
 try:
     from context_config import env_int
     from memory_index import get_storage_root
+    import context_native
 except ImportError:  # pragma: no cover
     from .context_config import env_int  # type: ignore[import-not-found]
     from .memory_index import get_storage_root  # type: ignore[import-not-found]
+    from . import context_native  # type: ignore[import-not-found]
 
 
 SESSION_DB_PATH_ENV = "SESSION_INDEX_DB_PATH"
 MAX_CONTENT_CHARS = env_int("CMF_SESSION_MAX_CONTENT_CHARS", "CONTEXT_MESH_SESSION_MAX_CONTENT_CHARS", default=24000, minimum=4000)
 SYNC_MIN_INTERVAL_SEC = env_int("CMF_SESSION_SYNC_MIN_INTERVAL_SEC", "CONTEXT_MESH_SESSION_SYNC_MIN_INTERVAL_SEC", default=15, minimum=0)
 SOURCE_CACHE_TTL_SEC = env_int("CONTEXT_MESH_SOURCE_CACHE_TTL_SEC", default=10, minimum=0)
+EXPERIMENTAL_SEARCH_BACKEND = os.environ.get("CONTEXT_MESH_EXPERIMENTAL_SEARCH_BACKEND", "").strip().lower()
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where",
     "which", "who", "how", "please", "search", "session", "history", "continue", "find",
@@ -584,7 +587,57 @@ def _build_snippet(text: str, terms: list[str], radius: int = 100) -> str:
     return compact[start:end]
 
 
+def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    if not query.strip():
+        return []
+    backend = EXPERIMENTAL_SEARCH_BACKEND
+    if backend not in {"rust", "go"}:
+        return []
+    try:
+        result = context_native.run_native_scan(
+            backend=backend,
+            threads=4,
+            query=query,
+            json_output=True,
+            release=(backend == "rust"),
+            timeout=120,
+        )
+    except Exception:
+        return []
+    if result.returncode != 0:
+        return []
+    rows: list[dict[str, Any]] = []
+    query_lower = query.lower().strip()
+    for item in context_native.extract_matches(result):
+        snippet = str(item.get("snippet", "") or "")
+        snippet_lower = snippet.lower()
+        if not snippet_lower:
+            continue
+        if "# agents.md instructions" in snippet_lower or "### available skills" in snippet_lower:
+            continue
+        if query_lower and query_lower not in snippet_lower:
+            continue
+        rows.append(
+            {
+                "source_type": item.get("source", "native_session"),
+                "session_id": item.get("session_id", ""),
+                "title": item.get("path", ""),
+                "file_path": item.get("path", ""),
+                "created_at": "",
+                "created_at_epoch": 0,
+                "snippet": snippet,
+            }
+        )
+        if len(rows) >= max(1, min(limit, 100)):
+            break
+    return rows
+
+
 def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dict[str, Any]]:
+    native_rows = _native_search_rows(query, limit=limit)
+    if native_rows:
+        return native_rows
+
     db_path = ensure_session_db()
     sync_session_index()
     conn = sqlite3.connect(db_path)

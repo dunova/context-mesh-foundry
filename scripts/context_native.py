@@ -42,6 +42,20 @@ class NativeRunResult:
             return None
 
 
+def extract_matches(result: NativeRunResult) -> list[dict[str, Any]]:
+    payload = result.json_payload()
+    if not isinstance(payload, dict):
+        return []
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in matches:
+        if isinstance(item, dict):
+            out.append(item)
+    return out
+
+
 def available_backends() -> list[str]:
     backends: list[str] = []
     if shutil.which("cargo") and RUST_PROJECT.exists():
