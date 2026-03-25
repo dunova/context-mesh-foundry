@@ -2,7 +2,18 @@
 
 ## Supported Scope
 
-This repository contains integration scripts and deployment helpers only.
+This repository now ships a standalone local runtime, not just integration helpers.
+
+Supported primary surface:
+
+- `scripts/context_cli.py`
+- `scripts/context_daemon.py`
+- `scripts/context_server.py`
+- `scripts/context_maintenance.py`
+- `scripts/session_index.py`
+- `scripts/memory_index.py`
+
+Legacy wrappers and files under `scripts/legacy/` are best-effort compatibility surfaces and are lower priority than the canonical mainline.
 
 ## Reporting a Vulnerability
 
@@ -29,6 +40,14 @@ This repo assumes:
 - need to avoid accidental secret propagation into shared memory
 
 Controls included:
-- shell-history secret redaction patterns in daemon
-- file permission checks (`0600`) in healthcheck
-- `trust_env=False` on HTTP clients in MCP code
+- shell-history secret redaction patterns in the daemon
+- file permission checks (`0600`) for written memory artifacts
+- local-first default mode with remote sync disabled unless explicitly enabled
+- `trust_env=False` on HTTP clients that still exist for optional remote paths
+
+## Security Expectations For Contributors
+
+- Prefer local-only execution paths when adding features.
+- Do not make remote sync, MCP, or external services mandatory for the default path.
+- Keep benchmarks and tests free of production secrets.
+- Treat viewer endpoints as local tools; do not broaden exposure without an explicit security pass.
