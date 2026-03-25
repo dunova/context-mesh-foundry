@@ -32,6 +32,7 @@
 -明确化本地部署目录与服务名的变更，使运维侧清楚这一版本聚焦“单机可控”的部署体验。
 - isolated legacy bridges under [`scripts/legacy/`](/Volumes/AI/GitHub/context-mesh-foundry/scripts/legacy)
 - normalized package-safe imports so the runtime works in both script mode and package mode
+- strengthened the README/CHANGELOG/docs/RELEASE_NOTES_0.5.0.md narrative so the GitHub homepage now foregrounds the commercial story, FAQ, installation matrix, and native migration instructions with the same verified CLI commands operators will run.
 
 ### Fixed
 

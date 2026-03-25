@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -31,39 +31,91 @@ class NativeRunResult:
     returncode: int
     stdout: str
     stderr: str
+    command: list[str]
+    error: str | None = None
+    _payload_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _payload_error: str | None = field(default=None, init=False, repr=False)
 
     def json_payload(self) -> dict[str, Any] | None:
+        if self._payload_cache is not None:
+            return self._payload_cache
         text = (self.stdout or "").strip()
         if not text:
             return None
         try:
-            return json.loads(text)
-        except Exception:
+            payload = json.loads(text)
+        except Exception as exc:
+            self._payload_error = str(exc)
             return None
+        if isinstance(payload, dict):
+            self._payload_cache = payload
+            return payload
+        self._payload_error = "payload is not an object"
+        return None
+
+    def error_details(self) -> list[str]:
+        errors: list[str] = []
+        if self.error:
+            errors.append(self.error)
+        payload = self.json_payload()
+        if isinstance(payload, dict):
+            raw_errors = payload.get("errors")
+            if isinstance(raw_errors, list):
+                for item in raw_errors:
+                    if isinstance(item, str) and item:
+                        errors.append(item)
+                    elif item is not None:
+                        errors.append(str(item))
+        if self._payload_error:
+            errors.append(self._payload_error)
+        if self.returncode != 0 and not errors:
+            errors.append(f"native backend exited with code {self.returncode}")
+        return errors
 
 
 def extract_matches(result: NativeRunResult) -> list[dict[str, Any]]:
-    payload = result.json_payload()
-    if not isinstance(payload, dict):
-        return []
-    matches = payload.get("matches")
-    if not isinstance(matches, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in matches:
-        if isinstance(item, dict):
-            out.append(item)
-    return out
+    return [item.metadata for item in parse_native_matches(result)]
 
 
 def inventory_items(result: NativeRunResult) -> list[tuple[str, Path]]:
     items: list[tuple[str, Path]] = []
-    for item in extract_matches(result):
-        source = str(item.get("source") or "").strip()
-        path = str(item.get("path") or "").strip()
-        if source and path:
-            items.append((source, Path(path)))
+    for match in parse_native_matches(result):
+        items.append((match.source, match.path))
     return items
+
+
+def _normalize_matches(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        return []
+    return [item for item in matches if isinstance(item, dict)]
+
+
+@dataclass(frozen=True)
+class NativeMatch:
+    source: str
+    path: Path
+    metadata: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "NativeMatch" | None:
+        source = str(raw.get("source") or "").strip()
+        path_text = str(raw.get("path") or "").strip()
+        if not source or not path_text:
+            return None
+        return cls(source=source, path=Path(path_text), metadata=raw)
+
+
+def parse_native_matches(result: NativeRunResult) -> list[NativeMatch]:
+    payload = result.json_payload()
+    if not isinstance(payload, dict):
+        return []
+    out: list[NativeMatch] = []
+    for raw in _normalize_matches(payload):
+        match = NativeMatch.from_dict(raw)
+        if match:
+            out.append(match)
+    return out
 
 
 def available_backends() -> list[str]:
@@ -141,6 +193,68 @@ def _build_go_cmd(
     return cmd, GO_PROJECT, os.environ.copy()
 
 
+def _execute_native_command(
+    *,
+    cmd: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout: int,
+    backend: str,
+) -> NativeRunResult:
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return NativeRunResult(
+            backend=backend,
+            returncode=proc.returncode,
+            stdout=proc.stdout or "",
+            stderr=proc.stderr or "",
+            command=cmd,
+        )
+    except subprocess.TimeoutExpired as exc:
+        message = f"native backend timed out after {timeout} seconds"
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if stderr:
+            stderr = f"{stderr.rstrip()}\n{message}"
+        else:
+            stderr = message
+        return NativeRunResult(
+            backend=backend,
+            returncode=-1,
+            stdout=stdout,
+            stderr=stderr,
+            command=cmd,
+            error=message,
+        )
+    except FileNotFoundError as exc:
+        message = f"{cmd[0]} not found: {exc}"
+        return NativeRunResult(
+            backend=backend,
+            returncode=-1,
+            stdout="",
+            stderr=message,
+            command=cmd,
+            error=message,
+        )
+    except Exception as exc:  # pragma: no cover
+        message = f"native backend failed: {exc}"
+        return NativeRunResult(
+            backend=backend,
+            returncode=-1,
+            stdout="",
+            stderr=message,
+            command=cmd,
+            error=message,
+        )
+
+
 def run_native_scan(
     *,
     backend: str = "auto",
@@ -174,20 +288,7 @@ def run_native_scan(
             limit=limit,
         )
 
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return NativeRunResult(
-        backend=chosen,
-        returncode=proc.returncode,
-        stdout=proc.stdout or "",
-        stderr=proc.stderr or "",
-    )
+    return _execute_native_command(cmd=cmd, cwd=cwd, env=env, timeout=timeout, backend=chosen)
 
 
 def main() -> int:

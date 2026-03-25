@@ -671,17 +671,68 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
     return rows
 
 
-def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dict[str, Any]]:
-    native_rows = _native_search_rows(query, limit=limit)
-    if native_rows:
-        return native_rows
+def _fetch_session_docs_by_paths(conn: sqlite3.Connection, file_paths: Iterable[str]) -> dict[str, sqlite3.Row]:
+    docs: dict[str, sqlite3.Row] = {}
+    unique_paths: list[str] = []
+    seen: set[str] = set()
+    for raw_path in file_paths:
+        if not raw_path:
+            continue
+        path_str = str(raw_path)
+        if path_str in seen:
+            continue
+        seen.add(path_str)
+        unique_paths.append(path_str)
+    if not unique_paths:
+        return docs
+    placeholders = ",".join("?" for _ in unique_paths)
+    query = f"SELECT * FROM session_documents WHERE file_path IN ({placeholders})"
+    for row in conn.execute(query, tuple(unique_paths)):
+        docs[str(row["file_path"])] = row
+    return docs
 
+
+def _enrich_native_rows(rows: list[dict[str, Any]], conn: sqlite3.Connection, terms: list[str], limit: int) -> list[dict[str, Any]]:
+    max_results = max(1, min(limit, 100))
+    docs = _fetch_session_docs_by_paths(conn, (row.get("file_path") for row in rows if row.get("file_path")))
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        enriched_row = dict(row)
+        file_path = str(row.get("file_path") or "")
+        doc = docs.get(file_path)
+        if doc:
+            enriched_row["source_type"] = doc["source_type"]
+            enriched_row["session_id"] = doc["session_id"]
+            enriched_row["title"] = doc["title"]
+            enriched_row["created_at"] = doc["created_at"]
+            enriched_row["created_at_epoch"] = doc["created_at_epoch"]
+            snippet_source = doc["content"]
+        else:
+            snippet_source = row.get("snippet") or ""
+            enriched_row.setdefault("created_at", "")
+            enriched_row.setdefault("created_at_epoch", 0)
+        snippet = _build_snippet(snippet_source, terms)
+        if not snippet:
+            snippet = str(snippet_source or row.get("snippet") or "")
+        enriched_row["snippet"] = snippet
+        enriched.append(enriched_row)
+        if len(enriched) >= max_results:
+            break
+    return enriched
+
+
+def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dict[str, Any]]:
+    max_results = max(1, min(limit, 100))
     db_path = ensure_session_db()
     sync_session_index()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         terms = [query.strip()] if literal else build_query_terms(query)
+        native_rows = _native_search_rows(query, limit=max_results)
+        if native_rows:
+            return _enrich_native_rows(native_rows, conn, terms, max_results)
+
         where_parts: list[str] = []
         args: list[Any] = []
         for term in terms:
@@ -707,7 +758,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
             ranked.append((score, row))
         ranked.sort(key=lambda item: (item[0], item[1]["created_at_epoch"]), reverse=True)
         results: list[dict[str, Any]] = []
-        for _, row in ranked[: max(1, min(limit, 100))]:
+        for _, row in ranked[:max_results]:
             results.append(
                 {
                     "source_type": row["source_type"],

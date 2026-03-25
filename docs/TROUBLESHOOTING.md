@@ -51,3 +51,5 @@ python3 scripts/context_smoke.py
 python3 scripts/smoke_installed_runtime.py
 bash scripts/context_healthcheck.sh --local
 ```
+
+上述命令依赖 `scripts/context_config.storage_root()`（默认 `~/.unified_context_data`），请确认当前用户可以读写该目录，并在 `CONTEXT_MESH_STORAGE_ROOT` / `UNIFIED_CONTEXT_STORAGE_ROOT` 替换被启用时同步更新。安装态 `scripts/smoke_installed_runtime.py` 会从 `~/.local/share/context-mesh-foundry/scripts` 载入 `context_cli.py`、`e2e_quality_gate.py` 与 `benchmarks/run.py`，发布前务必在该 `INSTALL_ROOT` 下存在这些入口脚本并验证 smoke 启动成功。

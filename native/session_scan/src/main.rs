@@ -21,6 +21,9 @@ const NOISE_MARKERS: &[&str] = &[
     "<instructions>",
 ];
 
+const NOISE_PREFIXES: &[&str] = &["##", "```", "> ", "- [", "* ", "http", "https"];
+const RAW_LINE_FIELD: &str = "raw_line";
+
 #[derive(Parser)]
 #[command(author, version, about = "高性能 Codex / Claude 会话扫描原型")]
 struct Args {
@@ -48,6 +51,12 @@ struct WorkItem {
     path: PathBuf,
 }
 
+#[derive(Clone, Debug)]
+struct MatchDetail {
+    field: &'static str,
+    text: String,
+}
+
 struct SessionSummary {
     source: &'static str,
     path: PathBuf,
@@ -57,6 +66,7 @@ struct SessionSummary {
     first_timestamp: Option<String>,
     last_timestamp: Option<String>,
     snippet: Option<String>,
+    match_field: Option<String>,
 }
 #[derive(serde::Serialize)]
 struct SerializableSummary {
@@ -68,6 +78,7 @@ struct SerializableSummary {
     first_timestamp: Option<String>,
     last_timestamp: Option<String>,
     snippet: Option<String>,
+    match_field: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -77,6 +88,7 @@ struct JsonSample {
     first_timestamp: Option<String>,
     last_timestamp: Option<String>,
     snippet: Option<String>,
+    match_field: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -204,11 +216,12 @@ impl ScannerReport {
                     );
                     if let Some(sample) = aggregate.sample {
                         println!(
-                            "    示例：{} | {} -> {} | {}",
+                            "    示例：{} | {} -> {} | {} | [{}]",
                             sample.session_id,
                             sample.first_timestamp.as_deref().unwrap_or("?"),
                             sample.last_timestamp.as_deref().unwrap_or("?"),
-                            sample.path.display()
+                            sample.path.display(),
+                            sample.match_field.as_deref().unwrap_or("unknown")
                         );
                     }
                 }
@@ -251,6 +264,7 @@ impl ScannerReport {
                             first_timestamp: summary.first_timestamp.clone(),
                             last_timestamp: summary.last_timestamp.clone(),
                             snippet: summary.snippet.clone(),
+                            match_field: summary.match_field.clone(),
                         }),
                     },
                 )
@@ -274,6 +288,7 @@ impl ScannerReport {
                     first_timestamp: item.first_timestamp.clone(),
                     last_timestamp: item.last_timestamp.clone(),
                     snippet: item.snippet.clone(),
+                    match_field: item.match_field.clone(),
                 })
                 .collect(),
             errors: self.errors.iter().map(|err| err.to_string()).collect(),
@@ -350,6 +365,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
     let query_lower = query.trim().to_lowercase();
     let mut snippet = None;
     let mut matched = query_lower.is_empty();
+    let mut match_field = None;
 
     let reader = BufReader::new(file);
     for line in reader.lines() {
@@ -375,11 +391,12 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                 last_timestamp = Some(ts);
             }
             if !query_lower.is_empty() && snippet.is_none() {
-                for text in extract_text_candidates(&json) {
-                    let lowered = text.to_lowercase();
+                for detail in extract_text_candidates(&json) {
+                    let lowered = detail.text.to_lowercase();
                     if lowered.contains(&query_lower) && !is_noise_line(&lowered) {
                         matched = true;
-                        snippet = Some(text.chars().take(220).collect::<String>());
+                        snippet = Some(detail.text.chars().take(220).collect::<String>());
+                        match_field = Some(detail.field.to_string());
                         break;
                     }
                 }
@@ -389,6 +406,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             if line_lower.contains(&query_lower) && !is_noise_line(&line_lower) {
                 matched = true;
                 snippet = Some(line.chars().take(220).collect::<String>());
+                match_field = Some(RAW_LINE_FIELD.to_string());
             }
         }
     }
@@ -406,45 +424,76 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
         first_timestamp,
         last_timestamp,
         snippet,
+        match_field,
     })
 }
 
 fn is_noise_line(line: &str) -> bool {
-    NOISE_MARKERS.iter().any(|marker| line.contains(marker))
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let lower = trimmed.to_lowercase();
+    if NOISE_MARKERS.iter().any(|marker| lower.contains(marker)) {
+        return true;
+    }
+    NOISE_PREFIXES
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
 }
 
-fn extract_text_candidates(value: &Value) -> Vec<String> {
+fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
+    const ROOT_FIELDS: &[(&str, &str)] = &[
+        ("root.display", "display"),
+        ("root.text", "text"),
+        ("root.input", "input"),
+        ("root.prompt", "prompt"),
+        ("root.output", "output"),
+        ("root.content", "content"),
+    ];
+    const PAYLOAD_FIELDS: &[(&str, &str)] = &[
+        ("payload.message", "message"),
+        ("payload.display", "display"),
+        ("payload.text", "text"),
+        ("payload.input", "input"),
+        ("payload.prompt", "prompt"),
+        ("payload.output", "output"),
+    ];
+
     let mut out = Vec::new();
-    collect_text_candidate(value.get("message"), &mut out);
-    for key in ["display", "text", "input", "prompt", "output", "content"] {
-        collect_text_candidate(value.get(key), &mut out);
+    collect_text_candidate("message", value.get("message"), &mut out);
+    for &(field, key) in ROOT_FIELDS {
+        collect_text_candidate(field, value.get(key), &mut out);
     }
     if let Some(payload) = value.get("payload") {
-        for key in ["message", "display", "text", "input", "prompt", "output"] {
-            collect_text_candidate(payload.get(key), &mut out);
+        for &(field, key) in PAYLOAD_FIELDS {
+            collect_text_candidate(field, payload.get(key), &mut out);
         }
         if let Some(items) = payload.get("content").and_then(|v| v.as_array()) {
             for item in items {
-                collect_text_candidate(item.get("text"), &mut out);
+                collect_text_candidate("payload.content.text", item.get("text"), &mut out);
             }
         }
     }
     if let Some(message) = value.get("message") {
-        collect_text_candidate(message.get("content"), &mut out);
+        collect_text_candidate("message.content", message.get("content"), &mut out);
         if let Some(items) = message.get("content").and_then(|v| v.as_array()) {
             for item in items {
-                collect_text_candidate(item.get("text"), &mut out);
+                collect_text_candidate("message.content.text", item.get("text"), &mut out);
             }
         }
     }
     out
 }
 
-fn collect_text_candidate(value: Option<&Value>, out: &mut Vec<String>) {
+fn collect_text_candidate(field: &'static str, value: Option<&Value>, out: &mut Vec<MatchDetail>) {
     if let Some(text) = value.and_then(|v| v.as_str()) {
         let trimmed = text.trim();
         if !trimmed.is_empty() {
-            out.push(trimmed.to_string());
+            out.push(MatchDetail {
+                field,
+                text: trimmed.to_string(),
+            });
         }
     }
 }
@@ -522,9 +571,18 @@ mod tests {
             }
         });
         let candidates = extract_text_candidates(&value);
-        assert!(candidates.contains(&"hello".to_string()));
-        assert!(candidates.contains(&"世界".to_string()));
-        assert!(candidates.contains(&"payload".to_string()));
+        assert!(candidates.iter().any(
+            |candidate| candidate.field == "message.content.text" && candidate.text == "hello"
+        ));
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.field == "message.content.text"
+                    && candidate.text == "世界")
+        );
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.field == "payload.text" && candidate.text == "payload"));
     }
 
     #[test]
@@ -532,6 +590,12 @@ mod tests {
         let marker = "# agents.md instructions";
         assert!(is_noise_line(marker));
         assert!(!is_noise_line("a normal line"));
+    }
+
+    #[test]
+    fn is_noise_line_attack_prefixes() {
+        assert!(is_noise_line("## 目录"));
+        assert!(is_noise_line("```rust"));
     }
 
     #[test]
@@ -546,6 +610,7 @@ mod tests {
                 first_timestamp: Some("t1".into()),
                 last_timestamp: Some("t2".into()),
                 snippet: None,
+                match_field: None,
             },
             SessionSummary {
                 source: "alpha",
@@ -556,6 +621,7 @@ mod tests {
                 first_timestamp: None,
                 last_timestamp: None,
                 snippet: Some("sample".into()),
+                match_field: None,
             },
         ];
         let aggregate = summarize_by_source(&summaries);

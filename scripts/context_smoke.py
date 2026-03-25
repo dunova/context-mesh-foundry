@@ -118,15 +118,29 @@ def run_smoke(cli_path: Path, quality_gate_path: Path) -> dict:
         test_maintain(cli_path),
         test_viewer(cli_path),
     ]
-    return {"cli_path": str(cli_path), "quality_gate_path": str(quality_gate_path), "results": results}
+    return {
+        "cli_path": str(cli_path),
+        "quality_gate_path": str(quality_gate_path),
+        "summary": summarize_results(results),
+        "results": results,
+    }
+
+
+def summarize_results(results: list[dict]) -> dict:
+    failed = [item for item in results if not item.get("ok")]
+    return {
+        "status": "pass" if not failed else "fail",
+        "total": len(results),
+        "failed": len(failed),
+        "failed_names": [item.get("name") for item in failed],
+    }
 
 
 def main() -> int:
     root = Path(__file__).resolve().parent
     payload = run_smoke(root / "context_cli.py", root / "e2e_quality_gate.py")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    failed = [item for item in payload["results"] if not item["ok"]]
-    return 1 if failed else 0
+    return 1 if payload["summary"]["failed"] else 0
 
 
 if __name__ == "__main__":

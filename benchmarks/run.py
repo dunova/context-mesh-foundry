@@ -9,6 +9,7 @@ import importlib
 import io
 import json
 import os
+import shutil
 import statistics
 import subprocess
 import sys
@@ -160,9 +161,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run Context Mesh Foundry benchmarks.")
     parser.add_argument(
         "--mode",
-        choices=("python", "native"),
+        choices=("python", "native", "both"),
         default="python",
-        help="Execution path (embedded Python vs. subprocess/native).",
+        help="Execution path (python/native) or run both for side-by-side comparison.",
     )
     parser.add_argument(
         "--format",
@@ -238,6 +239,58 @@ def _summarize_stats(name: str, durations: list[float], sample: str | None) -> B
     )
 
 
+def _reset_fake_home(fake_home: Path) -> None:
+    fake_home.mkdir(parents=True, exist_ok=True)
+    for child in fake_home.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _build_mode_sequence(mode: str) -> list[str]:
+    if mode == "both":
+        return ["python", "native"]
+    return [mode]
+
+
+def _execute_mode(mode: str, args: argparse.Namespace) -> list[BenchmarkStats]:
+    if mode == "python":
+        scripts_path = str(SCRIPTS_DIR)
+        if scripts_path not in sys.path:
+            sys.path.insert(0, scripts_path)
+        import scripts.context_cli as context_cli_module  # noqa: E402
+        import scripts.session_index as session_index_module  # noqa: E402
+
+        importlib.reload(context_cli_module)
+        importlib.reload(session_index_module)
+
+        cli_parser = context_cli_module.build_parser()
+        session_index_module.sync_session_index(force=True)
+        cases = _build_python_cases(
+            context_cli_module,
+            cli_parser,
+            session_index_module,
+            args.query,
+            args.search_limit,
+        )
+    else:
+        subprocess_env = os.environ.copy()
+        pythonpath = subprocess_env.get("PYTHONPATH", "")
+        subprocess_env["PYTHONPATH"] = (
+            f"{SCRIPTS_DIR}{os.pathsep}{pythonpath}" if pythonpath else str(SCRIPTS_DIR)
+        )
+        _run_native_command([sys.executable, "-c", SYNC_ACTION_CODE], subprocess_env)
+        cases = _build_native_cases(subprocess_env, args.query, args.search_limit)
+
+    results: list[BenchmarkStats] = []
+    for case in cases:
+        durations = _benchmark(case.action, args.warmup, args.iterations)
+        sample = case.sample()
+        results.append(_summarize_stats(case.name, durations, sample))
+    return results
+
+
 def _format_stats_line(stats: BenchmarkStats) -> str:
     return (
         f"{stats.name.ljust(32)} mean={stats.mean_ms:.1f}ms min={stats.min_ms:.1f}ms"
@@ -257,6 +310,46 @@ def _print_sample(label: str, output: str | None) -> None:
         print("  <no output captured>")
         return
     print(textwrap.indent(output.strip(), "  "))
+
+
+def _build_comparison_summary(
+    python_stats: list[BenchmarkStats], native_stats: list[BenchmarkStats]
+) -> list[dict[str, float | None]]:
+    native_map = {stats.name: stats for stats in native_stats}
+    comparisons: list[dict[str, float | None]] = []
+    for stats in python_stats:
+        native = native_map.get(stats.name)
+        if not native:
+            continue
+        python_mean = stats.mean_ms
+        native_mean = native.mean_ms
+        diff = native_mean - python_mean
+        ratio = native_mean / python_mean if python_mean else None
+        comparisons.append(
+            {
+                "name": stats.name,
+                "python_mean_ms": round(python_mean, 2),
+                "native_mean_ms": round(native_mean, 2),
+                "mean_diff_ms": round(diff, 2),
+                "mean_ratio": round(ratio, 2) if ratio is not None else None,
+            }
+        )
+    return comparisons
+
+
+def _print_comparison_text(comparisons: list[dict[str, float | None]]) -> None:
+    if not comparisons:
+        return
+    print("\nBenchmark Comparison (python vs native)")
+    for entry in comparisons:
+        ratio = entry["mean_ratio"]
+        ratio_str = f" ratio={ratio:.2f}x" if ratio is not None else ""
+        print(
+            "  "
+            f"{entry['name']}: python={entry['python_mean_ms']:.1f}ms "
+            f"native={entry['native_mean_ms']:.1f}ms diff={entry['mean_diff_ms']:.1f}ms"
+            f"{ratio_str}"
+        )
 
 
 def _run_native_command(cmd: list[str], env: dict[str, str]) -> str:
@@ -353,7 +446,6 @@ def main(argv: list[str] | None = None) -> int:
         }
         env_vars["CONTEXT_MESH_SOURCE_CACHE_TTL_SEC"] = DEFAULT_SOURCE_CACHE_TTL
         os.environ.update(env_vars)
-        _prepare_fake_home(fake_home, args.query)
 
         print("Benchmark environment:")
         print(f"  fake HOME: {fake_home}")
@@ -362,57 +454,55 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  iterations: {args.iterations} warmup: {args.warmup}")
         print(f"  search limit: {args.search_limit}")
         print("  source cache TTL:", env_vars["CONTEXT_MESH_SOURCE_CACHE_TTL_SEC"], "sec")
-
-        stats_list: list[BenchmarkStats]
-        if args.mode == "python":
-            scripts_path = str(SCRIPTS_DIR)
-            if scripts_path not in sys.path:
-                sys.path.insert(0, scripts_path)
-            import scripts.context_cli as context_cli_module  # noqa: E402
-            import scripts.session_index as session_index_module  # noqa: E402
-
-            importlib.reload(context_cli_module)
-            importlib.reload(session_index_module)
-
-            cli_parser = context_cli_module.build_parser()
-            session_index_module.sync_session_index(force=True)
-            cases = _build_python_cases(
-                context_cli_module,
-                cli_parser,
-                session_index_module,
-                args.query,
-                args.search_limit,
-            )
-        else:
-            subprocess_env = os.environ.copy()
-            pythonpath = subprocess_env.get("PYTHONPATH", "")
-            subprocess_env["PYTHONPATH"] = (
-                f"{SCRIPTS_DIR}{os.pathsep}{pythonpath}" if pythonpath else str(SCRIPTS_DIR)
-            )
-            _run_native_command([sys.executable, "-c", SYNC_ACTION_CODE], subprocess_env)
-            cases = _build_native_cases(subprocess_env, args.query, args.search_limit)
-
-        results: list[BenchmarkStats] = []
-        for case in cases:
-            durations = _benchmark(case.action, args.warmup, args.iterations)
-            sample = case.sample()
-            results.append(_summarize_stats(case.name, durations, sample))
+        mode_sequence = _build_mode_sequence(args.mode)
+        results_by_mode: list[tuple[str, list[BenchmarkStats]]] = []
+        for index, mode in enumerate(mode_sequence):
+            _reset_fake_home(fake_home)
+            storage_root.mkdir(parents=True, exist_ok=True)
+            _prepare_fake_home(fake_home, args.query)
+            stats_list = _execute_mode(mode, args)
+            results_by_mode.append((mode, stats_list))
+            if args.mode == "both" and index < len(mode_sequence) - 1:
+                shutil.rmtree(storage_root, ignore_errors=True)
 
         if args.format == "json":
-            payload = {
+            base_payload = {
                 "mode": args.mode,
                 "query": args.query,
                 "search_limit": args.search_limit,
                 "iterations": args.iterations,
                 "warmup": args.warmup,
                 "source_cache_ttl_sec": int(env_vars["CONTEXT_MESH_SOURCE_CACHE_TTL_SEC"]),
-                "benchmarks": [stats.to_dict() for stats in results],
             }
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            if args.mode == "both" and len(results_by_mode) == 2:
+                benchmark_payload = {
+                    mode: [stats.to_dict() for stats in stats_list]
+                    for mode, stats_list in results_by_mode
+                }
+                comparison = _build_comparison_summary(
+                    results_by_mode[0][1], results_by_mode[1][1]
+                )
+                base_payload["benchmarks"] = benchmark_payload
+                base_payload["comparison"] = comparison
+            else:
+                base_payload["benchmarks"] = [
+                    stats.to_dict() for stats in results_by_mode[0][1]
+                ]
+            print(json.dumps(base_payload, ensure_ascii=False, indent=2))
         else:
-            _print_summary_text(results)
-            for stats in results:
-                _print_sample(stats.name, stats.sample)
+            for index, (mode, stats_list) in enumerate(results_by_mode):
+                if index:
+                    print()
+                print(f"Benchmark Summary ({mode})")
+                for stats in stats_list:
+                    print("  ", _format_stats_line(stats))
+                for stats in stats_list:
+                    _print_sample(f"{mode} · {stats.name}", stats.sample)
+            if args.mode == "both" and len(results_by_mode) == 2:
+                comparisons = _build_comparison_summary(
+                    results_by_mode[0][1], results_by_mode[1][1]
+                )
+                _print_comparison_text(comparisons)
 
     return 0
 

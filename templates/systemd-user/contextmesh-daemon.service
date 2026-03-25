@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/.local/share/contextmesh/scripts
+WorkingDirectory=%h/.local/share/context-mesh-foundry/scripts
 Environment=CONTEXT_MESH_ENABLE_REMOTE_SYNC=0
-ExecStart=/usr/bin/env python3 %h/.local/share/contextmesh/scripts/context_daemon.py
+ExecStart=/usr/bin/env python3 %h/.local/share/context-mesh-foundry/scripts/context_daemon.py
 Restart=always
 RestartSec=3
 

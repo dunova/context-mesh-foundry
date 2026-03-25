@@ -2,7 +2,7 @@
 
 ## 适用范围
 - 本仓库仅维护 contextmesh 单体运行时，主线入口为 `scripts/context_cli.py`、`scripts/context_daemon.py`、`scripts/context_maintenance.py`、`scripts/session_index.py`、`scripts/memory_index.py`。非必须不再同步 OpenViking、legacy MCP 等历史路径，统一路径指向本地 `contextmesh` 安装与 smoke/benchmark 环境。
-- 默认运行链路 local-first，任何远程/云 recall、部署入口必须显式开启且在文档中说明，并提供本地 smoke/benchmark 覆盖路径（`python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark`）。
+- 默认运行链路 local-first，任何远程/云 recall、部署入口必须显式开启且在文档中说明，并提供本地 smoke/benchmark 覆盖路径（`python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark`）。`context_smoke.py` 与 benchmark 依赖 `scripts/context_config.storage_root()`（默认 `~/.unified_context_data` 或由 `CONTEXT_MESH_STORAGE_ROOT`/`UNIFIED_CONTEXT_STORAGE_ROOT` 覆盖），请先确认路径归属当前用户、可写且不映射旧的 OpenViking tree。
 
 ## 报告流程
 1. 私下联系安全负责人（若无统一渠道，可在 PR/issue 中@团队安全负责人或直接在公司内部安全邮箱提交）。  
@@ -11,10 +11,10 @@
 
 ## 重要控制
 - 本地优先：默认不会在运行时依赖外部服务，所有默认配置都在本机文件系统操作。  
-- 配置最小化：不读取全局环境变量除非在 `scripts/context_cli.py` 中明确声明；新增环境变量要同步更新文档并在 smoke/benchmark 中验证。  
+- 配置最小化：不读取全局环境变量除非在 `scripts/context_cli.py` 中明确声明；新增环境变量要同步更新文档并在 smoke/benchmark 中验证。任何对 `CONTEXT_MESH_STORAGE_ROOT` / `UNIFIED_CONTEXT_STORAGE_ROOT` 的调整必须确保 `scripts/context_config.storage_root()` 仍指向当前用户可访问的 `~/.unified_context_data`（或显式设置的路径），并通过 `bash scripts/context_healthcheck.sh --local` 检查权限。
 - 运行时日志、索引结果文件的默认权限为 `0600`，避免意外泄露。  
 - 所有写入历史/记忆的路径必须通过脱敏流程（`context_daemon` 中的 `<private>` 过滤）处理。  
-- smoke/benchmark 覆盖：变更后需运行 `python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark`，验证默认 `context_cli`/`context_daemon`/`context_server` 健康。
+- smoke/benchmark 覆盖：变更后需运行 `python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark`，验证默认 `context_cli`/`context_daemon`/`context_server` 健康。`scripts/smoke_installed_runtime.py` 会从 `~/.local/share/context-mesh-foundry/scripts` 载入 `context_cli.py`、`e2e_quality_gate.py`、`benchmarks/run.py`，发布产物必须在该 `INSTALL_ROOT` 提供这些入口并在 smoke 启动前确认路径可读。
 
 ## 贡献者守则
 - 禁止在提交中包含 secrets（API key、token、密码）或机器/用户专属路径，必要时替换为 `XXX` 并在 PR 描述中说明。  

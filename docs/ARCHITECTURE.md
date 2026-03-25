@@ -21,7 +21,7 @@
    `scripts/context_server.py` 提供 viewer 服务入口，默认只监听本地回环地址；任何监听调整必须附 smoke/benchmark 覆盖。
 
 4. **运维验证层**  
-   `scripts/context_healthcheck.sh`、`scripts/context_smoke.py`、`scripts/smoke_installed_runtime.py` 以及 `benchmarks/run.py` 统一保障 local-first 路线的安装态可用性和性能。Smoke 脚本依次调用 `context_cli health`/`quality gate`/`semantic`/`serve`，benchmark harness 驱动 `context_cli health`/`search`、`session_index.sync` 基准。
+   `scripts/context_healthcheck.sh`、`scripts/context_smoke.py`、`scripts/smoke_installed_runtime.py` 以及 `benchmarks/run.py` 统一保障 local-first 路线的安装态可用性和性能。Smoke 脚本依次调用 `context_cli health`/`quality gate`/`semantic`/`serve`，benchmark harness 驱动 `context_cli health`/`search`、`session_index.sync` 基准。这些检查依赖 `scripts/context_config.storage_root()`（默认 `~/.unified_context_data` 或由 `CONTEXT_MESH_STORAGE_ROOT`/`UNIFIED_CONTEXT_STORAGE_ROOT` 覆盖）与安装态 `INSTALL_ROOT=~/.local/share/context-mesh-foundry/scripts`，发布包必须确保 `storage_root` 可写并在 `INSTALL_ROOT` 下提供 `context_cli.py`、`e2e_quality_gate.py`、`benchmarks/run.py` 等入口脚本。
 
 ## 数据流
 

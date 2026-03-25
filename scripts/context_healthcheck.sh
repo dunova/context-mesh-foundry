@@ -29,6 +29,11 @@ done
 TS=$(date '+%Y-%m-%d %H:%M:%S')
 STATUS=0
 REPORT=""
+CHECK_SUMMARY=()
+
+record_check_result() {
+    CHECK_SUMMARY+=("$1|$2|$3")
+}
 
 report_ok() { REPORT+="  ✅ $1\n"; }
 report_warn() { REPORT+="  ⚠️  $1\n"; }
@@ -40,73 +45,101 @@ file_size_bytes() {
 }
 
 check_launchd_runtime() {
-    local uid_num state
+    local uid_num state summary status="warn"
     uid_num="$(id -u)"
+
     if ! command -v launchctl >/dev/null 2>&1; then
         report_warn "launchctl 不可用，跳过 LaunchAgent 检查"
+        summary="launchctl 不可用"
+        record_check_result "core.launchd_runtime" "$status" "$summary"
         return 0
     fi
 
     state=$(launchctl print "gui/${uid_num}/com.contextmesh.daemon" 2>/dev/null | awk -F'= ' '/^[[:space:]]*state = / {print $2; exit}')
     if [ -z "$state" ]; then
         report_warn "launchd com.contextmesh.daemon 未加载"
+        summary="daemon 未加载"
+        record_check_result "core.launchd_runtime" "$status" "$summary"
         return 0
     fi
 
     if [ "$state" = "running" ] || [ "$state" = "spawn scheduled" ] || [ "$state" = "not running" ]; then
         report_ok "launchd com.contextmesh.daemon 已加载（state=${state}）"
+        summary="state=${state}"
+        status="ok"
     else
         report_warn "launchd com.contextmesh.daemon state=$state"
+        summary="state=${state}"
     fi
+
+    record_check_result "core.launchd_runtime" "$status" "$summary"
 }
 
 check_cli_runtime() {
-    local cli_script out
-
+    local cli_script out sessions db_path summary status
     cli_script="${CONTEXT_CLI_SCRIPT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/context_cli.py}"
+    summary="未知"
+    status="fail"
 
     if [ ! -f "$cli_script" ]; then
         report_fail "context_cli 脚本缺失：$cli_script"
+        summary="context_cli 脚本缺失"
+        record_check_result "core.cli_runtime" "$status" "$summary"
         return 0
     fi
 
     out="$(python3 "$cli_script" health 2>&1)"
     if echo "$out" | grep -q '"all_ok": true'; then
-        local sessions db_path
         sessions="$(echo "$out" | awk -F': ' '/"sessions"/ {gsub(/,/, "", $2); print $2; exit}')"
         db_path="$(echo "$out" | awk -F': ' '/"db"/ {gsub(/[",]/, "", $2); print $2; exit}')"
         report_ok "本地会话索引健康检查通过（sessions=${sessions:-0}）"
         if [ -n "$db_path" ]; then
             report_ok "会话索引数据库：$db_path"
         fi
+        report_ok "上下文主链路：内置 session index + 本地 context_cli（无 MCP）"
+        summary="sessions=${sessions:-0}, db=${db_path:-未返回}"
+        status="ok"
     else
         report_fail "context_cli health 失败"
+        summary="health 失败"
     fi
 
-    report_ok "上下文主链路：内置 session index + 本地 context_cli（无 MCP）"
+    record_check_result "core.cli_runtime" "$status" "$summary"
 }
 
 check_remote_sync_probe() {
-    local http_status
+    local http_status summary status="warn"
     http_status=$(curl -s -o /dev/null -w "%{http_code}" "$REMOTE_SYNC_HEALTH_URL" --max-time 3 2>/dev/null || true)
     http_status="${http_status: -3}"
     [ -z "$http_status" ] && http_status="000"
 
     if [ "$http_status" = "200" ]; then
         report_ok "Context Mesh 远程同步可选探针：HTTP 200"
+        summary="HTTP 200"
+        status="ok"
     else
         report_warn "Context Mesh 远程同步可选探针：HTTP ${http_status}（不影响本地主链）"
+        summary="HTTP ${http_status}"
     fi
+
+    record_check_result "optional.remote_sync_probe" "$status" "$summary"
 }
 
 check_stale_claude_hooks() {
     local hit
     hit="$(rg -n 'aline-ai|realign/claude_hooks' "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" 2>/dev/null || true)"
+    local summary status
     if [ -n "$hit" ]; then
         report_fail "检测到失效 Claude hooks（aline/realign），可能引发卡顿"
+        summary="检测到失效 hooks"
+        status="fail"
     else
         report_ok "Claude 配置未发现失效 aline hooks"
+        summary="未发现失效 hooks"
+        status="ok"
     fi
+
+    record_check_result "core.claude_hooks" "$status" "$summary"
 }
 
 check_logs_and_pending() {
@@ -114,38 +147,60 @@ check_logs_and_pending() {
     daemon_log="$LOG_DIR/context_daemon.log"
     legacy_daemon_log="$LOG_DIR/viking_daemon.log"
     health_log="$LOG_DIR/healthcheck.log"
+    local status="ok"
+    local daemon_status="missing"
+    local health_status="missing"
 
     if [ -f "$daemon_log" ]; then
         report_ok "Context Mesh daemon 日志大小：$(( $(file_size_bytes "$daemon_log") / 1048576 ))MB"
+        daemon_status="present"
     elif [ -f "$legacy_daemon_log" ]; then
         report_warn "检测到历史守护进程日志：$legacy_daemon_log（旧 viking_daemon.log）"
+        daemon_status="legacy"
+        status="warn"
     else
         report_warn "daemon 日志不存在（如未启动可忽略）"
+        daemon_status="missing"
+        status="warn"
     fi
 
     if [ -f "$health_log" ]; then
         report_ok "healthcheck 日志大小：$(( $(file_size_bytes "$health_log") / 1048576 ))MB"
+        health_status="present"
     else
         report_warn "healthcheck 日志不存在"
+        health_status="missing"
+        status="warn"
     fi
 
     pending_dir="$UNIFIED_CONTEXT_STORAGE_ROOT/resources/shared/history/.pending"
     if [ -d "$pending_dir" ]; then
         pending_count=$(ls -1 "$pending_dir"/*.md 2>/dev/null | wc -l | tr -d ' ')
         report_ok "pending 队列文件数：${pending_count:-0}"
+        pending_count=${pending_count:-0}
     else
         report_ok "pending 队列目录不存在（当前无离线积压）"
+        pending_count=0
     fi
+    local summary="daemon_log=${daemon_status}, health_log=${health_status}, pending=${pending_count}"
+    record_check_result "storage.logs_pending" "$status" "$summary"
 }
 
 check_legacy_remote_processes() {
     local pids
     pids="$(pgrep -f 'context_daemon.py|viking_daemon.py|openviking_mcp.py|openviking-server' 2>/dev/null || true)"
+    local summary status
     if [ -n "$pids" ]; then
         report_warn "检测到遗留 Context Mesh 远程同步进程（OpenViking/MCP）：$(echo "$pids" | tr '\n' ' ' | sed 's/  */ /g')"
+        summary="pids=${pids}"
+        status="warn"
     else
         report_ok "未检测到遗留 Context Mesh 远程同步进程（OpenViking/MCP）"
+        summary="none"
+        status="ok"
     fi
+
+    record_check_result "optional.legacy_remote" "$status" "$summary"
 }
 
 REPORT+="[$TS] Context Mesh Health Check\n"
@@ -162,6 +217,32 @@ if [ "$DEEP_PROBE" = "1" ]; then
     REPORT+="\nOptional Deep Checks:\n"
     check_remote_sync_probe
     check_legacy_remote_processes
+fi
+
+SUMMARY_TOTAL=${#CHECK_SUMMARY[@]}
+SUMMARY_WARN=0
+SUMMARY_FAIL=0
+SUMMARY_FAILED_NAMES=()
+for entry in "${CHECK_SUMMARY[@]}"; do
+    IFS='|' read -r name status detail <<< "$entry"
+    case "$status" in
+        fail)
+            SUMMARY_FAIL=$((SUMMARY_FAIL + 1))
+            SUMMARY_FAILED_NAMES+=("$name")
+            ;;
+        warn)
+            SUMMARY_WARN=$((SUMMARY_WARN + 1))
+            ;;
+    esac
+done
+SUMMARY_STATUS="pass"
+if [ "$SUMMARY_FAIL" -gt 0 ]; then
+    SUMMARY_STATUS="fail"
+fi
+REPORT+="\nSummary:\n"
+REPORT+="  状态：${SUMMARY_STATUS}  总检查数：${SUMMARY_TOTAL}  警告：${SUMMARY_WARN}  失败：${SUMMARY_FAIL}\n"
+if [ "$SUMMARY_FAIL" -gt 0 ]; then
+    REPORT+="  失败项：${SUMMARY_FAILED_NAMES[*]}\n"
 fi
 
 REPORT+="\n"

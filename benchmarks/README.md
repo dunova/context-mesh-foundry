@@ -25,3 +25,14 @@ diff python.json native.json
 ```
 
 为了向后兼容，`python benchmarks/session_index_benchmark.py` 仍然可用，它只是调用了 `--mode native --format json` 的统一入口。
+
+### 同步对比 Python/Native
+
+添加了 `--mode both` 选项，可以在一次运行中依次跑完 Python 和 native 路径，输出两个模式的摘要并附带平均耗时差值与比率，对比更直观。例如：
+
+```
+python -m benchmarks --mode both > both.txt
+python -m benchmarks --mode both --format json > both.json
+```
+
+当输出 JSON 时，`benchmarks` 会变成以模式为键的字典，同时附带 `comparison` 数组（包含 `python_mean_ms`、`native_mean_ms`、`mean_diff_ms`、`mean_ratio` 等字段）供脚本或 diff 工具进一步处理。
