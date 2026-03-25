@@ -19,12 +19,16 @@ type WorkItem struct {
 }
 
 type SessionSummary struct {
-	Source    string `json:"source"`
-	Path      string `json:"path"`
-	SessionID string `json:"session_id"`
-	Lines     int    `json:"lines"`
-	SizeBytes int64  `json:"size_bytes"`
-	Snippet   string `json:"snippet,omitempty"`
+	Source         string `json:"source"`
+	Path           string `json:"path"`
+	SessionID      string `json:"session_id"`
+	Lines          int    `json:"lines"`
+	SizeBytes      int64  `json:"size_bytes"`
+	FirstTimestamp string `json:"first_timestamp,omitempty"`
+	LastTimestamp  string `json:"last_timestamp,omitempty"`
+	Snippet        string `json:"snippet,omitempty"`
+	MatchField     string `json:"match_field,omitempty"`
+	MatchScore     int    `json:"-"`
 }
 
 type ScanOutput struct {
@@ -46,16 +50,30 @@ func main() {
 	start := time.Now()
 	work := collectFiles([]WorkItem{
 		{Source: "codex_session", Path: *codexRoot},
+		{Source: "codex_session", Path: filepath.Join(os.Getenv("HOME"), ".codex", "archived_sessions")},
 		{Source: "claude_session", Path: *claudeRoot},
 	})
 	scanner := NewSessionScanner(NewNoiseFilter(DefaultNoiseMarkers), defaultSnippetLimit)
 	results, truncated := scan(work, *threads, *query, *limit, scanner)
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].MatchScore != results[j].MatchScore {
+			return results[i].MatchScore > results[j].MatchScore
+		}
+		if results[i].LastTimestamp != results[j].LastTimestamp {
+			return results[i].LastTimestamp > results[j].LastTimestamp
+		}
+		if results[i].FirstTimestamp != results[j].FirstTimestamp {
+			return results[i].FirstTimestamp > results[j].FirstTimestamp
+		}
 		if results[i].Source != results[j].Source {
 			return results[i].Source < results[j].Source
 		}
 		return results[i].Path < results[j].Path
 	})
+	if *limit > 0 && len(results) > *limit {
+		results = results[:*limit]
+		truncated = true
+	}
 	payload := ScanOutput{
 		FilesScanned: len(work),
 		Query:        *query,
@@ -136,16 +154,8 @@ func scan(items []WorkItem, threads int, query string, limit int, scanner *Sessi
 	}()
 
 	results := make([]SessionSummary, 0, len(items))
-	limitHit := false
 	for result := range resultCh {
-		if limit > 0 && len(results) >= limit {
-			limitHit = true
-			continue
-		}
 		results = append(results, result)
-		if limit > 0 && len(results) >= limit {
-			limitHit = true
-		}
 	}
-	return results, limitHit
+	return results, false
 }

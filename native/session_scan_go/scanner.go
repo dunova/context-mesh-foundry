@@ -58,7 +58,9 @@ var DefaultNoiseMarkers = []string{
 	"我先做“全局一致性同步”检查",
 	"主链不再是瓶颈",
 	"现在真正该优化的是",
+	"native 结果质量现状",
 	"native 搜索结果质量",
+	"no matches found in local session index.",
 	"不是再融合，而是",
 	"我继续的话，就沿这条质量线往下打",
 	"把 rust `native-scan` 结果里的",
@@ -98,6 +100,11 @@ type SessionScanner struct {
 	snippetLimit int
 }
 
+type TextCandidate struct {
+	Field string
+	Text  string
+}
+
 func NewSessionScanner(filter *NoiseFilter, snippetLimit int) *SessionScanner {
 	if filter == nil {
 		filter = NewNoiseFilter(DefaultNoiseMarkers)
@@ -131,8 +138,11 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 
 	matcher := NewSnippetMatcher(query, s.noiseFilter, s.snippetLimit)
 	matchFound := matcher.QueryEmpty()
+	currentWorkdir := normalizedCurrentWorkdir()
+	sessionCwd := ""
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 32*1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -149,19 +159,42 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 			if sid := extractSessionID(payload); sid != "" {
 				summary.SessionID = sid
 			}
-			if summary.Snippet == "" && !matcher.QueryEmpty() {
-				for _, text := range extractTextCandidates(payload) {
-					if snippet, ok := matcher.Match(text); ok {
-						summary.Snippet = snippet
+			if cwd := extractCwd(payload); cwd != "" {
+				if sessionCwd == "" {
+					sessionCwd = cwd
+				}
+				if !matcher.QueryEmpty() && currentWorkdir != "" && normalizePath(cwd) == currentWorkdir {
+					return SessionSummary{}, false
+				}
+			}
+			if ts := extractTimestamp(payload); ts != "" {
+				if summary.FirstTimestamp == "" {
+					summary.FirstTimestamp = ts
+				}
+				summary.LastTimestamp = ts
+			}
+			if !matcher.QueryEmpty() {
+				for _, candidate := range extractTextCandidates(payload) {
+					if snippet, ok := matcher.Match(candidate.Text); ok {
+						score := candidateScore(candidate.Field, candidate.Text, matcher.queryLower)
+						if score > summary.MatchScore {
+							summary.Snippet = snippet
+							summary.MatchField = candidate.Field
+							summary.MatchScore = score
+						}
 						matchFound = true
-						break
 					}
 				}
 			}
 		}
-		if summary.Snippet == "" && !matcher.QueryEmpty() && !parsedJSON {
+		if !matcher.QueryEmpty() && !parsedJSON {
 			if snippet, ok := matcher.Match(line); ok {
-				summary.Snippet = snippet
+				score := candidateScore("raw_line", line, matcher.queryLower)
+				if score > summary.MatchScore {
+					summary.Snippet = snippet
+					summary.MatchField = "raw_line"
+					summary.MatchScore = score
+				}
 				matchFound = true
 			}
 		}
@@ -302,6 +335,31 @@ func (m *SnippetMatcher) Match(text string) (string, bool) {
 	return snippet, true
 }
 
+func fieldPriority(field string) int {
+	switch field {
+	case "message.content.text", "payload.content.text":
+		return 120
+	case "message", "message.content", "payload.message", "root.text", "payload.text":
+		return 100
+	case "root.content", "root.display", "payload.display", "root.last_agent_message", "payload.last_agent_message":
+		return 70
+	case "root.prompt", "payload.prompt", "root.user_instructions", "payload.user_instructions":
+		return 20
+	case "raw_line":
+		return 10
+	default:
+		return 40
+	}
+}
+
+func candidateScore(field string, text string, queryLower string) int {
+	hits := 0
+	if queryLower != "" {
+		hits = strings.Count(strings.ToLower(text), queryLower)
+	}
+	return fieldPriority(field) + hits*25
+}
+
 func clipSnippet(text string, index int, queryLen int, limit int) string {
 	if limit <= 0 || len(text) <= limit {
 		return text
@@ -329,43 +387,64 @@ func max(a int, b int) int {
 	return b
 }
 
-func extractTextCandidates(payload map[string]any) []string {
-	out := make([]string, 0, 8)
-	appendIfString := func(value any) {
+func extractTextCandidates(payload map[string]any) []TextCandidate {
+	out := make([]TextCandidate, 0, 8)
+	appendIfString := func(field string, value any) {
 		if text, ok := value.(string); ok {
 			text = strings.TrimSpace(text)
 			if text != "" {
-				out = append(out, text)
+				out = append(out, TextCandidate{Field: field, Text: text})
 			}
 		}
 	}
-	for _, key := range []string{"message", "display", "text", "prompt", "output", "content"} {
-		appendIfString(payload[key])
+	for _, item := range []struct {
+		Field string
+		Key   string
+	}{
+		{Field: "message", Key: "message"},
+		{Field: "root.display", Key: "display"},
+		{Field: "root.text", Key: "text"},
+		{Field: "root.prompt", Key: "prompt"},
+		{Field: "root.output", Key: "output"},
+		{Field: "root.content", Key: "content"},
+	} {
+		appendIfString(item.Field, payload[item.Key])
 	}
 	if nested, ok := payload["payload"].(map[string]any); ok {
-		for _, key := range []string{"message", "display", "text", "prompt", "output", "user_instructions", "last_agent_message"} {
-			appendIfString(nested[key])
+		for _, item := range []struct {
+			Field string
+			Key   string
+		}{
+			{Field: "payload.message", Key: "message"},
+			{Field: "payload.display", Key: "display"},
+			{Field: "payload.text", Key: "text"},
+			{Field: "payload.prompt", Key: "prompt"},
+			{Field: "payload.output", Key: "output"},
+			{Field: "payload.user_instructions", Key: "user_instructions"},
+			{Field: "payload.last_agent_message", Key: "last_agent_message"},
+		} {
+			appendIfString(item.Field, nested[item.Key])
 		}
 		if content, ok := nested["content"].([]any); ok {
 			for _, item := range content {
 				if m, ok := item.(map[string]any); ok {
-					appendIfString(m["text"])
+					appendIfString("payload.content.text", m["text"])
 				}
 			}
 		}
 	}
 	if message, ok := payload["message"].(map[string]any); ok {
-		appendIfString(message["content"])
+		appendIfString("message.content", message["content"])
 		if content, ok := message["content"].([]any); ok {
 			for _, item := range content {
 				if m, ok := item.(map[string]any); ok {
-					appendIfString(m["text"])
+					appendIfString("message.content.text", m["text"])
 				}
 			}
 		}
 	}
-	appendIfString(payload["user_instructions"])
-	appendIfString(payload["last_agent_message"])
+	appendIfString("root.user_instructions", payload["user_instructions"])
+	appendIfString("root.last_agent_message", payload["last_agent_message"])
 	return out
 }
 
@@ -379,6 +458,53 @@ func extractSessionID(payload map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func extractTimestamp(payload map[string]any) string {
+	if nested, ok := payload["payload"].(map[string]any); ok {
+		if ts, ok := nested["timestamp"].(string); ok && ts != "" {
+			return ts
+		}
+	}
+	for _, key := range []string{"createdAt", "created_at", "timestamp", "time"} {
+		if ts, ok := payload[key].(string); ok && ts != "" {
+			return ts
+		}
+	}
+	return ""
+}
+
+func extractCwd(payload map[string]any) string {
+	if nested, ok := payload["payload"].(map[string]any); ok {
+		if cwd, ok := nested["cwd"].(string); ok && cwd != "" {
+			return cwd
+		}
+	}
+	if cwd, ok := payload["cwd"].(string); ok && cwd != "" {
+		return cwd
+	}
+	return ""
+}
+
+func normalizedCurrentWorkdir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return normalizePath(cwd)
+}
+
+func normalizePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
 }
 
 type Aggregate struct {

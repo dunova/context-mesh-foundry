@@ -97,7 +97,7 @@ check_cli_runtime() {
         if [ -n "$db_path" ]; then
             report_ok "会话索引数据库：$db_path"
         fi
-        report_ok "上下文主链路：内置 session index + 本地 context_cli（无 MCP）"
+        report_ok "上下文主链路：内置 session index + 本地 context_cli（零外部桥接）"
         summary="sessions=${sessions:-0}, db=${db_path:-未返回}"
         status="ok"
     else

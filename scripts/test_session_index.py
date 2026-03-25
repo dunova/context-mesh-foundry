@@ -60,6 +60,58 @@ class SessionIndexTests(unittest.TestCase):
                     self.assertIn("sample-session", text)
                     self.assertIn("NotebookLM", text)
 
+    def test_sync_and_search_archived_codex_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archived_root = root / ".codex" / "archived_sessions"
+            archived_root.mkdir(parents=True)
+            session_file = archived_root / "archived.jsonl"
+            session_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "archived-session",
+                                    "cwd": "/tmp/old-project",
+                                    "timestamp": "2026-03-06T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "先做 onecontext 预热，再继续 NotebookLM 方案调研",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "message",
+                                    "role": "assistant",
+                                    "content": [
+                                        {"type": "output_text", "text": "NotebookLM 的真实历史结论已经确认。"}
+                                    ],
+                                },
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            db_path = root / "session_index.db"
+            with mock.patch.object(session_index, "_home", return_value=root):
+                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
+                    session_index.sync_session_index(force=True)
+                    text = session_index.format_search_results("NotebookLM", limit=5)
+                    self.assertIn("archived-session", text)
+                    self.assertIn("NotebookLM", text)
+
     def test_recent_sync_skips_rescan(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

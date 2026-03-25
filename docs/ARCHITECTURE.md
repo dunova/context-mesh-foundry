@@ -3,7 +3,7 @@
 ## 组件概览
 
 1. **采集层**  
-   `scripts/context_daemon.py` 是 canonical 守护入口（不再依赖 OpenViking/mcp），负责收集终端会话、shell 历史并在写入前完成 `<private>` 过滤。它与 `scripts/context_core.py`、`scripts/context_maintenance.py` 协同处理同步、清理与落盘逻辑。
+   `scripts/context_daemon.py` 是 canonical 守护入口，负责收集终端会话、shell 历史并在写入前完成 `<private>` 过滤。它与 `scripts/context_core.py`、`scripts/context_maintenance.py` 协同处理同步、清理与落盘逻辑。
 
 2. **索引层**  
    `scripts/session_index.py` 构建 session 索引、`scripts/memory_index.py` 构建 memory/observation 索引；默认落盘在 `scripts/context_config.py` 定义的 storage root（默认 `~/.contextgo`），索引文件出了用户目录就不会用默认流程读/写。
@@ -21,7 +21,7 @@
    `scripts/context_server.py` 提供 viewer 服务入口，默认只监听本地回环地址；任何监听调整必须附 smoke/benchmark 覆盖。
 
 4. **运维验证层**  
-   `scripts/context_healthcheck.sh`、`scripts/context_smoke.py`、`scripts/smoke_installed_runtime.py` 以及 `benchmarks/run.py` 统一保障 local-first 路线的安装态可用性和性能。Smoke 脚本依次调用 `context_cli health`、quality gate、读写导出导入、`semantic`、`serve`；benchmark harness 驱动 `context_cli health`/`search`、`session_index.sync` 基准。这些检查依赖 `scripts/context_config.storage_root()`（默认 `~/.contextgo` 或由 `CONTEXTGO_STORAGE_ROOT`/`UNIFIED_CONTEXT_STORAGE_ROOT` 覆盖）与安装态 `INSTALL_ROOT=~/.local/share/contextgo/scripts`，发布包必须确保 storage root 可写，并在 INSTALL_ROOT 下至少提供 `context_cli.py` 与 `e2e_quality_gate.py`；同时保留 `context_healthcheck.sh`、`benchmarks/run.py` 等运维入口，避免健康检查或 benchmark 验证因路径缺失而失效。
+   `scripts/context_healthcheck.sh`、`scripts/context_smoke.py`、`scripts/smoke_installed_runtime.py` 以及 `benchmarks/run.py` 统一保障 local-first 路线的安装态可用性和性能。Smoke 脚本依次调用 `context_cli health`、quality gate、读写导出导入、`semantic`、`serve`；benchmark harness 驱动 `context_cli health`/`search`、`session_index.sync` 基准。这些检查依赖 `scripts/context_config.storage_root()`（默认 `~/.contextgo` 或由 `CONTEXTGO_STORAGE_ROOT` 覆盖）与安装态 `INSTALL_ROOT=~/.local/share/contextgo/scripts`，发布包必须确保 storage root 可写，并在 INSTALL_ROOT 下至少提供 `context_cli.py` 与 `e2e_quality_gate.py`；同时保留 `context_healthcheck.sh`、`benchmarks/run.py` 等运维入口，避免健康检查或 benchmark 验证因路径缺失而失效。
 
 ## 数据流
 
@@ -32,7 +32,7 @@
 
 ## 设计原则
 
-- **本地优先**：默认主链不依赖 MCP、Docker 或外部 recall 服务，所有路径落在 storage root 下。  
+- **本地优先**：默认主链不依赖外部桥接层、Docker 或远程 recall 服务，所有路径落在 storage root 下。  
 - **统一入口**：用户体验集中在 `context_cli` / `context_daemon` / `context_server` / `context_maintenance`。  
 - **默认单体**：默认运行路径只暴露 `ContextGO` 主入口。  
 - **Smoke 与 benchmark 融入验证**：任何变更都应通过 `scripts/context_smoke.py`、`scripts/smoke_installed_runtime.py` 及 `python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark` 验证健康与性能。  

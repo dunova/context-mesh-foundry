@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -109,5 +111,82 @@ func TestShouldSkipPath(t *testing.T) {
 	}
 	if shouldSkipPath("/Users/dunova/.codex/sessions/2026/03/test.jsonl") {
 		t.Fatalf("did not expect normal session path to be skipped")
+	}
+}
+
+func TestProcessFileSurvivesLargeArchivedLines(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "*.jsonl")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer tmp.Close()
+
+	huge := strings.Repeat("x", 80*1024)
+	first, _ := json.Marshal(map[string]any{
+		"type": "response_item",
+		"payload": map[string]any{
+			"type":   "function_call_output",
+			"output": huge,
+		},
+	})
+	second, _ := json.Marshal(map[string]any{
+		"type": "event_msg",
+		"payload": map[string]any{
+			"type":    "agent_message",
+			"message": "这里有一个 NotebookLM 历史结论。",
+		},
+	})
+	if _, err := tmp.Write(append(first, '\n')); err != nil {
+		t.Fatalf("write first line: %v", err)
+	}
+	if _, err := tmp.Write(append(second, '\n')); err != nil {
+		t.Fatalf("write second line: %v", err)
+	}
+
+	scanner := NewSessionScanner(NewNoiseFilter(DefaultNoiseMarkers), defaultSnippetLimit)
+	summary, ok := scanner.ProcessFile(WorkItem{Source: "codex_session", Path: tmp.Name()}, "NotebookLM")
+	if !ok {
+		t.Fatalf("expected match after large line")
+	}
+	if !strings.Contains(strings.ToLower(summary.Snippet), "notebooklm") {
+		t.Fatalf("expected NotebookLM snippet, got %q", summary.Snippet)
+	}
+}
+
+func TestProcessFileSkipsCurrentWorkdirSession(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "*.jsonl")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer tmp.Close()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	meta, _ := json.Marshal(map[string]any{
+		"type": "session_meta",
+		"payload": map[string]any{
+			"id":  "current-session",
+			"cwd": cwd,
+		},
+	})
+	msg, _ := json.Marshal(map[string]any{
+		"type": "event_msg",
+		"payload": map[string]any{
+			"type":    "agent_message",
+			"message": "NotebookLM 当前主链优化记录。",
+		},
+	})
+	if _, err := tmp.Write(append(meta, '\n')); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	if _, err := tmp.Write(append(msg, '\n')); err != nil {
+		t.Fatalf("write msg: %v", err)
+	}
+
+	scanner := NewSessionScanner(NewNoiseFilter(DefaultNoiseMarkers), defaultSnippetLimit)
+	if _, ok := scanner.ProcessFile(WorkItem{Source: "codex_session", Path: tmp.Name()}, "NotebookLM"); ok {
+		t.Fatalf("expected current workdir session to be skipped")
 	}
 }

@@ -65,7 +65,7 @@ def _maybe_sync_index() -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ContextMeshViewer/1.0"
+    server_version = "ContextGOViewer/1.0"
 
     def log_message(self, fmt: str, *args):
         return

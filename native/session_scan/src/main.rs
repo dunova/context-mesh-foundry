@@ -128,6 +128,7 @@ struct SessionSummary {
     last_timestamp: Option<String>,
     snippet: Option<String>,
     match_field: Option<String>,
+    match_score: i32,
 }
 #[derive(serde::Serialize)]
 struct SerializableSummary {
@@ -198,6 +199,10 @@ impl Scanner {
         let expand = |raw: &str| tilde(raw).into_owned();
         let roots = vec![
             SourceRoot::new("codex_session", PathBuf::from(expand(&args.codex_root))),
+            SourceRoot::new(
+                "codex_session",
+                PathBuf::from(expand("~/.codex/archived_sessions")),
+            ),
             SourceRoot::new("claude_session", PathBuf::from(expand(&args.claude_root))),
         ];
         Self { roots }
@@ -395,6 +400,14 @@ fn main() -> Result<()> {
     let total_files = work_items.len();
 
     let (mut summaries, errors) = scanner.scan(&work_items, &args.query);
+    summaries.sort_by(|left, right| {
+        right
+            .match_score
+            .cmp(&left.match_score)
+            .then_with(|| right.last_timestamp.cmp(&left.last_timestamp))
+            .then_with(|| right.first_timestamp.cmp(&left.first_timestamp))
+            .then_with(|| left.path.cmp(&right.path))
+    });
     if args.limit > 0 && summaries.len() > args.limit {
         summaries.truncate(args.limit);
     }
@@ -439,9 +452,8 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
     let mut session_cwd: Option<String> = None;
     let mut lines = 0usize;
     let query_lower = query.trim().to_lowercase();
-    let mut snippet = None;
     let mut matched = query_lower.is_empty();
-    let mut match_field = None;
+    let mut best_match: Option<(i32, String, String)> = None;
     let current_workdir = std::env::current_dir()
         .ok()
         .and_then(|path| path.canonicalize().ok().or(Some(path)))
@@ -489,7 +501,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                 }
                 last_timestamp = Some(ts);
             }
-            if !query_lower.is_empty() && snippet.is_none() {
+            if !query_lower.is_empty() {
                 for detail in extract_text_candidates(&json) {
                     if should_skip_meta_text(
                         current_workdir.as_deref(),
@@ -507,13 +519,18 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                             continue;
                         }
                         matched = true;
-                        snippet = Some(candidate);
-                        match_field = Some(detail.field.to_string());
-                        break;
+                        let score = candidate_score(detail.field, &detail.text, &query_lower);
+                        let replace = best_match
+                            .as_ref()
+                            .map(|(best_score, _, _)| score > *best_score)
+                            .unwrap_or(true);
+                        if replace {
+                            best_match = Some((score, candidate, detail.field.to_string()));
+                        }
                     }
                 }
             }
-        } else if !query_lower.is_empty() && snippet.is_none() {
+        } else if !query_lower.is_empty() {
             if let Some(candidate) = matched_snippet(&line, &query_lower, 220) {
                 if should_skip_meta_candidate(&candidate) {
                     continue;
@@ -522,8 +539,14 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                     continue;
                 }
                 matched = true;
-                snippet = Some(candidate);
-                match_field = Some(RAW_LINE_FIELD.to_string());
+                let score = candidate_score(RAW_LINE_FIELD, &line, &query_lower);
+                let replace = best_match
+                    .as_ref()
+                    .map(|(best_score, _, _)| score > *best_score)
+                    .unwrap_or(true);
+                if replace {
+                    best_match = Some((score, candidate, RAW_LINE_FIELD.to_string()));
+                }
             }
         }
     }
@@ -540,8 +563,9 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
         size_bytes: metadata.len(),
         first_timestamp,
         last_timestamp,
-        snippet,
-        match_field,
+        snippet: best_match.as_ref().map(|(_, snippet, _)| snippet.clone()),
+        match_field: best_match.as_ref().map(|(_, _, field)| field.clone()),
+        match_score: best_match.as_ref().map(|(score, _, _)| *score).unwrap_or(0),
     })
 }
 
@@ -683,6 +707,24 @@ fn should_skip_meta_candidate(text: &str) -> bool {
             || trimmed.contains("native-scan")
             || trimmed.contains("session_index")
             || trimmed.contains("索引"))
+}
+
+fn field_priority(field: &str) -> i32 {
+    match field {
+        "message.content.text" | "payload.content.text" => 120,
+        "message" | "message.content" | "payload.message" | "root.text" | "payload.text" => 100,
+        "root.content" | "root.display" | "payload.display" | "root.last_agent_message"
+        | "payload.last_agent_message" => 70,
+        "root.prompt" | "payload.prompt" | "root.user_instructions" | "payload.user_instructions" => 20,
+        RAW_LINE_FIELD => 10,
+        _ => 40,
+    }
+}
+
+fn candidate_score(field: &str, text: &str, query_lower: &str) -> i32 {
+    let lower = text.to_lowercase();
+    let hits = lower.matches(query_lower).count() as i32;
+    field_priority(field) + hits * 25
 }
 
 fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
@@ -874,6 +916,7 @@ mod tests {
                 last_timestamp: Some("t2".into()),
                 snippet: None,
                 match_field: None,
+                match_score: 0,
             },
             SessionSummary {
                 source: "alpha",
@@ -885,6 +928,7 @@ mod tests {
                 last_timestamp: None,
                 snippet: Some("sample".into()),
                 match_field: None,
+                match_score: 0,
             },
         ];
         let aggregate = summarize_by_source(&summaries);
@@ -893,6 +937,21 @@ mod tests {
         assert_eq!(entry.total_lines, 8);
         assert_eq!(entry.total_bytes, 168);
         assert_eq!(entry.sample.unwrap().session_id, "first");
+    }
+
+    #[test]
+    fn candidate_score_prefers_message_content_over_prompt() {
+        let prompt_score = candidate_score(
+            "payload.prompt",
+            "NotebookLM integration outline",
+            "notebooklm",
+        );
+        let content_score = candidate_score(
+            "message.content.text",
+            "NotebookLM integration outline",
+            "notebooklm",
+        );
+        assert!(content_score > prompt_score);
     }
 }
 

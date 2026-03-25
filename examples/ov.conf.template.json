@@ -1,7 +1,7 @@
 {
   "storage": {
-    "vectordb": { "name": "context", "backend": "local", "path": "${OPENVIKING_DATA_DIR}" },
-    "agfs": { "backend": "local", "path": "${OPENVIKING_DATA_DIR}", "port": 1833 }
+    "vectordb": { "name": "contextgo", "backend": "local", "path": "${CONTEXTGO_STORAGE_ROOT}" },
+    "agfs": { "backend": "local", "path": "${CONTEXTGO_STORAGE_ROOT}", "port": 1833 }
   },
   "embedding": {
     "dense": {

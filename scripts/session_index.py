@@ -29,7 +29,7 @@ SYNC_MIN_INTERVAL_SEC = env_int("CONTEXTGO_SESSION_SYNC_MIN_INTERVAL_SEC", defau
 SOURCE_CACHE_TTL_SEC = env_int("CONTEXTGO_SOURCE_CACHE_TTL_SEC", default=10, minimum=0)
 EXPERIMENTAL_SEARCH_BACKEND = os.environ.get("CONTEXTGO_EXPERIMENTAL_SEARCH_BACKEND", "").strip().lower()
 EXPERIMENTAL_SYNC_BACKEND = os.environ.get("CONTEXTGO_EXPERIMENTAL_SYNC_BACKEND", "").strip().lower()
-SESSION_INDEX_SCHEMA_VERSION = "2026-03-26-search-noise-v4"
+SESSION_INDEX_SCHEMA_VERSION = "2026-03-26-search-noise-v5"
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where",
     "which", "who", "how", "please", "search", "session", "history", "continue", "find",
@@ -199,9 +199,9 @@ def _is_noise_text(text: str) -> bool:
 def _search_noise_penalty(*parts: str) -> int:
     haystack = "\n".join(str(part or "") for part in parts).lower()
     penalty = 0
-    for marker in SEARCH_NOISE_MARKERS:
-        if marker in haystack:
-            penalty += 80
+    marker_hits = sum(1 for marker in SEARCH_NOISE_MARKERS if marker in haystack)
+    if marker_hits:
+        penalty += min(120, marker_hits * 60)
     if "/skills/" in haystack or "skills-repo" in haystack:
         penalty += 120
     if "guardian_truncated" in haystack:
@@ -213,7 +213,7 @@ def _search_noise_penalty(*parts: str) -> int:
         1 for line in lines
         if len(line) <= 40 and " " not in line and line.count("/") < 2 and line.count("-") <= 3
     )
-    if short_token_lines >= 5:
+    if short_token_lines >= 8:
         penalty += 200
     if "drwx" in haystack or "rwxr-xr-x" in haystack or "\ntotal " in haystack:
         penalty += 200
@@ -221,7 +221,7 @@ def _search_noise_penalty(*parts: str) -> int:
     if all(term in haystack for term in meta_terms):
         penalty += 240
     if ("我先" in haystack or "我继续" in haystack) and (
-        "search" in haystack or "native-scan" in haystack or "session_index" in haystack
+        "native-scan" in haystack or "session_index" in haystack
     ):
         penalty += 240
     return penalty
@@ -538,6 +538,7 @@ def _iter_sources() -> list[tuple[str, Path]]:
     items: list[tuple[str, Path]] = []
     roots = [
         ("codex_session", home / ".codex" / "sessions"),
+        ("codex_session", home / ".codex" / "archived_sessions"),
         ("claude_session", home / ".claude" / "projects"),
     ]
     for source_type, root in roots:

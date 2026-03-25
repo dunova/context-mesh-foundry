@@ -44,9 +44,9 @@ Parse JSON output:
 **Cross-terminal context health (if available):**
 ```bash
 for HC in \
-  "$HOME/.gemini/antigravity/skills/openviking-memory-sync/scripts/context_healthcheck.sh" \
-  "$HOME/.codex/skills/openviking-memory-sync/scripts/context_healthcheck.sh" \
-  "$HOME/.agents/skills/openviking-memory-sync/scripts/context_healthcheck.sh"
+  "$PWD/scripts/context_healthcheck.sh" \
+  "$HOME/.local/share/contextgo/scripts/context_healthcheck.sh" \
+  "$HOME/.codex/skills/contextgo/scripts/context_healthcheck.sh"
 do
   if [ -f "$HC" ]; then
     bash "$HC" || true
