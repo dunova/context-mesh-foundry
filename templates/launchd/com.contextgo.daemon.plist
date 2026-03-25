@@ -32,7 +32,7 @@
     <string>__SCRIPTS_DIR__/context_daemon.py</string>
   </array>
   <key>WorkingDirectory</key><string>__SCRIPTS_DIR__</string>
-  <key>StandardOutPath</key><string>__LOG_DIR__/context_mesh_daemon.log</string>
-  <key>StandardErrorPath</key><string>__LOG_DIR__/context_mesh_daemon.log</string>
+  <key>StandardOutPath</key><string>__LOG_DIR__/contextgo_daemon.log</string>
+  <key>StandardErrorPath</key><string>__LOG_DIR__/contextgo_daemon.log</string>
 </dict>
 </plist>

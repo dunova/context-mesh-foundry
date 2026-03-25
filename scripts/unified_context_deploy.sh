@@ -41,8 +41,8 @@ require_dir "$REPO_ROOT/templates"
 
 mkdir -p "$UNIFIED_CONTEXT_STORAGE_ROOT"
 chmod 700 "$UNIFIED_CONTEXT_STORAGE_ROOT" >/dev/null 2>&1 || true
-mkdir -p "$HOME_DIR/.context_system/logs"
-chmod 700 "$HOME_DIR/.context_system" "$HOME_DIR/.context_system/logs" >/dev/null 2>&1 || true
+mkdir -p "$HOME_DIR/.contextgo_system/logs"
+chmod 700 "$HOME_DIR/.contextgo_system" "$HOME_DIR/.contextgo_system/logs" >/dev/null 2>&1 || true
 
 sync_dir "$REPO_ROOT/scripts" "$INSTALL_ROOT/scripts"
 sync_dir "$REPO_ROOT/templates" "$INSTALL_ROOT/templates"
@@ -131,7 +131,7 @@ for template_path, plist_path, args, wd, extra_env in patches:
         continue
     raw = template_path.read_text(encoding='utf-8')
     raw = raw.replace('__SCRIPTS_DIR__', str(script_dir))
-    raw = raw.replace('__LOG_DIR__', str(home / '.context_system' / 'logs'))
+    raw = raw.replace('__LOG_DIR__', str(home / '.contextgo_system' / 'logs'))
     raw = raw.replace('__HOME__', str(home))
     plist_path.write_text(raw, encoding='utf-8')
     with plist_path.open('rb') as f:

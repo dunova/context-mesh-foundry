@@ -7,7 +7,7 @@
 
 set -u
 
-LOG_DIR="$HOME/.context_system/logs"
+LOG_DIR="$HOME/.contextgo_system/logs"
 HEALTHCHECK_LOG="$LOG_DIR/healthcheck.log"
 UNIFIED_CONTEXT_STORAGE_ROOT="${UNIFIED_CONTEXT_STORAGE_ROOT:-${CONTEXTGO_STORAGE_ROOT:-$HOME/.contextgo}}"
 REMOTE_SYNC_BASE_URL="${CONTEXTGO_REMOTE_URL:-http://127.0.0.1:8090/api/v1}"
@@ -145,7 +145,7 @@ check_stale_claude_hooks() {
 
 check_logs_and_pending() {
     local daemon_log previous_daemon_log health_log pending_dir pending_count
-    daemon_log="$LOG_DIR/context_mesh_daemon.log"
+    daemon_log="$LOG_DIR/contextgo_daemon.log"
     previous_daemon_log="$LOG_DIR/context_daemon.log"
     health_log="$LOG_DIR/healthcheck.log"
     local status="ok"
