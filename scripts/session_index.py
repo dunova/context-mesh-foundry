@@ -28,6 +28,7 @@ MAX_CONTENT_CHARS = env_int("CMF_SESSION_MAX_CONTENT_CHARS", "CONTEXT_MESH_SESSI
 SYNC_MIN_INTERVAL_SEC = env_int("CMF_SESSION_SYNC_MIN_INTERVAL_SEC", "CONTEXT_MESH_SESSION_SYNC_MIN_INTERVAL_SEC", default=15, minimum=0)
 SOURCE_CACHE_TTL_SEC = env_int("CONTEXT_MESH_SOURCE_CACHE_TTL_SEC", default=10, minimum=0)
 EXPERIMENTAL_SEARCH_BACKEND = os.environ.get("CONTEXT_MESH_EXPERIMENTAL_SEARCH_BACKEND", "").strip().lower()
+EXPERIMENTAL_SYNC_BACKEND = os.environ.get("CONTEXT_MESH_EXPERIMENTAL_SYNC_BACKEND", "").strip().lower()
 STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where",
     "which", "who", "how", "please", "search", "session", "history", "continue", "find",
@@ -326,6 +327,27 @@ def _iter_sources() -> list[tuple[str, Path]]:
     )
     if cache_valid:
         return list(cached_items)
+
+    native_backend = EXPERIMENTAL_SYNC_BACKEND
+    if native_backend in {"rust", "go"}:
+        try:
+            result = context_native.run_native_scan(
+                backend=native_backend,
+                threads=4,
+                json_output=True,
+                release=(native_backend == "rust"),
+                timeout=180,
+            )
+            if result.returncode == 0:
+                items = context_native.inventory_items(result)
+                if items:
+                    if SOURCE_CACHE_TTL_SEC > 0:
+                        _SOURCE_CACHE["items"] = list(items)
+                        _SOURCE_CACHE["expires_at"] = now + SOURCE_CACHE_TTL_SEC
+                        _SOURCE_CACHE["home"] = current_home
+                    return items
+        except Exception:
+            pass
 
     home = Path(current_home)
     items: list[tuple[str, Path]] = []

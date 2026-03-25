@@ -147,6 +147,20 @@ class SessionIndexTests(unittest.TestCase):
                     rows = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual([row["session_id"] for row in rows], ["clean"])
 
+    def test_iter_sources_can_use_native_inventory(self) -> None:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        with mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"):
+            with mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result) as mock_run:
+                with mock.patch.object(
+                    session_index.context_native,
+                    "inventory_items",
+                    return_value=[("codex_session", Path("/tmp/native.jsonl"))],
+                ):
+                    items = session_index._iter_sources()
+        self.assertEqual(items, [("codex_session", Path("/tmp/native.jsonl"))])
+        mock_run.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

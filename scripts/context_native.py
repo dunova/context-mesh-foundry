@@ -56,6 +56,16 @@ def extract_matches(result: NativeRunResult) -> list[dict[str, Any]]:
     return out
 
 
+def inventory_items(result: NativeRunResult) -> list[tuple[str, Path]]:
+    items: list[tuple[str, Path]] = []
+    for item in extract_matches(result):
+        source = str(item.get("source") or "").strip()
+        path = str(item.get("path") or "").strip()
+        if source and path:
+            items.append((source, Path(path)))
+    return items
+
+
 def available_backends() -> list[str]:
     backends: list[str] = []
     if shutil.which("cargo") and RUST_PROJECT.exists():
