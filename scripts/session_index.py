@@ -91,6 +91,17 @@ SEARCH_NOISE_MARKERS = (
     "```bash",
     "```python",
     "launchctl list | egrep",
+    "继续完成了，但这轮我做了一个重要判断",
+    "实验性 native 热路径已经接上",
+    "命中优先级（从高到低）",
+    "首发查询用短关键词",
+    "returns noisy snippets from benchmark/test/skill text",
+    "native 搜索结果质量还不够好",
+    "刚才那个 session / 上个终端 / 某次调研",
+    "随后我又把本地安装态重新部署到",
+    "通过了 `python3 scripts/context_cli.py smoke`",
+    "go test ./...",
+    "python3 -m benchmarks --mode both",
 )
 
 
@@ -125,6 +136,12 @@ def _is_noise_text(text: str) -> bool:
     if "你负责索引与基准" in compact or "写集仅限" in compact:
         return True
     if "改动文件：" in compact or "核心变化：" in compact or "建议验证命令：" in compact:
+        return True
+    if "继续完成了，但这轮我做了一个重要判断" in compact:
+        return True
+    if "native 搜索结果质量还不够好" in compact:
+        return True
+    if "随后我又把本地安装态重新部署到" in compact:
         return True
     return False
 
