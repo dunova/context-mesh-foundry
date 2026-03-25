@@ -159,6 +159,7 @@ def main() -> int:
             "OPENVIKING_STORAGE_ROOT": str(storage_root),
             "CMF_SESSION_SYNC_MIN_INTERVAL_SEC": "0",
         }
+        env_vars["CONTEXT_MESH_SOURCE_CACHE_TTL_SEC"] = os.environ.get("CMF_SOURCE_CACHE_TTL_SEC", "60")
         os.environ.update(env_vars)
         _prepare_fake_home(fake_home, args.query)
 

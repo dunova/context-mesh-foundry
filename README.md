@@ -1,55 +1,32 @@
 # Context Mesh Foundry
 
-Local-first context infrastructure for AI coding workflows.
+本地优先上下文基础设施，面向多 agent AI 编码团队的单体产品。
+无 MCP、无 Docker、无分布式依赖，只有一个统一 CLI 和本地 runtime，帮助工程组在自己机器上完成调试、记忆、迁移和部署。
 
-[中文版](#中文版) | [English](#english)
+## 核心承诺
 
-## Why
+- **单体可控**：上下文采集、语义搜索、记忆存储、守护进程都由同一套 `contextmesh` 代码驱动，不再跳转多个桥接脚本。
+- **本地优先**：默认路径 100% 在本地，远程同步默认关闭；部署目录、服务名、数据库都围绕单机运行优化。
+- **无 MCP 依赖**：不需要 MCP 或其他云端服务即可完整运行，连接历史、终端和 agent 的唯一信任源是本地索引。
+- **Benchmark 驱动**：自带 `benchmarks/` 验证真实热点，定期校准瓶颈，统计结果直接反馈到本地仪表盘。
+- **Native 迁移路线**：在 Python monolith 上量化热点后，再逐步用 Rust/Go 取代，保持稳定性的同时提升速度。
 
-Modern AI development happens across many parallel surfaces:
+## 产品形态
 
-- Claude Code
-- Codex CLI
-- OpenCode
-- shell history
-- ad-hoc one-off terminals
+- `python scripts/context_cli.py`：统一入口，提供 `search`、`semantic`、`save`、`export/import`、`serve`、`maintain`、`health` 等操作。
+- `scripts/context_daemon.py`：canonical 守护进程，可由 `bash scripts/unified_context_deploy.sh` 注册为 `com.contextmesh.daemon`。
+- `scripts/session_index.py` / `scripts/memory_index.py`：本地 SQLite 索引，直连 Codex/Claude/shell 历史，无同步延迟。
+- `benchmarks/`：精确定位热路径，量化本地运行速度，为 Rust/Go 替换提供数据上下文。
+- `native/session_scan/`：首个 Rust hot-path 原型，示例如何逐步迁移关键子系统。
 
-Each session tends to start with partial memory. Teams then waste time re-feeding context, re-deriving earlier decisions, and re-debugging already solved problems.
+## 绩效与本地迁移路线
 
-Context Mesh Foundry turns that into a local product:
+1. 在 Python 单体中保持业务稳定，确保部署脚本只需一条命令安装本地 runtime。
+2. 利用 `python -m benchmarks` 对话串、存储、语义检索等真实场景打桩，生成可复现结果。
+3. 标定瓶颈后，针对性将数据密集的功能抽象成 `native/session_scan` 等模块，保持单体 shell 无感知。
+4. 每次 native 迁移都保持 CLI 不变，并通过 `cargo run --release`、`benchmarks` 复测，确保性能优于旧路径。
 
-- one runtime
-- one CLI
-- one local index
-- one daemon
-- no MCP requirement
-- no Docker requirement
-
-## What You Get
-
-- `context_cli.py`
-  Unified entrypoint for search, semantic fallback, save, import/export, viewer, maintenance, and health.
-- `session_index.py`
-  Built-in local session index over Codex, Claude, shell, and related histories.
-- `memory_index.py`
-  Local memory/document index for saved artifacts and exported summaries.
-- `context_daemon.py`
-  Canonical long-running daemon entrypoint.
-
-The default path is fully local and self-contained. Optional remote sync remains available, but it is not required and is disabled by default.
-
-## Status
-
-Current version: `0.5.0`
-
-This branch contains:
-
-- standalone mainline runtime
-- package-safe Python modules
-- local benchmark harness
-- first Rust performance prototype
-
-## Quick Start
+## 入门快线
 
 ```bash
 git clone https://github.com/dunova/context-mesh-foundry.git
@@ -59,255 +36,33 @@ bash scripts/unified_context_deploy.sh
 python3 scripts/context_cli.py health
 ```
 
-## Core Commands
+### 核心命令
 
-```bash
-# exact local session search
-python3 scripts/context_cli.py search "auth bug" --limit 10 --literal
-
-# semantic fallback over local memory
-python3 scripts/context_cli.py semantic "database decisions" --limit 5
-
-# save an important conclusion
-python3 scripts/context_cli.py save --title "Auth fix" --content "Root cause..." --tags auth,bugfix
-
-# export / import local indexed observations
+```
+python3 scripts/context_cli.py search "auth root cause" --limit 10 --literal
+python3 scripts/context_cli.py semantic "数据库 schema 决策" --limit 5
+python3 scripts/context_cli.py save --title "Auth fix" --content "..." --tags auth,bug
 python3 scripts/context_cli.py export "" /tmp/contextmesh-export.json --limit 1000
 python3 scripts/context_cli.py import /tmp/contextmesh-export.json
-
-# start local viewer
 python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
-
-# local maintenance / dry run
 python3 scripts/context_cli.py maintain --dry-run
-
-# health snapshot
 python3 scripts/context_cli.py health
 ```
 
-## Product Shape
+## 部署与运维
 
-The project is now organized around a clean mainline:
+- 默认安装目录：`~/.local/share/context-mesh-foundry`。
+- 本地服务：`com.contextmesh.daemon`、`com.contextmesh.healthcheck`。
+- `CONTEXT_MESH_*` 系列变量统一配置：`STORAGE_ROOT`、`REMOTE_URL`、`ENABLE_REMOTE_SYNC`、`VIEWER_HOST`、`VIEWER_PORT`、`SESSION_INDEX_DB_PATH`。
+- 旧桥接（`recall-lite`、`openviking`、`aline`）可清理，部署流程仅需 `bash scripts/unified_context_deploy.sh`。
 
-- `scripts/context_cli.py`
-- `scripts/context_daemon.py`
-- `scripts/context_server.py`
-- `scripts/context_maintenance.py`
-- `scripts/session_index.py`
-- `scripts/memory_index.py`
-- `scripts/context_config.py`
+## 版本与发布
 
-Legacy compatibility code has been pushed behind thin wrappers and archived under `scripts/legacy/`.
+- 当前版本：`0.5.0`，详见本地 [`VERSION`](./VERSION)。
+- 发布纪要：[`CHANGELOG.md`](./CHANGELOG.md) 与 [`docs/RELEASE_NOTES_0.5.0.md`](./docs/RELEASE_NOTES_0.5.0.md)。
+***
+## English Snapshot
 
-## Performance
+Context Mesh Foundry is a local-context monolith built for AI coding teams. No MCP, no Docker, fully self-hosted CLI and runtime. Start with the unified `contextmesh` CLI, benchmark real workloads with `benchmarks/`, and migrate hot paths into the `native/session_scan` prototype without touching the operator experience.
 
-Python benchmarks:
-
-```bash
-python3 -m benchmarks --iterations 3 --warmup 1 --query benchmark
-```
-
-Rust prototype:
-
-```bash
-cd native/session_scan
-CARGO_TARGET_DIR=/tmp/context_mesh_target cargo run --release -- --threads 4
-```
-
-Strategy:
-
-1. converge Python into a clean monolith
-2. benchmark real hotspots
-3. replace hot paths incrementally in Rust or Go
-4. keep the product stable while speeding up internals
-
-## Deployment
-
-The deploy script installs the canonical runtime to:
-
-- `/Users/<you>/.local/share/context-mesh-foundry`
-
-And manages local services:
-
-- `com.contextmesh.daemon`
-- `com.contextmesh.healthcheck`
-
-Old local service traces such as `recall-lite`, `openviking`, `aline`, and older daemon logs can be removed safely once the current `contextmesh` services are healthy.
-
-## Environment
-
-The preferred config namespace is now `CONTEXT_MESH_*`.
-
-Older variables remain supported where needed for compatibility, but new setups should prefer:
-
-- `CONTEXT_MESH_STORAGE_ROOT`
-- `CONTEXT_MESH_REMOTE_URL`
-- `CONTEXT_MESH_ENABLE_REMOTE_SYNC`
-- `CONTEXT_MESH_VIEWER_HOST`
-- `CONTEXT_MESH_VIEWER_PORT`
-- `CONTEXT_MESH_SESSION_INDEX_DB_PATH`
-
-See [`.env.example`](/Volumes/AI/GitHub/context-mesh-foundry/.env.example).
-
-## Release Checklist
-
-See [docs/RELEASE_CHECKLIST.md](/Volumes/AI/GitHub/context-mesh-foundry/docs/RELEASE_CHECKLIST.md).
-
-## Changelog
-
-See [CHANGELOG.md](/Volumes/AI/GitHub/context-mesh-foundry/CHANGELOG.md).
-
-## Architecture
-
-See [docs/ARCHITECTURE.md](/Volumes/AI/GitHub/context-mesh-foundry/docs/ARCHITECTURE.md).
-
-## Troubleshooting
-
-See [docs/TROUBLESHOOTING.md](/Volumes/AI/GitHub/context-mesh-foundry/docs/TROUBLESHOOTING.md).
-
-## License
-
-[GPL-3.0](/Volumes/AI/GitHub/context-mesh-foundry/LICENSE)
-
----
-
-## 中文版
-
-### 项目定位
-
-Context Mesh Foundry 是一套面向 AI 编程工作流的本地上下文基础设施。
-
-它解决的问题很直接：
-
-- 多终端、多 agent、多会话并行工作
-- 上下文在不同工具之间丢失
-- 旧决策、旧排障、旧约束无法被稳定复用
-
-现在的主链已经收敛成一个本地单体产品：
-
-- 一个 CLI
-- 一个本机会话索引
-- 一个本地记忆索引
-- 一个后台守护进程
-- 不依赖 MCP
-- 不依赖 Docker
-
-### 当前版本
-
-`0.5.0`
-
-### 核心能力
-
-- `context_cli.py`
-  统一入口，负责 `search / semantic / save / export / import / serve / maintain / health`
-- `session_index.py`
-  本机会话索引，直接扫描 Codex、Claude、shell 等历史
-- `memory_index.py`
-  本地记忆/文档索引
-- `context_daemon.py`
-  canonical 守护进程入口
-
-### 快速开始
-
-```bash
-git clone https://github.com/dunova/context-mesh-foundry.git
-cd context-mesh-foundry
-cp .env.example .env
-bash scripts/unified_context_deploy.sh
-python3 scripts/context_cli.py health
-```
-
-### 常用命令
-
-```bash
-# 精确检索本地会话
-python3 scripts/context_cli.py search "身份验证 bug" --limit 10 --literal
-
-# 本地语义补洞
-python3 scripts/context_cli.py semantic "数据库配置决策" --limit 5
-
-# 保存关键结论
-python3 scripts/context_cli.py save --title "Auth fix" --content "Root cause..." --tags auth,bugfix
-
-# 导出 / 导入
-python3 scripts/context_cli.py export "" /tmp/contextmesh-export.json --limit 1000
-python3 scripts/context_cli.py import /tmp/contextmesh-export.json
-
-# 启动本地 viewer
-python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
-
-# 本地维护
-python3 scripts/context_cli.py maintain --dry-run
-
-# 健康检查
-python3 scripts/context_cli.py health
-```
-
-### 当前产品形态
-
-当前仓库的主线已经集中到这些模块：
-
-- `scripts/context_cli.py`
-- `scripts/context_daemon.py`
-- `scripts/context_server.py`
-- `scripts/context_maintenance.py`
-- `scripts/session_index.py`
-- `scripts/memory_index.py`
-- `scripts/context_config.py`
-
-历史兼容实现已下沉到 `scripts/legacy/`。
-
-### 性能与渐进重写
-
-Python 基准：
-
-```bash
-python3 -m benchmarks --iterations 3 --warmup 1 --query benchmark
-```
-
-Rust 原型：
-
-```bash
-cd native/session_scan
-CARGO_TARGET_DIR=/tmp/context_mesh_target cargo run --release -- --threads 4
-```
-
-路线不是“一上来全量重写”，而是：
-
-1. 先把 Python 主链收敛成干净单体
-2. 对真实热点做 benchmark
-3. 用 Rust/Go 渐进替换热路径
-4. 在保持稳定的前提下持续提速
-
-### 部署与运行
-
-部署脚本会把 canonical runtime 安装到：
-
-- `/Users/<你>/.local/share/context-mesh-foundry`
-
-并管理本地服务：
-
-- `com.contextmesh.daemon`
-- `com.contextmesh.healthcheck`
-
-### 配置
-
-新配置建议统一使用 `CONTEXT_MESH_*` 前缀。
-
-常见变量：
-
-- `CONTEXT_MESH_STORAGE_ROOT`
-- `CONTEXT_MESH_REMOTE_URL`
-- `CONTEXT_MESH_ENABLE_REMOTE_SYNC`
-- `CONTEXT_MESH_VIEWER_HOST`
-- `CONTEXT_MESH_VIEWER_PORT`
-- `CONTEXT_MESH_SESSION_INDEX_DB_PATH`
-
-详见 [`.env.example`](/Volumes/AI/GitHub/context-mesh-foundry/.env.example)。
-
-### 其他文档
-
-- [CHANGELOG.md](/Volumes/AI/GitHub/context-mesh-foundry/CHANGELOG.md)
-- [docs/ARCHITECTURE.md](/Volumes/AI/GitHub/context-mesh-foundry/docs/ARCHITECTURE.md)
-- [docs/TROUBLESHOOTING.md](/Volumes/AI/GitHub/context-mesh-foundry/docs/TROUBLESHOOTING.md)
-- [docs/RELEASE_CHECKLIST.md](/Volumes/AI/GitHub/context-mesh-foundry/docs/RELEASE_CHECKLIST.md)
+For detailed steps, refer to the same sections above.

@@ -83,6 +83,18 @@ class SessionIndexTests(unittest.TestCase):
                     self.assertGreaterEqual(first["scanned"], 1)
                     self.assertEqual(second["skipped_recent"], 1)
 
+    def test_sync_handles_missing_cached_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            db_path = root / "session_index.db"
+            missing_path = root / "missing.jsonl"
+            with mock.patch.object(session_index, "_home", return_value=root):
+                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
+                    with mock.patch.object(session_index, "_iter_sources", return_value=[("codex_session", missing_path)]):
+                        stats = session_index.sync_session_index(force=True)
+                        self.assertGreaterEqual(stats["scanned"], 1)
+                        self.assertEqual(stats["added"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

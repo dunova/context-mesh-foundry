@@ -1,27 +1,21 @@
-# Contributing
+# 贡献指南
 
-## Principles
+## 核心理念
+- 以 contextmesh 单体产品为视角，所有变更必须服务于 `scripts/context_cli.py`、`scripts/context_daemon.py`、`scripts/context_maintenance.py` 等核心入口，不再围绕历史兼容或分支架构。  
+- 默认链路面向本地运行：本地索引、健康检查与可观测性优先，远程/外部路径仅在明确开启的功能中出现。  
+- 始终将快速恢复、静默失败与最小 surprise 作为衡量标准，避免在默认路径上引入额外依赖、网络拨测或多主机同步。  
+- 不在提交中带入 secrets、绝对主机路径或特定用户配置。  
 
-- Prefer the standalone `contextmesh` mainline over legacy compatibility paths.
-- Keep the default path local-first, quiet, predictable, and MCP-free.
-- Optimize for recovery, observability, and low operator surprise.
-- No secrets, tokens, or machine-specific absolute paths in commits.
-- New work should land behind canonical entrypoints:
-  - `scripts/context_cli.py`
-  - `scripts/context_daemon.py`
-  - `scripts/context_server.py`
-  - `scripts/context_maintenance.py`
+## 工作流程
+- 所有新工作以 `main`/`master` 分支的 contextmesh 版本为目标，避免回退到 `scripts/legacy`、OpenViking、Aline watch 等历史路径；这些路径仅保留备份状态，无需主动更新。  
+- 改动前请 `git pull` 保持 workspace 与远端对齐，合并完成后通过 `git status` 确认改动范围。  
+- 任何涉及默认入口逻辑的改动（如 `context_cli`、`context_daemon`、`session_index`、`memory_index`）都应附带清晰描述、单元/集成验证命令与观察指标。  
+- 小型修复可以直接提交 PR；跨模块改动建议先开讨论 issue 以协调影响面。  
 
-## Change Strategy
+## 本地验证
+在提交前至少运行下面的命令，确保不破坏默认体验：
 
-- Treat `scripts/legacy/` as archived compatibility code, not the preferred integration surface.
-- Avoid re-introducing direct dependencies on external recall/MCP stacks into the default path.
-- Prefer `CONTEXT_MESH_*` env vars for new configuration. Legacy names may remain only for compatibility.
-- If you touch a hotspot, add or update a benchmark under [`benchmarks/`](/Volumes/AI/GitHub/context-mesh-foundry/benchmarks).
-
-## Local Validation
-
-```bash
+```
 bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py
 python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py
@@ -29,13 +23,16 @@ python3 scripts/e2e_quality_gate.py
 python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
 ```
 
-If you modify daemon, viewer, deploy, or legacy wrappers, also do one real local smoke test against the installed runtime under:
+如改动涉及 daemon、viewer、deploy 或索引相关脚本，还需在本地运行一次真机 smoke test（可通过 `scripts/context_cli.py health` 或 `context_healthcheck.sh`）。  
 
-`/Users/<you>/.local/share/context-mesh-foundry`
+## 代码风格与习惯
+- Shell 脚本遵循 `set -euo pipefail`，优先轻量命令组合，不依赖非标准工具。  
+- Python 优先使用标准库，依赖外部包时需在 `requirements.txt` 中声明并在 CI 中验证。  
+- Rust/Go 代码应保持单一功能模块，先用小型 prototypes 证明后再扩展。  
+- 注释仅用于解释非显而易见的运维或运行时逻辑，逻辑清晰页面尽量让代码自说明。  
+- Benchmarks 放在 `benchmarks/`，调优或热点改动请在同一目录下补齐基线对比。  
 
-## Style
-
-- Shell: POSIX-ish bash, `set -euo pipefail`
-- Python: stdlib first, small targeted dependencies
-- Rust/Go: prefer small, isolated hot-path prototypes before widening scope
-- Comments: only for non-obvious operational logic
+## 贡献前检查清单
+- 确认没引入 secrets / 绝对路径，可使用 `rg` 搜散列关键词（如 `AKIA`、`password`）。  
+- README 与文档同步更新新增环境变量或行为变化。  
+- 若改动会影响 release 流程，通知 release owner 并在 PR 中提及相关健康检查步骤。  

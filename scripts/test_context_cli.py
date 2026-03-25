@@ -122,6 +122,56 @@ class ContextCliTests(unittest.TestCase):
             if str(SCRIPT_DIR.parent) in sys.path:
                 sys.path.remove(str(SCRIPT_DIR.parent))
 
+    def test_configure_viewer_module_prefers_apply_runtime_config(self) -> None:
+        class Viewer:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, int, str]] = []
+
+            def apply_runtime_config(self, host: str, port: int, token: str) -> None:
+                self.calls.append((host, port, token))
+
+        viewer = Viewer()
+        saved = {
+            key: os.environ.get(key)
+            for key in ("CONTEXT_VIEWER_HOST", "CONTEXT_VIEWER_PORT", "CONTEXT_VIEWER_TOKEN")
+        }
+        try:
+            context_cli._configure_viewer_module(viewer, "0.0.0.0", 1234, " secret ")
+            self.assertEqual(viewer.calls, [("0.0.0.0", 1234, "secret")])
+            self.assertEqual(os.environ["CONTEXT_VIEWER_HOST"], "0.0.0.0")
+            self.assertEqual(os.environ["CONTEXT_VIEWER_PORT"], "1234")
+            self.assertEqual(os.environ["CONTEXT_VIEWER_TOKEN"], "secret")
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def test_configure_viewer_module_sets_attrs_without_runtime_config(self) -> None:
+        class Viewer:
+            pass
+
+        viewer = Viewer()
+        saved = {
+            key: os.environ.get(key)
+            for key in ("CONTEXT_VIEWER_HOST", "CONTEXT_VIEWER_PORT", "CONTEXT_VIEWER_TOKEN")
+        }
+        try:
+            context_cli._configure_viewer_module(viewer, "1.2.3.4", 5678, "")
+            self.assertEqual(viewer.HOST, "1.2.3.4")
+            self.assertEqual(viewer.PORT, 5678)
+            self.assertEqual(viewer.VIEWER_TOKEN, "")
+            self.assertEqual(os.environ["CONTEXT_VIEWER_HOST"], "1.2.3.4")
+            self.assertEqual(os.environ["CONTEXT_VIEWER_PORT"], "5678")
+            self.assertFalse(os.environ.get("CONTEXT_VIEWER_TOKEN"))
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
 
 if __name__ == "__main__":
     unittest.main()

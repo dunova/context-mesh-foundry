@@ -1,41 +1,42 @@
-# Context Mesh Foundry 1.0 架构
+# Context Mesh 单体产品架构
 
-## 组件分层
+## 组件概览
 
-1. 采集层。  
-• `context_daemon.py` 是 canonical 入口，默认调度 `viking_daemon.py` 实现。  
-• `viking_daemon.py` 监听终端历史。  
-• 对输入执行脱敏与 `<private>` 区块剔除。  
+1. **采集层**  
+   `scripts/context_daemon.py` 是 canonical 守护入口，默认调度 `scripts/viking_daemon.py` 实现；它负责收集终端会话与 shell 历史，并在写入前完成 `<private>` 过滤与脱敏。
 
-2. 索引层。  
-• `memory_index.py` 将历史 Markdown 归一到 `observations` 索引表。  
-• `session_index.py` 将本机 AI / Shell 会话归一到 `session_index.db`。  
-• 统一输出 ID、时序、详情，支撑三层检索。  
+2. **索引层**  
+   `scripts/session_index.py` 负责会话索引，`scripts/memory_index.py` 负责记忆/观察索引。默认落盘到：
+   - `~/.unified_context_data/index/session_index.db`
+   - `~/.unified_context_data/index/memory_index.db`
 
-3. 检索层。  
-• `context_cli.py` 作为统一入口，承接搜索、导入导出、viewer、maintenance。  
-• `openviking_mcp.py` 仅保留为 legacy wrapper；实际归档实现放在 `scripts/legacy/`。  
-• 默认主链：`session_index.py` 精确检索 + `memory_index.py` 本地记忆检索。  
+3. **检索与服务层**  
+   `scripts/context_cli.py` 是唯一 canonical CLI，承载：
+   - `search`
+   - `semantic`
+   - `save`
+   - `export`
+   - `import`
+   - `serve`
+   - `maintain`
+   - `health`
 
-4. 交互层。  
-• `memory_viewer.py` 提供 `search/timeline/batch` API，但默认由 `context_cli.py serve` 拉起。  
-• SSE 事件流可实时看索引状态。  
+   `scripts/context_server.py` 提供 viewer 服务入口，默认只监听本地回环地址。
 
-5. 运维层。  
-• `context_healthcheck.sh` 巡检进程、端口、日志、权限、索引。  
-• `templates/launchd` 与 `templates/systemd-user` 支持常驻。  
+4. **运维层**  
+   `scripts/context_healthcheck.sh`、`scripts/unified_context_deploy.sh` 以及 `templates/{launchd,systemd-user}` 负责安装、巡检、常驻启动和日志观测。
 
 ## 数据流
 
-1. 会话输入 -> `context_daemon.py`。  
-2. 脱敏/私密过滤 -> 历史文件落盘。  
-3. `memory_index.py` / `session_index.py` 同步索引。  
-4. `context_cli.py` 或 legacy wrapper 调用索引/检索能力。  
-5. 必要时再走 MCP 兼容层或 OpenViking 语义检索。  
+1. 终端/AI 历史由 `context_daemon` 捕获并脱敏。
+2. 原始内容落入本地存储目录。
+3. `session_index` / `memory_index` 在本地文件之上构建时序索引与内容索引。
+4. `context_cli` 在本地索引上执行精确检索、语义补洞、导入导出和健康检查。
+5. 只有用户显式开启远程同步时，才会触发可选外部 HTTP 路径。
 
-## 设计要点
+## 设计原则
 
-1. 先索引后详情，避免一次拉全量文本。  
-2. 统一 ID 语义，便于跨终端追溯。  
-3. 写入前过滤而非读出后过滤，降低泄露面。  
-4. 默认主链无 MCP、无外部 recall 依赖，保证轻量和可移植。  
+- **本地优先**：默认主链不依赖 MCP、Docker 或外部 recall 服务。
+- **统一入口**：用户面集中在 `context_cli` / `context_daemon` / `context_server` / `context_maintenance`。
+- **兼容隔离**：历史兼容实现收敛到 `scripts/legacy/`，不进入默认路径。
+- **渐进提速**：先用 Python 主链稳定交付，再用 benchmark 驱动 Rust/Go 热路径替换。

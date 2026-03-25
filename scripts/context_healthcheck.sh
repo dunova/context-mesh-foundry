@@ -9,7 +9,9 @@ set -u
 
 LOG_DIR="$HOME/.context_system/logs"
 HEALTHCHECK_LOG="$LOG_DIR/healthcheck.log"
-UNIFIED_CONTEXT_STORAGE_ROOT="${UNIFIED_CONTEXT_STORAGE_ROOT:-${OPENVIKING_STORAGE_ROOT:-$HOME/.unified_context_data}}"
+UNIFIED_CONTEXT_STORAGE_ROOT="${UNIFIED_CONTEXT_STORAGE_ROOT:-${CONTEXT_MESH_STORAGE_ROOT:-${OPENVIKING_STORAGE_ROOT:-$HOME/.unified_context_data}}}"
+REMOTE_SYNC_BASE_URL="${CONTEXT_MESH_REMOTE_URL:-${OPENVIKING_URL:-http://127.0.0.1:8090/api/v1}}"
+REMOTE_SYNC_HEALTH_URL="${REMOTE_SYNC_HEALTH_URL:-${REMOTE_SYNC_BASE_URL%/}/health}"
 
 mkdir -p "$LOG_DIR"
 chmod 700 "$LOG_DIR" 2>/dev/null || true
@@ -84,16 +86,16 @@ check_cli_runtime() {
     report_ok "上下文主链路：内置 session index + 本地 context_cli（无 MCP）"
 }
 
-check_openviking_optional() {
+check_remote_sync_probe() {
     local http_status
-    http_status=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8090/health" --max-time 3 2>/dev/null || true)
+    http_status=$(curl -s -o /dev/null -w "%{http_code}" "$REMOTE_SYNC_HEALTH_URL" --max-time 3 2>/dev/null || true)
     http_status="${http_status: -3}"
     [ -z "$http_status" ] && http_status="000"
 
     if [ "$http_status" = "200" ]; then
-        report_ok "openviking 可选探针：HTTP 200"
+        report_ok "Context Mesh 远程同步可选探针：HTTP 200"
     else
-        report_warn "remote sync 可选探针：HTTP ${http_status}（不影响本地主链）"
+        report_warn "Context Mesh 远程同步可选探针：HTTP ${http_status}（不影响本地主链）"
     fi
 }
 
@@ -116,7 +118,7 @@ check_logs_and_pending() {
     if [ -f "$daemon_log" ]; then
         report_ok "daemon 日志大小：$(( $(file_size_bytes "$daemon_log") / 1048576 ))MB"
     elif [ -f "$legacy_daemon_log" ]; then
-        report_warn "检测到旧 daemon 日志名：$legacy_daemon_log"
+        report_warn "检测到旧 daemon 日志名：$legacy_daemon_log（viking_daemon.log）"
     else
         report_warn "daemon 日志不存在（如未启动可忽略）"
     fi
@@ -136,13 +138,13 @@ check_logs_and_pending() {
     fi
 }
 
-check_deep_legacy_runtime() {
+check_legacy_remote_processes() {
     local pids
     pids="$(pgrep -f 'context_daemon.py|viking_daemon.py|openviking_mcp.py|openviking-server' 2>/dev/null || true)"
     if [ -n "$pids" ]; then
-        report_warn "检测到旧 OpenViking/MCP 进程残留：$(echo "$pids" | tr '\n' ' ' | sed 's/  */ /g')"
+        report_warn "检测到遗留 OpenViking/MCP 远程同步进程：$(echo "$pids" | tr '\n' ' ' | sed 's/  */ /g')"
     else
-        report_ok "未检测到旧 OpenViking/MCP 进程残留"
+        report_ok "未检测到遗留 OpenViking/MCP 远程同步进程"
     fi
 }
 
@@ -158,8 +160,8 @@ check_logs_and_pending
 
 if [ "$DEEP_PROBE" = "1" ]; then
     REPORT+="\nOptional Deep Checks:\n"
-    check_openviking_optional
-    check_deep_legacy_runtime
+    check_remote_sync_probe
+    check_legacy_remote_processes
 fi
 
 REPORT+="\n"

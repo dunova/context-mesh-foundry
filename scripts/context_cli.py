@@ -8,6 +8,7 @@ import importlib
 import json
 import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -87,6 +88,24 @@ def _load_memory_viewer():
 
 def _load_context_maintenance():
     return importlib.import_module("context_maintenance")
+
+
+def _configure_viewer_module(module, host: str, port: int, token: str) -> None:
+    token_value = (token or "").strip()
+    os.environ["CONTEXT_VIEWER_HOST"] = host
+    os.environ["CONTEXT_VIEWER_PORT"] = str(port)
+    if token_value:
+        os.environ["CONTEXT_VIEWER_TOKEN"] = token_value
+    else:
+        os.environ.pop("CONTEXT_VIEWER_TOKEN", None)
+
+    if hasattr(module, "apply_runtime_config"):
+        module.apply_runtime_config(host, port, token_value)
+        return
+
+    setattr(module, "HOST", host)
+    setattr(module, "PORT", port)
+    setattr(module, "VIEWER_TOKEN", token_value)
 
 
 def _source_freshness() -> dict:
@@ -236,20 +255,7 @@ def run(args: argparse.Namespace) -> int:
 
     if args.command == "serve":
         viewer_module = _load_memory_viewer()
-        os.environ["CONTEXT_VIEWER_HOST"] = str(args.host)
-        os.environ["CONTEXT_VIEWER_PORT"] = str(args.port)
-        if args.token:
-            os.environ["CONTEXT_VIEWER_TOKEN"] = str(args.token)
-        if hasattr(viewer_module, "apply_runtime_config"):
-            viewer_module.apply_runtime_config(
-                os.environ["CONTEXT_VIEWER_HOST"],
-                int(os.environ["CONTEXT_VIEWER_PORT"]),
-                os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip(),
-            )
-        else:
-            viewer_module.HOST = os.environ["CONTEXT_VIEWER_HOST"]
-            viewer_module.PORT = int(os.environ["CONTEXT_VIEWER_PORT"])
-            viewer_module.VIEWER_TOKEN = os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip()
+        _configure_viewer_module(viewer_module, args.host, args.port, args.token)
         viewer_module.main()
         return 0
 

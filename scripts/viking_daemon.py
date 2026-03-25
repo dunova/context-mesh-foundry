@@ -39,12 +39,16 @@ except Exception:  # pragma: no cover - module import path compatibility
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-OPENVIKING_URL = env_str("CONTEXT_MESH_REMOTE_URL", "OPENVIKING_URL", default="http://127.0.0.1:8090/api/v1")
+# 新配置: 支持 Context Mesh 远程同步别名与兼容旧 OPENVIKING_URL
+REMOTE_SYNC_URL = env_str("CONTEXT_MESH_REMOTE_URL", "OPENVIKING_URL", default="http://127.0.0.1:8090/api/v1")
+OPENVIKING_URL = REMOTE_SYNC_URL
+REMOTE_RESOURCE_ENDPOINT = f"{REMOTE_SYNC_URL.rstrip('/')}/resources"
+REMOTE_HISTORY_TARGET = "context-mesh://resources/shared/history"
 
 # Security: require HTTPS for non-localhost URLs to prevent MITM
-_ov_host = OPENVIKING_URL.split("://", 1)[-1].split("/", 1)[0].split(":")[0]
-if _ov_host not in ("127.0.0.1", "localhost", "::1") and not OPENVIKING_URL.startswith("https://"):
-    print(f"FATAL: Remote OPENVIKING_URL must use https://. Got: {OPENVIKING_URL}", file=sys.stderr)
+_ov_host = REMOTE_SYNC_URL.split("://", 1)[-1].split("/", 1)[0].split(":")[0]
+if _ov_host not in ("127.0.0.1", "localhost", "::1") and not REMOTE_SYNC_URL.startswith("https://"):
+    print(f"FATAL: Remote sync URL must use https://. Got: {REMOTE_SYNC_URL}", file=sys.stderr)
     raise SystemExit(1)
 
 LOCAL_STORAGE_ROOT = storage_root().expanduser()
@@ -1114,24 +1118,24 @@ class SessionTracker:
         if self._http_client:
             payload = {
                 "path": str(file_path),
-                "target": "viking://resources/shared/history",
+                "target": REMOTE_HISTORY_TARGET,
                 "reason": f"Real-time sync of {source} session",
                 "instruction": f"Index real-time completed {source} conversation: {title}",
             }
             try:
                 resp = self._http_client.post(
-                    f"{OPENVIKING_URL}/resources",
+                    REMOTE_RESOURCE_ENDPOINT,
                     json=payload,
                     timeout=EXPORT_HTTP_TIMEOUT_SEC,
                 )
                 if resp.status_code < 300:
                     self._export_count += 1
-                    logger.info("Synced %s session %s to Viking.", source, sid[:12])
+                    logger.info("Synced %s session %s to remote history.", source, sid[:12])
                     self._retry_pending()
                     return True
-                logger.warning("Viking HTTP %d for %s %s", resp.status_code, source, sid[:12])
+                logger.warning("Remote sync HTTP %d for %s %s", resp.status_code, source, sid[:12])
             except Exception as exc:
-                logger.warning("Viking offline, queue pending: %s", exc)
+                logger.warning("Remote sync offline, queue pending: %s", exc)
         elif not ENABLE_REMOTE_SYNC:
             self._export_count += 1
             return True
@@ -1173,12 +1177,12 @@ class SessionTracker:
             try:
                 payload = {
                     "path": str(pf),
-                    "target": "viking://resources/shared/history",
+                    "target": REMOTE_HISTORY_TARGET,
                     "reason": "Retry pending sync",
                     "instruction": f"Index pending conversation: {pf.stem}",
                 }
                 resp = self._http_client.post(
-                    f"{OPENVIKING_URL}/resources",
+                    REMOTE_RESOURCE_ENDPOINT,
                     json=payload,
                     timeout=PENDING_HTTP_TIMEOUT_SEC,
                 )
@@ -1325,7 +1329,7 @@ def main():
         raise SystemExit(1)
     logger.info("Starting Context Mesh daemon")
     logger.info("Remote sync: %s", "on" if ENABLE_REMOTE_SYNC else "off")
-    logger.info("Remote URL: %s", OPENVIKING_URL)
+    logger.info("Remote sync URL: %s", REMOTE_SYNC_URL)
     logger.info("Codex sessions path: %s", CODEX_SESSIONS)
     logger.info("Antigravity brain path: %s", ANTIGRAVITY_BRAIN)
     logger.info(

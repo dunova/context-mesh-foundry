@@ -9,7 +9,7 @@ mkdir -p "$LOG_DIR"
 chmod 700 "$LOG_DIR" >/dev/null 2>&1 || true
 
 {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S %z')] context maintenance start"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %z')] Context Mesh maintenance start"
   python3 "$SCRIPT_DIR/context_cli.py" maintain --repair-queue --enqueue-missing --max-enqueue 500
-  echo "[$(date '+%Y-%m-%d %H:%M:%S %z')] context maintenance done"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %z')] Context Mesh maintenance done"
 } >>"$LOG_FILE" 2>&1

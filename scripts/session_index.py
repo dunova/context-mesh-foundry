@@ -315,13 +315,13 @@ def _iter_sources() -> list[tuple[str, Path]]:
     cached_items = _SOURCE_CACHE.get("items") or []
     current_home = str(_home())
     cached_home = _SOURCE_CACHE.get("home")
-    if (
+    cache_valid = (
         SOURCE_CACHE_TTL_SEC > 0
         and _SOURCE_CACHE.get("expires_at", 0.0) > now
         and cached_items
         and cached_home == current_home
-        and all(Path(path).exists() for _, path in cached_items)
-    ):
+    )
+    if cache_valid:
         return list(cached_items)
 
     home = Path(current_home)
@@ -446,7 +446,10 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
             scanned += 1
             file_path = str(path)
             seen_paths.add(file_path)
-            stat = path.stat()
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
             row = conn.execute(
                 "SELECT file_mtime, file_size FROM session_documents WHERE file_path = ?",
                 (file_path,),

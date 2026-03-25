@@ -18,6 +18,10 @@ CONTEXT_CLI = SCRIPTS_DIR / "context_cli.py"
 QUERY = os.environ.get("CMF_BENCH_QUERY", "NotebookLM")
 ITERATIONS = max(1, int(os.environ.get("CMF_BENCH_ITERATIONS", "5")))
 SEARCH_LIMIT = max(1, int(os.environ.get("CMF_BENCH_SEARCH_LIMIT", "5")))
+SOURCE_CACHE_TTL = os.environ.get("CMF_SOURCE_CACHE_TTL_SEC")
+if SOURCE_CACHE_TTL is None:
+    SOURCE_CACHE_TTL = "60"
+os.environ.setdefault("CONTEXT_MESH_SOURCE_CACHE_TTL_SEC", SOURCE_CACHE_TTL)
 
 
 def run_cmd(args: list[str]) -> tuple[int, str, str, float]:
@@ -91,6 +95,7 @@ def main() -> int:
     results = {
         "query": QUERY,
         "iterations": ITERATIONS,
+        "source_cache_ttl_sec": int(os.environ.get("CONTEXT_MESH_SOURCE_CACHE_TTL_SEC", "0")),
         "benchmarks": [
             bench_health(),
             bench_search(),
