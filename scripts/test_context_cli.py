@@ -8,6 +8,7 @@ from unittest import mock
 import sys
 import json
 import os
+import importlib
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -109,6 +110,15 @@ class ContextCliTests(unittest.TestCase):
         self.assertIn("--repair-queue", forwarded)
         self.assertIn("--enqueue-missing", forwarded)
         self.assertIn("--dry-run", forwarded)
+
+    def test_package_import_context_cli(self) -> None:
+        sys.path.insert(0, str(SCRIPT_DIR.parent))
+        try:
+            mod = importlib.import_module("scripts.context_cli")
+            self.assertTrue(callable(mod.main))
+        finally:
+            if str(SCRIPT_DIR.parent) in sys.path:
+                sys.path.remove(str(SCRIPT_DIR.parent))
 
 
 if __name__ == "__main__":

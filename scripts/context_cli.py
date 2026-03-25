@@ -32,20 +32,6 @@ LOCAL_SCAN_MAX_FILES = env_int("CONTEXT_CLI_LOCAL_SCAN_MAX_FILES", "CONTEXT_MESH
 LOCAL_SCAN_READ_BYTES = env_int("CONTEXT_CLI_LOCAL_SCAN_READ_BYTES", "CONTEXT_MESH_LOCAL_SCAN_READ_BYTES", default=120000, minimum=4096)
 ENABLE_OPENVIKING_HTTP = env_bool("CONTEXT_MESH_ENABLE_REMOTE_MEMORY_HTTP", "CONTEXT_CLI_ENABLE_OPENVIKING_HTTP", default=False)
 OPENVIKING_URL = env_str("CONTEXT_MESH_REMOTE_URL", "OPENVIKING_URL", default="http://127.0.0.1:8090/api/v1")
-
-
-def _safe_mtime(path: Path) -> float:
-    return context_core.safe_mtime(path)
-
-
-def _iter_local_shared_files() -> list[Path]:
-    return context_core.iter_shared_files(LOCAL_SHARED_ROOT, LOCAL_SCAN_MAX_FILES)
-
-
-def _compact_text(text: str) -> str:
-    return context_core.compact_text(text)
-
-
 def _local_memory_matches(query: str, limit: int = 3) -> list[dict]:
     return context_core.local_memory_matches(
         query,
@@ -106,7 +92,7 @@ def _load_context_maintenance():
 def _source_freshness() -> dict:
     antigravity_candidates = sorted(
         (HOME / ".gemini" / "antigravity" / "brain").glob("*/walkthrough.md"),
-        key=_safe_mtime,
+        key=context_core.safe_mtime,
         reverse=True,
     )
     sources = {
@@ -125,7 +111,7 @@ def _source_freshness() -> dict:
         payload[name] = {
             "exists": p.exists(),
             "path": str(p),
-            "mtime": datetime.fromtimestamp(_safe_mtime(p)).isoformat() if p.exists() else None,
+            "mtime": datetime.fromtimestamp(context_core.safe_mtime(p)).isoformat() if p.exists() else None,
         }
     return payload
 
@@ -249,19 +235,19 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     if args.command == "serve":
-        memory_viewer = _load_memory_viewer()
+        viewer_module = _load_memory_viewer()
         os.environ["CONTEXT_VIEWER_HOST"] = str(args.host)
         os.environ["CONTEXT_VIEWER_PORT"] = str(args.port)
         if args.token:
             os.environ["CONTEXT_VIEWER_TOKEN"] = str(args.token)
-        memory_viewer.HOST = os.environ["CONTEXT_VIEWER_HOST"]
-        memory_viewer.PORT = int(os.environ["CONTEXT_VIEWER_PORT"])
-        memory_viewer.VIEWER_TOKEN = os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip()
-        memory_viewer.main()
+        viewer_module.HOST = os.environ["CONTEXT_VIEWER_HOST"]
+        viewer_module.PORT = int(os.environ["CONTEXT_VIEWER_PORT"])
+        viewer_module.VIEWER_TOKEN = os.environ.get("CONTEXT_VIEWER_TOKEN", "").strip()
+        viewer_module.main()
         return 0
 
     if args.command in {"maintain", "onecontext-maintain"}:
-        context_maintenance = _load_context_maintenance()
+        maintenance_module = _load_context_maintenance()
         forwarded = [
             "--db",
             args.db,
@@ -282,7 +268,7 @@ def run(args: argparse.Namespace) -> int:
             forwarded.append("--enqueue-missing")
         if args.dry_run:
             forwarded.append("--dry-run")
-        return context_maintenance.main(forwarded)
+        return maintenance_module.main(forwarded)
 
     if args.command == "health":
         recall_payload = session_index.health_payload()
