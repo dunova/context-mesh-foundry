@@ -17,12 +17,6 @@ import context_cli
 
 
 class ContextCliTests(unittest.TestCase):
-    def test_parse_health_payload_skips_prefix(self) -> None:
-        raw = 'Indexed 3 sessions in 0.5s\n{"recall_db_exists": true, "total_sessions": 1}'
-        payload = context_cli._parse_health_payload(raw)
-        self.assertTrue(payload["recall_db_exists"])
-        self.assertEqual(payload["total_sessions"], 1)
-
     def test_save_then_local_match_immediate_readback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "resources" / "shared"
@@ -40,13 +34,13 @@ class ContextCliTests(unittest.TestCase):
                         self.assertEqual(len(matches), 1)
                         self.assertEqual(matches[0]["matched_in"], "content")
 
-    def test_semantic_falls_back_to_recall_content(self) -> None:
+    def test_semantic_falls_back_to_session_index(self) -> None:
         args = context_cli.build_parser().parse_args(["semantic", "foo", "--limit", "2"])
         with mock.patch.object(context_cli, "_local_memory_matches", return_value=[]):
             with mock.patch.object(
-                context_cli,
-                "_run_recall",
-                return_value=(0, "Found 1 sessions\nSession: abc", ""),
+                context_cli.session_index,
+                "format_search_results",
+                return_value="Found 1 sessions\nSession: abc",
             ):
                 with mock.patch("builtins.print") as mock_print:
                     rc = context_cli.run(args)
@@ -102,13 +96,13 @@ class ContextCliTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         viewer.main.assert_called_once()
 
-    def test_onecontext_maintain_subcommand_delegates(self) -> None:
+    def test_maintain_subcommand_delegates(self) -> None:
         args = context_cli.build_parser().parse_args(
-            ["onecontext-maintain", "--repair-queue", "--enqueue-missing", "--dry-run"]
+            ["maintain", "--repair-queue", "--enqueue-missing", "--dry-run"]
         )
         maintenance = mock.Mock()
         maintenance.main.return_value = 0
-        with mock.patch.object(context_cli, "_load_onecontext_maintenance", return_value=maintenance):
+        with mock.patch.object(context_cli, "_load_context_maintenance", return_value=maintenance):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         forwarded = maintenance.main.call_args.args[0]

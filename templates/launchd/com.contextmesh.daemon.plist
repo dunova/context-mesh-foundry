@@ -2,12 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.openviking.daemon</string>
+  <key>Label</key><string>com.contextmesh.daemon</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>VIKING_ENABLE_SHELL_MONITOR</key><string>0</string>
     <key>VIKING_ENABLE_OPENCODE_MONITOR</key><string>0</string>
     <key>VIKING_ENABLE_KILO_MONITOR</key><string>0</string>
+    <key>VIKING_ENABLE_REMOTE_SYNC</key><string>0</string>
     <key>VIKING_POLL_INTERVAL_SEC</key><string>180</string>
     <key>VIKING_FAST_POLL_INTERVAL_SEC</key><string>20</string>
     <key>VIKING_IDLE_SLEEP_CAP_SEC</key><string>600</string>
@@ -28,12 +29,12 @@
   <array>
     <string>/usr/bin/env</string>
     <string>python3</string>
-    <string>__SCRIPTS_DIR__/viking_daemon.py</string>
+    <string>__SCRIPTS_DIR__/context_daemon.py</string>
   </array>
   <key>WorkingDirectory</key><string>__SCRIPTS_DIR__</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>__LOG_DIR__/viking_daemon_launchd.log</string>
-  <key>StandardErrorPath</key><string>__LOG_DIR__/viking_daemon_launchd.err</string>
+  <key>StandardOutPath</key><string>__LOG_DIR__/context_daemon_launchd.log</string>
+  <key>StandardErrorPath</key><string>__LOG_DIR__/context_daemon_launchd.err</string>
 </dict>
 </plist>

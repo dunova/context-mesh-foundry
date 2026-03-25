@@ -3,23 +3,13 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
 
-HOME = Path.home()
-DEFAULT_RECALL_CANDIDATES = [
-    HOME / ".agents" / "skills" / "recall" / "scripts" / "recall.py",
-    HOME / ".codex" / "skills" / "recall" / "scripts" / "recall.py",
-    HOME / ".claude" / "skills" / "recall" / "scripts" / "recall.py",
-    HOME / "skills-repo" / "recall" / "scripts" / "recall.py",
-]
 TEXT_FILE_SUFFIXES = {".md", ".txt", ".json", ".jsonl", ".log"}
 
 
@@ -28,69 +18,6 @@ def safe_mtime(path: Path | str) -> float:
         return Path(path).stat().st_mtime
     except Exception:
         return 0.0
-
-
-def resolve_recall_script(candidates: Iterable[Path | str] | None = None) -> Path | None:
-    for candidate in candidates or DEFAULT_RECALL_CANDIDATES:
-        path = Path(candidate).expanduser()
-        if path.exists():
-            return path
-    return None
-
-
-def run_recall(
-    *,
-    query: str | None = None,
-    search_type: str = "all",
-    limit: int = 10,
-    literal: bool = False,
-    health: bool = False,
-    timeout_sec: int = 20,
-    recall_candidates: Iterable[Path | str] | None = None,
-) -> tuple[int, str, str]:
-    recall_script = resolve_recall_script(recall_candidates)
-    if not recall_script:
-        return 1, "", "recall.py not found"
-
-    cmd = [sys.executable, str(recall_script)]
-    if health:
-        cmd.append("--health")
-    else:
-        cmd.extend(
-            [
-                query or "",
-                "--backend",
-                "hybrid",
-                "--type",
-                search_type,
-                "--limit",
-                str(limit),
-            ]
-        )
-        if literal:
-            cmd.append("--no-regex")
-
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=max(3, int(timeout_sec)),
-    )
-    return proc.returncode, proc.stdout or "", proc.stderr or ""
-
-
-def parse_health_payload(raw: str) -> dict[str, Any]:
-    text = (raw or "").strip()
-    if not text:
-        return {}
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end < start:
-        return {}
-    try:
-        return json.loads(text[start : end + 1])
-    except Exception:
-        return {}
 
 
 def compact_text(text: str) -> str:

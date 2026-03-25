@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# Context Lite Health Check (standalone local index)
+# Context Mesh Health Check (standalone local index)
 # Default mode is non-intrusive and low-overhead.
-# --deep enables optional legacy/openviking probes.
+# --deep enables optional legacy/remote probes.
 # =============================================================================
 
 set -u
@@ -37,28 +37,28 @@ file_size_bytes() {
     stat -f%z "$p" 2>/dev/null || stat -c%s "$p" 2>/dev/null || echo 0
 }
 
-check_launchd_recall_lite() {
+check_launchd_runtime() {
     local uid_num state
     uid_num="$(id -u)"
     if ! command -v launchctl >/dev/null 2>&1; then
-        report_warn "launchctl 不可用，跳过 recall-lite 服务检查"
+        report_warn "launchctl 不可用，跳过 LaunchAgent 检查"
         return 0
     fi
 
-    state=$(launchctl print "gui/${uid_num}/com.context.recall-lite" 2>/dev/null | awk -F'= ' '/^[[:space:]]*state = / {print $2; exit}')
+    state=$(launchctl print "gui/${uid_num}/com.contextmesh.daemon" 2>/dev/null | awk -F'= ' '/^[[:space:]]*state = / {print $2; exit}')
     if [ -z "$state" ]; then
-        report_fail "launchd com.context.recall-lite 未加载"
+        report_warn "launchd com.contextmesh.daemon 未加载"
         return 0
     fi
 
     if [ "$state" = "running" ] || [ "$state" = "spawn scheduled" ] || [ "$state" = "not running" ]; then
-        report_ok "launchd com.context.recall-lite 已加载（state=${state}）"
+        report_ok "launchd com.contextmesh.daemon 已加载（state=${state}）"
     else
-        report_warn "launchd com.context.recall-lite state=$state"
+        report_warn "launchd com.contextmesh.daemon state=$state"
     fi
 }
 
-check_recall_runtime() {
+check_cli_runtime() {
     local cli_script out
 
     cli_script="${CONTEXT_CLI_SCRIPT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/context_cli.py}"
@@ -93,7 +93,7 @@ check_openviking_optional() {
     if [ "$http_status" = "200" ]; then
         report_ok "openviking 可选探针：HTTP 200"
     else
-        report_warn "openviking 可选探针：HTTP ${http_status}（不影响 recall-lite 主链路）"
+        report_warn "remote sync 可选探针：HTTP ${http_status}（不影响本地主链）"
     fi
 }
 
@@ -108,20 +108,20 @@ check_stale_claude_hooks() {
 }
 
 check_logs_and_pending() {
-    local viking_log recall_log pending_dir pending_count
-    viking_log="$LOG_DIR/viking_daemon.log"
-    recall_log="$LOG_DIR/recall_lite.log"
+    local daemon_log health_log pending_dir pending_count
+    daemon_log="$LOG_DIR/viking_daemon.log"
+    health_log="$LOG_DIR/healthcheck.log"
 
-    if [ -f "$viking_log" ]; then
-        report_ok "viking_daemon 日志大小：$(( $(file_size_bytes "$viking_log") / 1048576 ))MB"
+    if [ -f "$daemon_log" ]; then
+        report_ok "daemon 日志大小：$(( $(file_size_bytes "$daemon_log") / 1048576 ))MB"
     else
-        report_warn "viking_daemon 日志不存在（如已停用可忽略）"
+        report_warn "daemon 日志不存在（如未启动可忽略）"
     fi
 
-    if [ -f "$recall_log" ]; then
-        report_ok "recall_lite 日志大小：$(( $(file_size_bytes "$recall_log") / 1048576 ))MB"
+    if [ -f "$health_log" ]; then
+        report_ok "healthcheck 日志大小：$(( $(file_size_bytes "$health_log") / 1048576 ))MB"
     else
-        report_warn "recall_lite 日志不存在"
+        report_warn "healthcheck 日志不存在"
     fi
 
     pending_dir="$UNIFIED_CONTEXT_STORAGE_ROOT/resources/shared/history/.pending"
@@ -135,7 +135,7 @@ check_logs_and_pending() {
 
 check_deep_legacy_runtime() {
     local pids
-    pids="$(pgrep -f 'viking_daemon.py|openviking_mcp.py|openviking-server' 2>/dev/null || true)"
+    pids="$(pgrep -f 'context_daemon.py|viking_daemon.py|openviking_mcp.py|openviking-server' 2>/dev/null || true)"
     if [ -n "$pids" ]; then
         report_warn "检测到旧 OpenViking/MCP 进程残留：$(echo "$pids" | tr '\n' ' ' | sed 's/  */ /g')"
     else
@@ -143,11 +143,11 @@ check_deep_legacy_runtime() {
     fi
 }
 
-REPORT+="[$TS] Context Lite Health Check\n"
+REPORT+="[$TS] Context Mesh Health Check\n"
 REPORT+="─────────────────────────────────\n"
 REPORT+="Core:\n"
-check_launchd_recall_lite
-check_recall_runtime
+check_launchd_runtime
+check_cli_runtime
 check_stale_claude_hooks
 
 REPORT+="\nStorage/Logs:\n"
@@ -161,9 +161,9 @@ fi
 
 REPORT+="\n"
 if [ "$STATUS" -eq 0 ]; then
-    REPORT+="🟢 Context Lite checks passed.\n"
+    REPORT+="🟢 Context Mesh checks passed.\n"
 else
-    REPORT+="🔴 Context Lite issues detected.\n"
+    REPORT+="🔴 Context Mesh issues detected.\n"
 fi
 REPORT+="─────────────────────────────────\n\n"
 

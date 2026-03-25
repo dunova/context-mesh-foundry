@@ -28,12 +28,5 @@ class ContextCoreTests(unittest.TestCase):
             self.assertEqual(len(matches), 1)
             self.assertEqual(matches[0]["matched_in"], "content")
 
-    def test_parse_health_payload_extracts_json_suffix(self) -> None:
-        raw = 'Indexed 7 sessions in 0.5s\n{"recall_db_exists": true, "total_sessions": 9}'
-        payload = context_core.parse_health_payload(raw)
-        self.assertTrue(payload["recall_db_exists"])
-        self.assertEqual(payload["total_sessions"], 9)
-
-
 if __name__ == "__main__":
     unittest.main()

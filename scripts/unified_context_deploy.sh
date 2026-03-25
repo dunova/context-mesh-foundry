@@ -5,26 +5,11 @@ umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 HOME_DIR="${HOME:-$(cd ~ && pwd)}"
-CANON_OV="${CANON_OV_ROOT:-$REPO_ROOT}"
-GSD_CANON_ROOT="${GSD_CANON_ROOT:-}"
-CLAUDE_GSD_LINK="${CLAUDE_GSD_LINK:-$HOME_DIR/.claude/get-shit-done}"
+INSTALL_ROOT="${CMF_INSTALL_ROOT:-$HOME_DIR/.local/share/context-mesh-foundry}"
 UNIFIED_CONTEXT_STORAGE_ROOT="${UNIFIED_CONTEXT_STORAGE_ROOT:-${OPENVIKING_STORAGE_ROOT:-$HOME_DIR/.unified_context_data}}"
 PATCH_LAUNCHD="${PATCH_LAUNCHD:-1}"
 RELOAD_LAUNCHD="${RELOAD_LAUNCHD:-1}"
 APPLY_CONTEXT_POLICY="${APPLY_CONTEXT_POLICY:-1}"
-
-OV_SCRIPT_TARGETS=(
-  "$HOME_DIR/.codex/skills/openviking-memory-sync/scripts"
-  "$HOME_DIR/.claude/skills/openviking-memory-sync/scripts"
-  "$HOME_DIR/.gemini/antigravity/skills/openviking-memory-sync/scripts"
-  "$HOME_DIR/.agents/skills/openviking-memory-sync/scripts"
-)
-
-GSD_RUNTIME_TARGETS=(
-  "$HOME_DIR/.claude/skills/gsd-v1"
-  "$HOME_DIR/.gemini/antigravity/skills/gsd-v1"
-  "$HOME_DIR/.agents/skills/gsd-v1"
-)
 
 log() { echo "[deploy] $*"; }
 
@@ -49,67 +34,19 @@ sync_dir() {
   log "synced: $src -> $dst"
 }
 
-sync_file_if_parent_exists() {
-  local src="$1" dst="$2"
-  local parent
-  parent="$(dirname "$dst")"
-  if [ -d "$parent" ]; then
-    mkdir -p "$parent"
-    cp "$src" "$dst"
-    log "synced file: $src -> $dst"
-  else
-    log "skip (missing parent): $parent"
-  fi
-}
-
 log "unified context deploy start"
-require_dir "$CANON_OV"
-require_dir "$CANON_OV/scripts"
+require_dir "$REPO_ROOT"
+require_dir "$REPO_ROOT/scripts"
+require_dir "$REPO_ROOT/templates"
 
 mkdir -p "$UNIFIED_CONTEXT_STORAGE_ROOT"
 chmod 700 "$UNIFIED_CONTEXT_STORAGE_ROOT" >/dev/null 2>&1 || true
 mkdir -p "$HOME_DIR/.context_system/logs"
 chmod 700 "$HOME_DIR/.context_system" "$HOME_DIR/.context_system/logs" >/dev/null 2>&1 || true
 
-for dst in "${OV_SCRIPT_TARGETS[@]}"; do
-  if [ -d "$(dirname "$dst")" ]; then
-    sync_dir "$CANON_OV/scripts" "$dst"
-  else
-    log "skip (missing parent): $(dirname "$dst")"
-  fi
-done
-
-if [ -n "$GSD_CANON_ROOT" ] && [ -d "$GSD_CANON_ROOT" ]; then
-  mkdir -p "$HOME_DIR/.claude"
-  if [ -L "$CLAUDE_GSD_LINK" ] || [ ! -e "$CLAUDE_GSD_LINK" ]; then
-    ln -sfn "$GSD_CANON_ROOT" "$CLAUDE_GSD_LINK"
-    log "linked: $CLAUDE_GSD_LINK -> $GSD_CANON_ROOT"
-  else
-    log "warning: $CLAUDE_GSD_LINK exists and is not a symlink; keeping as-is"
-  fi
-
-  for t in "${GSD_RUNTIME_TARGETS[@]}"; do
-    if [ -d "$(dirname "$t")" ]; then
-      [ -d "$GSD_CANON_ROOT/bin" ] && sync_dir "$GSD_CANON_ROOT/bin" "$t/bin"
-      [ -d "$GSD_CANON_ROOT/references" ] && sync_dir "$GSD_CANON_ROOT/references" "$t/references"
-    else
-      log "skip (missing parent): $(dirname "$t")"
-    fi
-  done
-else
-  log "GSD runtime sync skipped (set GSD_CANON_ROOT to enable)"
-fi
-
-if [ -f "$REPO_ROOT/integrations/gsd/workflows/health.md" ]; then
-  for wf_target in \
-    "$HOME_DIR/.claude/skills/gsd-v1/workflows/health.md" \
-    "$HOME_DIR/.gemini/antigravity/skills/gsd-v1/workflows/health.md" \
-    "$HOME_DIR/.agents/skills/gsd-v1/workflows/health.md" \
-    "$HOME_DIR/.codex/skills/gsd-v1/workflows/health.md"
-  do
-    sync_file_if_parent_exists "$REPO_ROOT/integrations/gsd/workflows/health.md" "$wf_target"
-  done
-fi
+sync_dir "$REPO_ROOT/scripts" "$INSTALL_ROOT/scripts"
+sync_dir "$REPO_ROOT/templates" "$INSTALL_ROOT/templates"
+log "installed canonical runtime at: $INSTALL_ROOT"
 
 if [ "$APPLY_CONTEXT_POLICY" = "1" ] && [ -f "$REPO_ROOT/scripts/apply_context_first_policy.sh" ]; then
   log "applying context-first policy to terminal entry files"
@@ -117,8 +54,7 @@ if [ "$APPLY_CONTEXT_POLICY" = "1" ] && [ -f "$REPO_ROOT/scripts/apply_context_f
 fi
 
 if [ "$PATCH_LAUNCHD" = "1" ] && command -v launchctl >/dev/null 2>&1; then
-export CANON_OV_ROOT="$CANON_OV"
-export CANON_OV_SCRIPTS_ROOT="$CANON_OV/scripts"
+export CMF_INSTALL_ROOT="$INSTALL_ROOT"
 export UNIFIED_CONTEXT_STORAGE_ROOT
 python3 - <<'PY'
 import plistlib
@@ -129,7 +65,10 @@ import shutil
 
 home = Path.home()
 launch = home / 'Library' / 'LaunchAgents'
-script_dir = Path(os.environ['CANON_OV_SCRIPTS_ROOT'])
+install_root = Path(os.environ['CMF_INSTALL_ROOT'])
+script_dir = install_root / 'scripts'
+template_dir = install_root / 'templates' / 'launchd'
+launch.mkdir(parents=True, exist_ok=True)
 
 # Resolve python3 path dynamically instead of hardcoding a brew-specific path
 _python3_bin = shutil.which('python3')
@@ -141,19 +80,22 @@ for _candidate in ['/opt/homebrew/opt/python@3.13/libexec/bin/python3',
         break
 
 if _python3_bin:
-    _daemon_program_args = [_python3_bin, str(script_dir / 'viking_daemon.py')]
+    _daemon_program_args = [_python3_bin, str(script_dir / 'context_daemon.py')]
 else:
-    _daemon_program_args = ['/usr/bin/env', 'python3', str(script_dir / 'viking_daemon.py')]
+    _daemon_program_args = ['/usr/bin/env', 'python3', str(script_dir / 'context_daemon.py')]
 
 patches = [
     (
-        launch / 'com.openviking.daemon.plist',
+        template_dir / 'com.contextmesh.daemon.plist',
+        launch / 'com.contextmesh.daemon.plist',
         _daemon_program_args,
         str(script_dir),
         {
+            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
             'VIKING_ENABLE_SHELL_MONITOR': '0',
             'VIKING_ENABLE_OPENCODE_MONITOR': '0',
             'VIKING_ENABLE_KILO_MONITOR': '0',
+            'VIKING_ENABLE_REMOTE_SYNC': '0',
             'VIKING_POLL_INTERVAL_SEC': '180',
             'VIKING_FAST_POLL_INTERVAL_SEC': '20',
             'VIKING_IDLE_SLEEP_CAP_SEC': '600',
@@ -172,34 +114,25 @@ patches = [
         },
     ),
     (
-        launch / 'com.openviking.server.plist',
-        ['/bin/bash', str(script_dir / 'start_openviking.sh')],
-        str(script_dir),
-        {
-            'OPENVIKING_SKIP_PIP': '1',
-            'OPENVIKING_ALLOW_NAS_GENERATOR': '0',
-            'OPENVIKING_PORT_WAIT_SEC': '30',
-            'OPENVIKING_GENERATOR_TIMEOUT_SEC': '15',
-            'OPENVIKING_CONFIG_GENERATOR': '',
-            'LITELLM_LOCAL_MODEL_COST_MAP': 'True',
-            'UNIFIED_CONTEXT_STORAGE_ROOT': os.environ.get('UNIFIED_CONTEXT_STORAGE_ROOT', str(home / '.unified_context_data')),
-        },
-    ),
-    (
-        launch / 'com.context.healthcheck.plist',
+        template_dir / 'com.contextmesh.healthcheck.plist',
+        launch / 'com.contextmesh.healthcheck.plist',
         ['/bin/bash', str(script_dir / 'context_healthcheck.sh'), '--quiet'],
         None,
         {
             'UNIFIED_CONTEXT_STORAGE_ROOT': os.environ.get('UNIFIED_CONTEXT_STORAGE_ROOT', str(home / '.unified_context_data')),
-            'RECALL_SCRIPT': str(home / '.agents' / 'skills' / 'recall' / 'scripts' / 'recall.py'),
         },
     ),
 ]
 
-for plist_path, args, wd, extra_env in patches:
-    if not plist_path.exists():
-        print(f"[deploy] skip missing plist: {plist_path}")
+for template_path, plist_path, args, wd, extra_env in patches:
+    if not template_path.exists():
+        print(f"[deploy] skip missing template: {template_path}")
         continue
+    raw = template_path.read_text(encoding='utf-8')
+    raw = raw.replace('__SCRIPTS_DIR__', str(script_dir))
+    raw = raw.replace('__LOG_DIR__', str(home / '.context_system' / 'logs'))
+    raw = raw.replace('__HOME__', str(home))
+    plist_path.write_text(raw, encoding='utf-8')
     with plist_path.open('rb') as f:
         data = plistlib.load(f)
     data['ProgramArguments'] = args
@@ -222,7 +155,7 @@ import subprocess, time, urllib.request
 from pathlib import Path
 home = Path.home()
 uid_num = "${UID_NUM}"
-labels = ["com.openviking.server", "com.openviking.daemon", "com.context.healthcheck"]
+labels = ["com.contextmesh.daemon", "com.contextmesh.healthcheck"]
 
 
 def run(cmd, timeout=8):
@@ -265,14 +198,11 @@ for label in labels:
         raise SystemExit(1)
     run(['launchctl', 'kickstart', f'gui/{uid_num}/{label}'], timeout=5)
     print(f'[deploy] reloaded launchd: {label}')
-    if label == 'com.openviking.server' and not wait_http_200('http://127.0.0.1:8090/health'):
-        print('[deploy] ERROR: openviking server health check did not reach HTTP 200')
-        raise SystemExit(1)
-    if label == 'com.openviking.daemon' and not wait_process('viking_daemon.py'):
-        print('[deploy] ERROR: viking_daemon.py not detected after reload')
+    if label == 'com.contextmesh.daemon' and not wait_process('context_daemon.py|viking_daemon.py'):
+        print('[deploy] ERROR: context daemon not detected after reload')
         raise SystemExit(1)
 PY
 fi
 
-bash "$CANON_OV/scripts/context_healthcheck.sh" --quiet || true
+bash "$INSTALL_ROOT/scripts/context_healthcheck.sh" --quiet || true
 log "unified context deploy done"

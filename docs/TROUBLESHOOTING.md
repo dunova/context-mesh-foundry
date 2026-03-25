@@ -7,7 +7,7 @@ This document summarizes known issues, integration blind spots, and troubleshoot
 ## 1. OpenViking Server Crash Loop (`litellm` Dependency)
 
 **Symptom:**
-`com.openviking.server` (or equivalent systemd service) is stuck in a crash loop (`spawn scheduled`).
+legacy remote-sync service (for example an old OpenViking launchd/systemd unit) is stuck in a crash loop (`spawn scheduled`).
 Logs indicate:
 ```text
 ModuleNotFoundError: No module named 'litellm.llms.base_llm.skills'

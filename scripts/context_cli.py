@@ -41,25 +41,6 @@ def _safe_mtime(path: Path) -> float:
     return context_core.safe_mtime(path)
 
 
-def _resolve_recall_script() -> Path | None:
-    return None
-
-
-def _run_recall(
-    *,
-    query: str | None = None,
-    search_type: str = "all",
-    limit: int = 10,
-    literal: bool = False,
-    health: bool = False,
-) -> tuple[int, str, str]:
-    return 1, "", "external recall disabled in unified mode"
-
-
-def _parse_health_payload(raw: str) -> dict:
-    return context_core.parse_health_payload(raw)
-
-
 def _iter_local_shared_files() -> list[Path]:
     return context_core.iter_shared_files(LOCAL_SHARED_ROOT, LOCAL_SCAN_MAX_FILES)
 
@@ -118,11 +99,11 @@ def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
 
 
 def _load_memory_viewer():
-    return importlib.import_module("memory_viewer")
+    return importlib.import_module("context_server")
 
 
-def _load_onecontext_maintenance():
-    return importlib.import_module("onecontext_maintenance")
+def _load_context_maintenance():
+    return importlib.import_module("context_maintenance")
 
 
 def _source_freshness() -> dict:
@@ -152,7 +133,7 @@ def _source_freshness() -> dict:
     return payload
 
 
-def _openviking_process_count() -> int:
+def _legacy_bridge_process_count() -> int:
     try:
         proc = subprocess.run(
             ["pgrep", "-f", "openviking_mcp.py"],
@@ -199,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=int(os.environ.get("CONTEXT_VIEWER_PORT", "37677")))
     serve.add_argument("--token", default=os.environ.get("CONTEXT_VIEWER_TOKEN", ""))
 
-    maintain = sub.add_parser("onecontext-maintain", help="Run OneContext maintenance workflow")
+    maintain = sub.add_parser("maintain", aliases=["onecontext-maintain"], help="Run local maintenance workflow")
     maintain.add_argument("--db", default="~/.aline/db/aline.db")
     maintain.add_argument("--codex-root", default="~/.codex/sessions")
     maintain.add_argument("--claude-root", default="~/.claude/projects")
@@ -232,17 +213,16 @@ def run(args: argparse.Namespace) -> int:
             for item in matches:
                 print(json.dumps(item, ensure_ascii=False, indent=2))
             return 0
-        rc, out, err = _run_recall(
-            query=args.query,
+        text = session_index.format_search_results(
+            args.query,
             search_type="content",
             limit=min(args.limit, 10),
             literal=True,
         )
-        text = out.strip() or err.strip()
         if text:
             print("--- HISTORY CONTENT FALLBACK ---")
             print(text)
-        return 0 if rc == 0 else 1
+        return 0 if not text.startswith("No matches found") else 1
 
     if args.command == "save":
         tags = [t.strip() for t in args.tags.split(",") if t.strip()]
@@ -283,8 +263,8 @@ def run(args: argparse.Namespace) -> int:
         memory_viewer.main()
         return 0
 
-    if args.command == "onecontext-maintain":
-        onecontext_maintenance = _load_onecontext_maintenance()
+    if args.command in {"maintain", "onecontext-maintain"}:
+        context_maintenance = _load_context_maintenance()
         forwarded = [
             "--db",
             args.db,
@@ -305,7 +285,7 @@ def run(args: argparse.Namespace) -> int:
             forwarded.append("--enqueue-missing")
         if args.dry_run:
             forwarded.append("--dry-run")
-        return onecontext_maintenance.main(forwarded)
+        return context_maintenance.main(forwarded)
 
     if args.command == "health":
         recall_payload = session_index.health_payload()
@@ -322,10 +302,10 @@ def run(args: argparse.Namespace) -> int:
                 "exists": LOCAL_SHARED_ROOT.exists(),
                 "path": str(LOCAL_SHARED_ROOT),
             },
-            "openviking_policy": {
+            "remote_sync_policy": {
                 "enabled": ENABLE_OPENVIKING_HTTP,
                 "mode": "optional-http" if ENABLE_OPENVIKING_HTTP else "disabled-by-policy",
-                "legacy_mcp_processes": _openviking_process_count(),
+                "legacy_bridge_processes": _legacy_bridge_process_count(),
             },
             "all_ok": bool(recall_payload.get("session_index_db_exists")),
         }

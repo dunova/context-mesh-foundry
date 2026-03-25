@@ -3,6 +3,7 @@
 ## 组件分层
 
 1. 采集层。  
+• `context_daemon.py` 是 canonical 入口，默认调度 `viking_daemon.py` 实现。  
 • `viking_daemon.py` 监听终端历史。  
 • 对输入执行脱敏与 `<private>` 区块剔除。  
 
