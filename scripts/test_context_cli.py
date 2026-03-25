@@ -135,6 +135,17 @@ class ContextCliTests(unittest.TestCase):
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
         self.assertIn("native ok", printed)
 
+    def test_smoke_subcommand_delegates(self) -> None:
+        args = context_cli.build_parser().parse_args(["smoke"])
+        payload = {"results": [{"name": "health", "ok": True}]}
+        with mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload) as mock_run:
+            with mock.patch("builtins.print") as mock_print:
+                rc = context_cli.run(args)
+        self.assertEqual(rc, 0)
+        mock_run.assert_called_once()
+        printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
+        self.assertIn('"health"', printed)
+
     def test_package_import_context_cli(self) -> None:
         sys.path.insert(0, str(SCRIPT_DIR.parent))
         try:

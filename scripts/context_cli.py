@@ -16,11 +16,12 @@ try:
     from context_config import env_bool, env_int, env_str, storage_root
     import context_core
     import context_native
+    import context_smoke
     from memory_index import export_observations_payload, import_observations_payload
     import session_index
 except ImportError:  # pragma: no cover
     from .context_config import env_bool, env_int, env_str, storage_root  # type: ignore[import-not-found]
-    from . import context_core, context_native, session_index  # type: ignore[import-not-found]
+    from . import context_core, context_native, context_smoke, session_index  # type: ignore[import-not-found]
     from .memory_index import export_observations_payload, import_observations_payload  # type: ignore[import-not-found]
 
 
@@ -201,6 +202,8 @@ def build_parser() -> argparse.ArgumentParser:
     native_scan.add_argument("--threads", type=int, default=4)
     native_scan.add_argument("--debug-build", action="store_true")
 
+    sub.add_parser("smoke", help="Run full smoke tests against the current runtime")
+
     sub.add_parser("health", help="Check context system health")
     return parser
 
@@ -304,6 +307,12 @@ def run(args: argparse.Namespace) -> int:
         if result.stderr:
             print(result.stderr.rstrip(), file=sys.stderr)
         return result.returncode
+
+    if args.command == "smoke":
+        payload = context_smoke.run_smoke(Path(__file__).resolve().parent / "context_cli.py", Path(__file__).resolve().parent / "e2e_quality_gate.py")
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        failed = [item for item in payload["results"] if not item["ok"]]
+        return 1 if failed else 0
 
     if args.command == "health":
         recall_payload = session_index.health_payload()

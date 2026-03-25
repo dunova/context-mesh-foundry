@@ -49,12 +49,15 @@ python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
 python3 scripts/context_cli.py maintain --dry-run
 python3 scripts/context_cli.py health
 python3 scripts/context_cli.py native-scan --backend auto --threads 4
+python3 scripts/context_cli.py smoke
 ```
 
 ### 安装态烟测
 
 ```bash
 python3 scripts/smoke_installed_runtime.py
+# 或直接对当前工作副本运行
+python3 scripts/context_cli.py smoke
 ```
 
 ## 部署与运维
