@@ -13,15 +13,15 @@ read -r -d '' POLICY_BLOCK <<'EOF' || true
 当任务涉及“已有代码库优化/调试、历史决策回溯、跨终端接力、量化系统定位”时，必须先做上下文预热，再做目录扫描。
 
 执行顺序（硬约束）：
-1. 先跑 Recall 精确检索（至少一次）：
-- `python3 ~/.agents/skills/recall/scripts/recall.py "<query>" --backend hybrid --type all --limit 20 --no-regex`
-2. 未命中再补本地语义补洞（可选）：
-- `python3 ~/.codex/skills/openviking-memory-sync/scripts/context_cli.py semantic "<query>" --limit 5`
+1. 先跑本仓库内置精确检索（至少一次）：
+- `python3 /path/to/context-mesh-foundry/scripts/context_cli.py search "<query>" --limit 20 --literal`
+2. 未命中再补本地语义检索（可选）：
+- `python3 /path/to/context-mesh-foundry/scripts/context_cli.py semantic "<query>" --limit 5`
 3. 基于命中结果缩小范围后，才允许 `ls`/`rg` 扫描代码目录。
 4. 禁止模式：未预热就直接穷举 `~/`、`/Volumes/*`、或其他大目录。
 
 任务起步自检：
-- [ ] 已执行 recall 精确检索
+- [ ] 已执行 context_cli 精确检索
 - [ ] 已记录命中会话或明确“无命中”
 - [ ] 扫描范围已被上下文结果约束
 <!-- SCF:CONTEXT-FIRST:END -->

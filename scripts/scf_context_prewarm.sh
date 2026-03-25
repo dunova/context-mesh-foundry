@@ -10,8 +10,8 @@ if [ -z "$QUERY" ] || [ "$QUERY" = "-h" ] || [ "$QUERY" = "--help" ]; then
 Usage: $(basename "$0") <query> [mode] [limit]
 
 Run SCF context prewarm for GSD workflows:
-  1) OneContext exact search (required)
-  2) OpenViking health hint / semantic follow-up guidance
+  1) Unified CLI exact search (required)
+  2) Unified CLI health hint / semantic follow-up guidance
 
 Examples:
   $(basename "$0") "phase discuss auth bug" all 20
@@ -22,21 +22,13 @@ fi
 
 log() { echo "[scf-prewarm] $*"; }
 
-OC_BIN=""
-if [ -n "${ONECONTEXT_BIN:-}" ] && command -v "$ONECONTEXT_BIN" >/dev/null 2>&1; then
-  OC_BIN="$ONECONTEXT_BIN"
-elif command -v onecontext >/dev/null 2>&1; then
-  OC_BIN="onecontext"
-elif command -v aline >/dev/null 2>&1; then
-  OC_BIN="aline"
-fi
-
-if [ -z "$OC_BIN" ]; then
-  log "onecontext/aline not found; skipping exact search"
+CLI_SCRIPT="$(cd "$(dirname "$0")" && pwd)/context_cli.py"
+if [ ! -f "$CLI_SCRIPT" ]; then
+  log "context_cli.py not found; skipping exact search"
 else
-  log "running exact history search via $OC_BIN"
+  log "running exact history search via context_cli.py"
   set +e
-  "$OC_BIN" search "$QUERY" -t "$MODE" -l "$LIMIT" --no-regex
+  python3 "$CLI_SCRIPT" search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
   OC_RC=$?
   set -e
   if [ "$OC_RC" -ne 0 ]; then
@@ -52,9 +44,9 @@ fi
 
 cat <<HINT
 
-[scf-prewarm] MCP semantic follow-up (run inside an MCP-capable AI terminal):
-  1. search_onecontext_history(query, "all", 20, true)
-  2. query_viking_memory(query, 5)
+[scf-prewarm] Unified CLI follow-up:
+  1. python3 scripts/context_cli.py search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
+  2. python3 scripts/context_cli.py semantic "$QUERY" --limit 5
   3. 将有效结论写入 GSD phase 文档（CONTEXT/PLAN）
 
 [scf-prewarm] Recommended query:

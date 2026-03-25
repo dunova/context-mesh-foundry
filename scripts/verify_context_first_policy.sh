@@ -28,10 +28,10 @@ require_text "$HOME/.claude/skills/openviking-memory-sync/SKILL.md" "默认触�
 require_text "$HOME/.codex/skills/gsd-v1/SKILL.md" "GSD 关闭时的兜底规则（新增）" "codex gsd 技能有关闭兜底"
 require_text "$HOME/.claude/skills/gsd-v1/SKILL.md" "GSD 关闭时的兜底规则（新增）" "claude gsd 技能有关闭兜底"
 
-if [ -f "$HOME/.agents/skills/recall/scripts/recall.py" ]; then
-  ok "recall CLI 入口可用"
+if [ -f "/Volumes/AI/GitHub/context-mesh-foundry/scripts/context_cli.py" ]; then
+  ok "context_cli 入口可用"
 else
-  fail "recall CLI 入口不可用"
+  fail "context_cli 入口不可用"
 fi
 
 ok "context-first policy regression checks passed"

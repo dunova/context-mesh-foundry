@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Context Lite Health Check (recall-first)
+# Context Lite Health Check (standalone local index)
 # Default mode is non-intrusive and low-overhead.
 # --deep enables optional legacy/openviking probes.
 # =============================================================================
@@ -59,26 +59,29 @@ check_launchd_recall_lite() {
 }
 
 check_recall_runtime() {
-    local recall_script out
+    local cli_script out
 
-    recall_script="${RECALL_SCRIPT:-$HOME/.agents/skills/recall/scripts/recall.py}"
+    cli_script="${CONTEXT_CLI_SCRIPT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/context_cli.py}"
 
-    if [ ! -f "$recall_script" ]; then
-        report_fail "recall 脚本缺失：$recall_script"
+    if [ ! -f "$cli_script" ]; then
+        report_fail "context_cli 脚本缺失：$cli_script"
         return 0
     fi
 
-    out="$(python3 "$recall_script" --health 2>&1)"
-    if echo "$out" | grep -q '"recall_db_exists": true'; then
-        local sessions messages
-        sessions="$(echo "$out" | awk -F': ' '/"total_sessions"/ {gsub(/,/, "", $2); print $2; exit}')"
-        messages="$(echo "$out" | awk -F': ' '/"total_messages"/ {gsub(/,/, "", $2); print $2; exit}')"
-        report_ok "recall 健康检查通过（sessions=${sessions:-0}, messages=${messages:-0}）"
+    out="$(python3 "$cli_script" health 2>&1)"
+    if echo "$out" | grep -q '"all_ok": true'; then
+        local sessions db_path
+        sessions="$(echo "$out" | awk -F': ' '/"sessions"/ {gsub(/,/, "", $2); print $2; exit}')"
+        db_path="$(echo "$out" | awk -F': ' '/"db"/ {gsub(/[",]/, "", $2); print $2; exit}')"
+        report_ok "本地会话索引健康检查通过（sessions=${sessions:-0}）"
+        if [ -n "$db_path" ]; then
+            report_ok "会话索引数据库：$db_path"
+        fi
     else
-        report_fail "recall 健康检查失败"
+        report_fail "context_cli health 失败"
     fi
 
-    report_ok "上下文主链路：recall.py + 本地 context_cli（无 MCP）"
+    report_ok "上下文主链路：内置 session index + 本地 context_cli（无 MCP）"
 }
 
 check_openviking_optional() {

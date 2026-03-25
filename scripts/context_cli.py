@@ -12,18 +12,12 @@ from pathlib import Path
 
 import context_core
 from memory_index import export_observations_payload, import_observations_payload
+import session_index
 
 
 HOME = Path.home()
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
-RECALL_CANDIDATES = [
-    SKILL_DIR.parent / "recall" / "scripts" / "recall.py",
-    HOME / ".agents" / "skills" / "recall" / "scripts" / "recall.py",
-    HOME / ".codex" / "skills" / "recall" / "scripts" / "recall.py",
-    HOME / ".claude" / "skills" / "recall" / "scripts" / "recall.py",
-    HOME / "skills-repo" / "recall" / "scripts" / "recall.py",
-]
 LOCAL_STORAGE_ROOT = Path(
     os.environ.get(
         "UNIFIED_CONTEXT_STORAGE_ROOT",
@@ -34,7 +28,6 @@ LOCAL_SHARED_ROOT = LOCAL_STORAGE_ROOT / "resources" / "shared"
 LOCAL_CONVERSATIONS_ROOT = LOCAL_SHARED_ROOT / "conversations"
 LOCAL_SCAN_MAX_FILES = max(50, int(os.environ.get("CONTEXT_CLI_LOCAL_SCAN_MAX_FILES", "300")))
 LOCAL_SCAN_READ_BYTES = max(4096, int(os.environ.get("CONTEXT_CLI_LOCAL_SCAN_READ_BYTES", "120000")))
-RECALL_TIMEOUT_SEC = max(3, int(os.environ.get("CONTEXT_CLI_RECALL_TIMEOUT_SEC", "20")))
 ENABLE_OPENVIKING_HTTP = str(os.environ.get("CONTEXT_CLI_ENABLE_OPENVIKING_HTTP", "0")).strip().lower() in {
     "1",
     "true",
@@ -49,7 +42,7 @@ def _safe_mtime(path: Path) -> float:
 
 
 def _resolve_recall_script() -> Path | None:
-    return context_core.resolve_recall_script(RECALL_CANDIDATES)
+    return None
 
 
 def _run_recall(
@@ -60,15 +53,7 @@ def _run_recall(
     literal: bool = False,
     health: bool = False,
 ) -> tuple[int, str, str]:
-    return context_core.run_recall(
-        query=query,
-        search_type=search_type,
-        limit=limit,
-        literal=literal,
-        health=health,
-        timeout_sec=RECALL_TIMEOUT_SEC,
-        recall_candidates=RECALL_CANDIDATES,
-    )
+    return 1, "", "external recall disabled in unified mode"
 
 
 def _parse_health_payload(raw: str) -> dict:
@@ -231,15 +216,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args: argparse.Namespace) -> int:
     if args.command == "search":
-        rc, out, err = _run_recall(
-            query=args.query,
+        text = session_index.format_search_results(
+            args.query,
             search_type=args.type,
             limit=args.limit,
             literal=bool(args.literal),
         )
-        text = out.strip() or err.strip()
         print(text)
-        return 0 if rc == 0 else 1
+        return 0 if not text.startswith("No matches found") else 1
 
     if args.command == "semantic":
         matches = _local_memory_matches(args.query, limit=args.limit)
@@ -324,16 +308,14 @@ def run(args: argparse.Namespace) -> int:
         return onecontext_maintenance.main(forwarded)
 
     if args.command == "health":
-        rc, out, err = _run_recall(health=True)
-        recall_payload = _parse_health_payload(out or err)
+        recall_payload = session_index.health_payload()
         payload = {
             "checked_at": datetime.now().isoformat(),
-            "recall_lite": {
-                "ok": bool(recall_payload.get("recall_db_exists")),
+            "session_search_lite": {
+                "ok": bool(recall_payload.get("session_index_db_exists")),
                 "sessions": recall_payload.get("total_sessions"),
-                "messages": recall_payload.get("total_messages"),
-                "indexed_this_run": recall_payload.get("indexed_this_run"),
-                "db": recall_payload.get("recall_db"),
+                "indexed_this_run": recall_payload.get("sync"),
+                "db": recall_payload.get("session_index_db"),
             },
             "source_freshness": _source_freshness(),
             "local_memory_root": {
@@ -345,7 +327,7 @@ def run(args: argparse.Namespace) -> int:
                 "mode": "optional-http" if ENABLE_OPENVIKING_HTTP else "disabled-by-policy",
                 "legacy_mcp_processes": _openviking_process_count(),
             },
-            "all_ok": rc == 0 and bool(recall_payload.get("recall_db_exists")),
+            "all_ok": bool(recall_payload.get("session_index_db_exists")),
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if payload["all_ok"] else 1
