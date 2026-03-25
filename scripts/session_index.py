@@ -221,6 +221,30 @@ def _search_noise_penalty(*parts: str) -> int:
     return penalty
 
 
+def _is_current_repo_meta_result(title: str, content: str, file_path: str) -> bool:
+    current_repo = str(Path.cwd().resolve())
+    if title != current_repo:
+        return False
+    compact = re.sub(r"\s+", " ", str(content or "")).strip()
+    if not compact:
+        return True
+    meta_markers = (
+        "写集仅限",
+        "改动文件：",
+        "核心变化：",
+        "建议验证命令：",
+        "我先",
+        "我继续",
+        "我现在",
+        "已收到任务",
+        "已变更概览",
+        "search NotebookLM",
+        "native-scan",
+        "session_index",
+    )
+    return any(marker in compact for marker in meta_markers)
+
+
 @dataclass
 class SessionDocument:
     file_path: str
@@ -879,6 +903,8 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
         rows = conn.execute(sql, args).fetchall()
         ranked: list[tuple[int, sqlite3.Row]] = []
         for row in rows:
+            if _is_current_repo_meta_result(row["title"], row["content"], row["file_path"]):
+                continue
             haystack = f"{row['title']}\n{row['content']}\n{row['file_path']}".lower()
             score = SOURCE_WEIGHT.get(str(row["source_type"]), 1)
             for term in terms:

@@ -435,11 +435,6 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
         .ok()
         .and_then(|path| path.canonicalize().ok().or(Some(path)))
         .map(|path| path.to_string_lossy().to_string());
-    let now_epoch = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|value| value.as_secs())
-        .unwrap_or(0);
-
     let reader = BufReader::new(file);
     for line in reader.lines() {
         let line = match line {
@@ -489,7 +484,6 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                         current_workdir.as_deref(),
                         session_cwd.as_deref(),
                         modified_epoch,
-                        now_epoch,
                         &detail.text,
                     ) {
                         continue;
@@ -611,7 +605,6 @@ fn should_skip_meta_text(
     _current_workdir: Option<&str>,
     session_cwd: Option<&str>,
     _modified_epoch: u64,
-    _now_epoch: u64,
     text: &str,
 ) -> bool {
     let Some(current_workdir) = _current_workdir else {
@@ -629,7 +622,10 @@ fn should_skip_meta_text(
     let looks_like_meta = (trimmed.starts_with('我')
         || trimmed.starts_with("我继续")
         || trimmed.starts_with("我现在")
-        || trimmed.starts_with("已"))
+        || trimmed.starts_with("已")
+        || trimmed.starts_with("好，")
+        || trimmed.starts_with("现在")
+        || trimmed.starts_with("继续"))
         && (trimmed.contains("search")
             || trimmed.contains("native-scan")
             || trimmed.contains("session_index")

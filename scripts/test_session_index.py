@@ -305,6 +305,24 @@ class SessionIndexTests(unittest.TestCase):
         )
         self.assertGreater(noisy, clean)
 
+    def test_current_repo_meta_result_is_excluded(self) -> None:
+        repo = str(Path("/Volumes/AI/GitHub/context-mesh-foundry").resolve())
+        with mock.patch("pathlib.Path.cwd", return_value=Path(repo)):
+            self.assertTrue(
+                session_index._is_current_repo_meta_result(
+                    repo,
+                    "已收到任务。写集仅限 scripts/session_index.py。建议验证命令：python3 scripts/context_cli.py search NotebookLM",
+                    "/tmp/session.jsonl",
+                )
+            )
+            self.assertFalse(
+                session_index._is_current_repo_meta_result(
+                    "/tmp/other",
+                    "NotebookLM product decision note",
+                    "/tmp/session.jsonl",
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
