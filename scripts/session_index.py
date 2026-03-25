@@ -69,6 +69,21 @@ NATIVE_NOISE_MARKERS = (
     "skill.md",
 )
 
+SEARCH_NOISE_MARKERS = (
+    "hit-first query rules",
+    "current skill name:",
+    "current description:",
+    "base directory for this skill:",
+    "search past claude/codex sessions",
+    "query_viking_memory",
+    "onecontext search",
+    "name: openviking-memory-sync",
+    "name: recall",
+    "self.assert",
+    "python3 scripts/context_cli.py native-scan",
+    "build_query_terms",
+)
+
 
 def _normalize_file_path(path: Path) -> str:
     try:
@@ -103,6 +118,21 @@ def _is_noise_text(text: str) -> bool:
     if compact.count("SKILL.md") >= 3:
         return True
     return False
+
+
+def _search_noise_penalty(*parts: str) -> int:
+    haystack = "\n".join(str(part or "") for part in parts).lower()
+    penalty = 0
+    for marker in SEARCH_NOISE_MARKERS:
+        if marker in haystack:
+            penalty += 80
+    if "/skills/" in haystack or "skills-repo" in haystack:
+        penalty += 120
+    if "guardian_truncated" in haystack:
+        penalty += 60
+    if "chunk id:" in haystack or "wall time:" in haystack:
+        penalty += 120
+    return penalty
 
 
 @dataclass
@@ -763,6 +793,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
             for term in terms:
                 if term.lower() in haystack:
                     score += max(4, len(term) * len(term))
+            score -= _search_noise_penalty(row["title"], row["content"], row["file_path"])
             if score <= 0:
                 continue
             ranked.append((score, row))
