@@ -96,6 +96,7 @@ def _build_rust_cmd(
     release: bool,
     query: str | None,
     json_output: bool,
+    limit: int | None,
 ) -> tuple[list[str], Path, dict[str, str]]:
     cmd = ["cargo", "run"]
     if release:
@@ -108,6 +109,8 @@ def _build_rust_cmd(
     cmd.extend(["--threads", str(max(1, threads))])
     if query:
         cmd.extend(["--query", query])
+    if limit is not None:
+        cmd.extend(["--limit", str(max(1, limit))])
     if json_output:
         cmd.append("--json")
     env = os.environ.copy()
@@ -122,6 +125,7 @@ def _build_go_cmd(
     threads: int,
     query: str | None,
     json_output: bool,
+    limit: int | None,
 ) -> tuple[list[str], Path, dict[str, str]]:
     cmd = ["go", "run", ".", "--threads", str(max(1, threads))]
     if codex_root:
@@ -130,6 +134,8 @@ def _build_go_cmd(
         cmd.extend(["--claude-root", claude_root])
     if query:
         cmd.extend(["--query", query])
+    if limit is not None:
+        cmd.extend(["--limit", str(max(1, limit))])
     if json_output:
         cmd.append("--json")
     return cmd, GO_PROJECT, os.environ.copy()
@@ -144,6 +150,7 @@ def run_native_scan(
     release: bool = True,
     query: str | None = None,
     json_output: bool = False,
+    limit: int | None = None,
     timeout: int = 300,
 ) -> NativeRunResult:
     chosen = resolve_backend(backend)
@@ -155,6 +162,7 @@ def run_native_scan(
             release=release,
             query=query,
             json_output=json_output,
+            limit=limit,
         )
     else:
         cmd, cwd, env = _build_go_cmd(
@@ -163,6 +171,7 @@ def run_native_scan(
             threads=threads,
             query=query,
             json_output=json_output,
+            limit=limit,
         )
 
     proc = subprocess.run(
@@ -188,6 +197,24 @@ def main() -> int:
     if result.stderr:
         sys.stderr.write(result.stderr)
     return result.returncode
+
+
+def health_payload() -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "available_backends": available_backends(),
+        "default_target_dir": DEFAULT_TARGET_DIR,
+    }
+    for backend in payload["available_backends"]:
+        try:
+            result = run_native_scan(backend=backend, json_output=True, limit=1, release=(backend == "rust"), timeout=120)
+            payload[backend] = {
+                "ok": result.returncode == 0,
+                "returncode": result.returncode,
+                "has_json": isinstance(result.json_payload(), dict),
+            }
+        except Exception as exc:
+            payload[backend] = {"ok": False, "error": str(exc)}
+    return payload
 
 
 if __name__ == "__main__":

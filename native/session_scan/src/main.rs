@@ -36,6 +36,9 @@ struct Args {
     #[arg(long, default_value = "", help = "仅保留包含 query 的结果")]
     query: String,
 
+    #[arg(long, default_value_t = 20, help = "最多输出结果数")]
+    limit: usize,
+
     #[arg(long, default_value_t = false, help = "输出 JSON")]
     json: bool,
 }
@@ -55,14 +58,6 @@ struct SessionSummary {
     last_timestamp: Option<String>,
     snippet: Option<String>,
 }
-
-#[derive(serde::Serialize)]
-struct ScanOutput {
-    files_scanned: usize,
-    query: String,
-    matches: Vec<SerializableSummary>,
-}
-
 #[derive(serde::Serialize)]
 struct SerializableSummary {
     source: String,
@@ -73,6 +68,41 @@ struct SerializableSummary {
     first_timestamp: Option<String>,
     last_timestamp: Option<String>,
     snippet: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonSample {
+    session_id: String,
+    path: String,
+    first_timestamp: Option<String>,
+    last_timestamp: Option<String>,
+    snippet: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonRootAggregate {
+    label: String,
+    session_count: usize,
+    total_lines: usize,
+    total_bytes: u64,
+    sample: Option<JsonSample>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonReport {
+    files_scanned: usize,
+    query: String,
+    duration_ms: u128,
+    aggregates: Vec<JsonRootAggregate>,
+    matches: Vec<SerializableSummary>,
+    errors: Vec<String>,
+}
+
+struct ScannerReport {
+    total_files: usize,
+    summaries: Vec<SessionSummary>,
+    errors: Vec<anyhow::Error>,
+    duration: Duration,
 }
 
 struct SourceRoot {
@@ -134,7 +164,11 @@ impl Scanner {
             .collect()
     }
 
-    fn scan(&self, work_items: &[WorkItem], query: &str) -> (Vec<SessionSummary>, Vec<anyhow::Error>) {
+    fn scan(
+        &self,
+        work_items: &[WorkItem],
+        query: &str,
+    ) -> (Vec<SessionSummary>, Vec<anyhow::Error>) {
         let results: Vec<_> = work_items
             .par_iter()
             .map(|item| process_file(item, query))
@@ -149,17 +183,16 @@ impl Scanner {
         }
         (summaries, errors)
     }
+}
 
-    fn report(
-        &self,
-        total_files: usize,
-        summaries: &[SessionSummary],
-        errors: &[anyhow::Error],
-        duration: Duration,
-    ) {
-        println!("扫描完毕：{} 文件，耗时 {:.2?}。", total_files, duration);
-        let aggregates = summarize_by_source(summaries);
-        for root in &self.roots {
+impl ScannerReport {
+    fn write_stdout(&self, scanner: &Scanner) {
+        println!(
+            "扫描完毕：{} 文件，耗时 {:.2?}。",
+            self.total_files, self.duration
+        );
+        let aggregates = summarize_by_source(&self.summaries);
+        for root in &scanner.roots {
             match aggregates.get(root.label) {
                 Some(aggregate) => {
                     println!(
@@ -185,11 +218,65 @@ impl Scanner {
             }
         }
 
-        if !errors.is_empty() {
-            println!("  解析时出现 {} 个错误（仅日志输出）。", errors.len());
-            for err in errors.iter().take(5) {
+        if !self.errors.is_empty() {
+            println!("  解析时出现 {} 个错误（仅日志输出）。", self.errors.len());
+            for err in self.errors.iter().take(5) {
                 println!("    - {}", err);
             }
+        }
+    }
+
+    fn json_payload(&self, scanner: &Scanner, query: &str) -> JsonReport {
+        let aggregates = summarize_by_source(&self.summaries);
+        let roots = scanner
+            .roots
+            .iter()
+            .map(|root| {
+                aggregates.get(root.label).map_or_else(
+                    || JsonRootAggregate {
+                        label: root.label.to_string(),
+                        session_count: 0,
+                        total_lines: 0,
+                        total_bytes: 0,
+                        sample: None,
+                    },
+                    |aggregate| JsonRootAggregate {
+                        label: aggregate.label.to_string(),
+                        session_count: aggregate.session_count,
+                        total_lines: aggregate.total_lines,
+                        total_bytes: aggregate.total_bytes,
+                        sample: aggregate.sample.map(|summary| JsonSample {
+                            session_id: summary.session_id.clone(),
+                            path: summary.path.display().to_string(),
+                            first_timestamp: summary.first_timestamp.clone(),
+                            last_timestamp: summary.last_timestamp.clone(),
+                            snippet: summary.snippet.clone(),
+                        }),
+                    },
+                )
+            })
+            .collect();
+
+        JsonReport {
+            files_scanned: self.total_files,
+            query: query.to_string(),
+            duration_ms: self.duration.as_millis(),
+            aggregates: roots,
+            matches: self
+                .summaries
+                .iter()
+                .map(|item| SerializableSummary {
+                    source: item.source.to_string(),
+                    path: item.path.display().to_string(),
+                    session_id: item.session_id.clone(),
+                    lines: item.lines,
+                    size_bytes: item.size_bytes,
+                    first_timestamp: item.first_timestamp.clone(),
+                    last_timestamp: item.last_timestamp.clone(),
+                    snippet: item.snippet.clone(),
+                })
+                .collect(),
+            errors: self.errors.iter().map(|err| err.to_string()).collect(),
         }
     }
 }
@@ -223,30 +310,23 @@ fn main() -> Result<()> {
     let work_items = scanner.collect_work_items();
     let total_files = work_items.len();
 
-    let (summaries, errors) = scanner.scan(&work_items, &args.query);
+    let (mut summaries, errors) = scanner.scan(&work_items, &args.query);
+    if args.limit > 0 && summaries.len() > args.limit {
+        summaries.truncate(args.limit);
+    }
     let duration = start.elapsed();
+    let report = ScannerReport {
+        total_files,
+        summaries,
+        errors,
+        duration,
+    };
     if args.json {
-        let payload = ScanOutput {
-            files_scanned: total_files,
-            query: args.query.clone(),
-            matches: summaries
-                .iter()
-                .map(|item| SerializableSummary {
-                    source: item.source.to_string(),
-                    path: item.path.display().to_string(),
-                    session_id: item.session_id.clone(),
-                    lines: item.lines,
-                    size_bytes: item.size_bytes,
-                    first_timestamp: item.first_timestamp.clone(),
-                    last_timestamp: item.last_timestamp.clone(),
-                    snippet: item.snippet.clone(),
-                })
-                .collect(),
-        };
+        let payload = report.json_payload(&scanner, &args.query);
         println!("{}", serde_json::to_string_pretty(&payload)?);
         return Ok(());
     }
-    scanner.report(total_files, &summaries, &errors, duration);
+    report.write_stdout(&scanner);
     Ok(())
 }
 
@@ -390,6 +470,101 @@ fn nested_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
         current = current.get(*key)?;
     }
     current.as_str()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    #[test]
+    fn nested_str_navigates_nested_structures() {
+        let value = json!({ "payload": { "id": "session-1" } });
+        assert_eq!(nested_str(&value, &["payload", "id"]), Some("session-1"));
+    }
+
+    #[test]
+    fn extract_session_id_supports_multiple_keys() {
+        assert_eq!(
+            extract_session_id(&json!({ "session_id": "legacy" })),
+            Some("legacy".to_string())
+        );
+        assert_eq!(
+            extract_session_id(&json!({ "payload": { "id": "payload-id" } })),
+            Some("payload-id".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_timestamp_prefers_payload_timestamp() {
+        let value = json!({
+            "createdAt": "2025-01-01T00:00:00Z",
+            "payload": { "timestamp": "2025-01-01T01:00:00Z" }
+        });
+        assert_eq!(
+            extract_timestamp(&value),
+            Some("2025-01-01T01:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn collect_text_candidates_trims_and_gathers() {
+        let value = json!({
+            "message": {
+                "content": [
+                    { "text": " hello " },
+                    { "text": "世界" }
+                ]
+            },
+            "payload": {
+                "text": " payload "
+            }
+        });
+        let candidates = extract_text_candidates(&value);
+        assert!(candidates.contains(&"hello".to_string()));
+        assert!(candidates.contains(&"世界".to_string()));
+        assert!(candidates.contains(&"payload".to_string()));
+    }
+
+    #[test]
+    fn is_noise_line_filters_known_markers() {
+        let marker = "# agents.md instructions";
+        assert!(is_noise_line(marker));
+        assert!(!is_noise_line("a normal line"));
+    }
+
+    #[test]
+    fn summarize_by_source_keeps_first_sample() {
+        let summaries = vec![
+            SessionSummary {
+                source: "alpha",
+                path: PathBuf::from("/tmp/first.json"),
+                session_id: "first".into(),
+                lines: 5,
+                size_bytes: 123,
+                first_timestamp: Some("t1".into()),
+                last_timestamp: Some("t2".into()),
+                snippet: None,
+            },
+            SessionSummary {
+                source: "alpha",
+                path: PathBuf::from("/tmp/second.json"),
+                session_id: "second".into(),
+                lines: 3,
+                size_bytes: 45,
+                first_timestamp: None,
+                last_timestamp: None,
+                snippet: Some("sample".into()),
+            },
+        ];
+        let aggregate = summarize_by_source(&summaries);
+        let entry = aggregate.get("alpha").unwrap();
+        assert_eq!(entry.session_count, 2);
+        assert_eq!(entry.total_lines, 8);
+        assert_eq!(entry.total_bytes, 168);
+        assert_eq!(entry.sample.unwrap().session_id, "first");
+    }
 }
 
 fn summarize_by_source<'a>(

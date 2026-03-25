@@ -151,7 +151,9 @@ def _legacy_bridge_process_count() -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="CLI-first unified context entrypoint.")
+    parser = argparse.ArgumentParser(
+        description="Context Mesh unified CLI (search, viewer, native scan, smoke, and maintenance)."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     search = sub.add_parser("search", help="Search session/history context")
@@ -195,16 +197,25 @@ def build_parser() -> argparse.ArgumentParser:
     maintain.add_argument("--stale-minutes", type=int, default=15)
     maintain.add_argument("--dry-run", action="store_true")
 
-    native_scan = sub.add_parser("native-scan", help="Run a native scan prototype")
+    native_scan = sub.add_parser(
+        "native-scan",
+        help="Run the Context Mesh native scan workflow",
+        description="Run the native scan workflow that exercises the Rust/Go backends without extra wrappers.",
+    )
     native_scan.add_argument("--backend", choices=["auto", "rust", "go"], default="auto")
     native_scan.add_argument("--codex-root")
     native_scan.add_argument("--claude-root")
     native_scan.add_argument("--threads", type=int, default=4)
     native_scan.add_argument("--query")
+    native_scan.add_argument("--limit", type=int)
     native_scan.add_argument("--json", action="store_true")
     native_scan.add_argument("--debug-build", action="store_true")
 
-    sub.add_parser("smoke", help="Run full smoke tests against the current runtime")
+    sub.add_parser(
+        "smoke",
+        help="Run the Context Mesh smoke gate",
+        description="Run the smoke gate that checks CLI, viewer, and memory flows end to end.",
+    )
 
     sub.add_parser("health", help="Check context system health")
     return parser
@@ -305,6 +316,7 @@ def run(args: argparse.Namespace) -> int:
             release=not args.debug_build,
             query=args.query,
             json_output=bool(args.json),
+            limit=args.limit,
         )
         if result.stdout:
             print(result.stdout.rstrip())
@@ -338,6 +350,7 @@ def run(args: argparse.Namespace) -> int:
                 "mode": "optional-http" if ENABLE_OPENVIKING_HTTP else "disabled-by-policy",
                 "legacy_bridge_processes": _legacy_bridge_process_count(),
             },
+            "native_backends": context_native.health_payload(),
             "all_ok": bool(recall_payload.get("session_index_db_exists")),
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))

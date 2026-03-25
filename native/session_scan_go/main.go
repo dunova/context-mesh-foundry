@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 )
 
@@ -23,6 +25,8 @@ var noiseMarkers = []string{
 	"<instructions>",
 }
 
+const snippetLimit = 220
+
 type WorkItem struct {
 	Source string
 	Path   string
@@ -34,13 +38,14 @@ type SessionSummary struct {
 	SessionID string `json:"session_id"`
 	Lines     int    `json:"lines"`
 	SizeBytes int64  `json:"size_bytes"`
-	Snippet    string `json:"snippet,omitempty"`
+	Snippet   string `json:"snippet,omitempty"`
 }
 
 type ScanOutput struct {
 	FilesScanned int              `json:"files_scanned"`
 	Query        string           `json:"query,omitempty"`
 	Matches      []SessionSummary `json:"matches"`
+	Truncated    bool             `json:"truncated,omitempty"`
 }
 
 func main() {
@@ -48,6 +53,7 @@ func main() {
 	claudeRoot := flag.String("claude-root", filepath.Join(os.Getenv("HOME"), ".claude", "projects"), "Claude 会话根目录")
 	threads := flag.Int("threads", 4, "并发 worker 数")
 	query := flag.String("query", "", "仅保留包含 query 的结果")
+	limit := flag.Int("limit", 20, "最多输出结果数")
 	jsonOutput := flag.Bool("json", false, "输出 JSON")
 	flag.Parse()
 
@@ -57,20 +63,34 @@ func main() {
 		{Source: "claude_session", Path: *claudeRoot},
 	})
 
-	results := scan(work, *threads, *query)
+	results, truncated := scan(work, *threads, *query, *limit)
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Source != results[j].Source {
+			return results[i].Source < results[j].Source
+		}
+		return results[i].Path < results[j].Path
+	})
 	if *jsonOutput {
 		payload := ScanOutput{
 			FilesScanned: len(work),
 			Query:        *query,
 			Matches:      results,
+			Truncated:    truncated,
 		}
 		raw, _ := json.MarshalIndent(payload, "", "  ")
 		fmt.Println(string(raw))
 		return
 	}
-	fmt.Printf("扫描完毕：%d 文件，耗时 %s。\n", len(results), time.Since(start).Round(time.Millisecond))
-	for _, item := range summarize(results) {
-		fmt.Printf("%s -> %d 文件, 总行数 %d, 总体积 %d 字节\n", item.Source, item.Count, item.TotalLines, item.TotalSize)
+	fmt.Printf("扫描完毕：%d 文件，匹配 %d 条，耗时 %s。\n", len(work), len(results), time.Since(start).Round(time.Millisecond))
+	aggs := summarize(results)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "来源\t匹配数\t总行数\t总字节")
+	for _, item := range aggs {
+		fmt.Fprintf(w, "%s\t%d\t%d\t%d\n", item.Source, item.Count, item.TotalLines, item.TotalSize)
+	}
+	w.Flush()
+	if truncated && *limit > 0 {
+		fmt.Printf("结果已按 limit %d 截断，可能存在更多匹配\n", *limit)
 	}
 }
 
@@ -94,14 +114,14 @@ func collectFiles(roots []WorkItem) []WorkItem {
 	return items
 }
 
-func scan(items []WorkItem, threads int, query string) []SessionSummary {
+func scan(items []WorkItem, threads int, query string, limit int) ([]SessionSummary, bool) {
 	if threads < 1 {
 		threads = 1
 	}
 	workCh := make(chan WorkItem)
 	resultCh := make(chan SessionSummary)
 	var wg sync.WaitGroup
-	for range threads {
+	for i := 0; i < threads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -122,10 +142,18 @@ func scan(items []WorkItem, threads int, query string) []SessionSummary {
 	}()
 
 	results := make([]SessionSummary, 0, len(items))
+	limitHit := false
 	for result := range resultCh {
+		if limit > 0 && len(results) >= limit {
+			limitHit = true
+			continue
+		}
 		results = append(results, result)
+		if limit > 0 && len(results) >= limit {
+			limitHit = true
+		}
 	}
-	return results
+	return results, limitHit
 }
 
 func processFile(item WorkItem, query string) (SessionSummary, bool) {
@@ -160,29 +188,20 @@ func processFile(item WorkItem, query string) (SessionSummary, bool) {
 			if sid := extractSessionID(payload); sid != "" {
 				summary.SessionID = sid
 			}
-			if queryLower != "" && summary.Snippet == "" {
+			if summary.Snippet == "" {
 				for _, text := range extractTextCandidates(payload) {
-					textLower := strings.ToLower(text)
-					if strings.Contains(textLower, queryLower) && !isNoiseLine(textLower) {
+					if snippet, ok := matchSnippet(text, queryLower); ok {
+						summary.Snippet = snippet
 						matchFound = true
-						if len(text) > 220 {
-							summary.Snippet = text[:220]
-						} else {
-							summary.Snippet = text
-						}
 						break
 					}
 				}
 			}
-		} else if queryLower != "" && summary.Snippet == "" {
-			lineLower := strings.ToLower(line)
-			if strings.Contains(lineLower, queryLower) && !isNoiseLine(lineLower) {
+		}
+		if summary.Snippet == "" {
+			if snippet, ok := matchSnippet(line, queryLower); ok {
+				summary.Snippet = snippet
 				matchFound = true
-				if len(line) > 220 {
-					summary.Snippet = line[:220]
-				} else {
-					summary.Snippet = line
-				}
 			}
 		}
 	}
@@ -246,6 +265,21 @@ func extractSessionID(payload map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func matchSnippet(text, queryLower string) (string, bool) {
+	trimmed := strings.TrimSpace(text)
+	if queryLower == "" || trimmed == "" {
+		return "", false
+	}
+	lower := strings.ToLower(trimmed)
+	if !strings.Contains(lower, queryLower) || isNoiseLine(lower) {
+		return "", false
+	}
+	if len(trimmed) > snippetLimit {
+		return trimmed[:snippetLimit], true
+	}
+	return trimmed, true
 }
 
 type Aggregate struct {

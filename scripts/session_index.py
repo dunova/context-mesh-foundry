@@ -44,6 +44,22 @@ SOURCE_WEIGHT = {
     "shell_bash": 2,
 }
 _SOURCE_CACHE: dict[str, Any] = {"expires_at": 0.0, "items": [], "home": None}
+NATIVE_NOISE_MARKERS = (
+    "# agents.md instructions",
+    "### available skills",
+    "prompt engineer and agent skill optimizer",
+    "current skill name:",
+    "current description:",
+    "the user explicitly asks for this skill",
+    "query and upload to google notebooklm",
+    "python -m pytest",
+    "benchmarks/run.py",
+    "function_call_output",
+    "queue-operation",
+    "chunk id:",
+    "<instructions>",
+    "skill.md",
+)
 
 
 def _is_noise_text(text: str) -> bool:
@@ -635,7 +651,7 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
         snippet_lower = snippet.lower()
         if not snippet_lower:
             continue
-        if "# agents.md instructions" in snippet_lower or "### available skills" in snippet_lower:
+        if any(marker in snippet_lower for marker in NATIVE_NOISE_MARKERS):
             continue
         if query_lower and query_lower not in snippet_lower:
             continue
