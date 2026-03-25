@@ -95,19 +95,23 @@ class ContextCliTests(unittest.TestCase):
 
     def test_serve_subcommand_delegates_to_viewer(self) -> None:
         args = context_cli.build_parser().parse_args(["serve", "--host", "127.0.0.1", "--port", "40001"])
-        with mock.patch.object(context_cli.memory_viewer, "main", return_value=None) as mock_main:
+        viewer = mock.Mock()
+        viewer.main.return_value = None
+        with mock.patch.object(context_cli, "_load_memory_viewer", return_value=viewer):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
-        mock_main.assert_called_once()
+        viewer.main.assert_called_once()
 
     def test_onecontext_maintain_subcommand_delegates(self) -> None:
         args = context_cli.build_parser().parse_args(
             ["onecontext-maintain", "--repair-queue", "--enqueue-missing", "--dry-run"]
         )
-        with mock.patch.object(context_cli.onecontext_maintenance, "main", return_value=0) as mock_main:
+        maintenance = mock.Mock()
+        maintenance.main.return_value = 0
+        with mock.patch.object(context_cli, "_load_onecontext_maintenance", return_value=maintenance):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
-        forwarded = mock_main.call_args.args[0]
+        forwarded = maintenance.main.call_args.args[0]
         self.assertIn("--repair-queue", forwarded)
         self.assertIn("--enqueue-missing", forwarded)
         self.assertIn("--dry-run", forwarded)

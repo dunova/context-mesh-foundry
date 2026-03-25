@@ -4,16 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import context_core
 from memory_index import export_observations_payload, import_observations_payload
-import memory_viewer
-import onecontext_maintenance
 
 
 HOME = Path.home()
@@ -132,6 +130,14 @@ def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
             return f"Saved locally: {path} (remote indexing skipped: {exc})"
 
     return f"Saved locally: {path}"
+
+
+def _load_memory_viewer():
+    return importlib.import_module("memory_viewer")
+
+
+def _load_onecontext_maintenance():
+    return importlib.import_module("onecontext_maintenance")
 
 
 def _source_freshness() -> dict:
@@ -282,6 +288,7 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     if args.command == "serve":
+        memory_viewer = _load_memory_viewer()
         os.environ["CONTEXT_VIEWER_HOST"] = str(args.host)
         os.environ["CONTEXT_VIEWER_PORT"] = str(args.port)
         if args.token:
@@ -293,6 +300,7 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     if args.command == "onecontext-maintain":
+        onecontext_maintenance = _load_onecontext_maintenance()
         forwarded = [
             "--db",
             args.db,
