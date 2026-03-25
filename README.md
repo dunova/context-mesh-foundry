@@ -189,6 +189,19 @@ python3 scripts/context_cli.py import /tmp/cmf-export.json
 python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
 ```
 
+## 性能基准与原生原型
+
+```bash
+# Python 主链基准
+python3 benchmarks/session_index_benchmark.py
+
+# Rust 会话扫描原型
+cd native/session_scan
+CARGO_TARGET_DIR=/tmp/context_mesh_target cargo run --release -- --threads 4
+```
+
+当前策略不是先整体重写，而是先把 Python 主链收敛成干净单体，再对热点模块做渐进式原生替换。
+
 ## 守护进程工作原理
 
 1. **自动发现**: 扫描 Claude Code、Codex、OpenCode、Kilo 以及普通的 Shell 历史 (zsh/bash)。
@@ -405,7 +418,27 @@ python3 scripts/context_cli.py search "authentication bug" --type all --limit 20
 
 # Semantic search
 python3 scripts/context_cli.py semantic "database decisions" --limit 5
+
+# Export / import indexed memories
+python3 scripts/context_cli.py export "" /tmp/cmf-export.json --limit 1000
+python3 scripts/context_cli.py import /tmp/cmf-export.json
+
+# Start local viewer
+python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
 ```
+
+## Benchmarks And Native Prototype
+
+```bash
+# Python mainline benchmark
+python3 benchmarks/session_index_benchmark.py
+
+# Rust session-scan prototype
+cd native/session_scan
+CARGO_TARGET_DIR=/tmp/context_mesh_target cargo run --release -- --threads 4
+```
+
+The strategy is not to rewrite everything first. We first converge the Python mainline into a clean monolith, then replace hot paths incrementally.
 
 ## How the Daemon Works
 

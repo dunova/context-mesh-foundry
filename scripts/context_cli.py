@@ -10,31 +10,22 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from context_config import env_bool, env_int, env_str, storage_root
 import context_core
 from memory_index import export_observations_payload, import_observations_payload
 import session_index
 
 
 HOME = Path.home()
-SCRIPT_DIR = Path(__file__).resolve().parent
-SKILL_DIR = SCRIPT_DIR.parent
 LOCAL_STORAGE_ROOT = Path(
-    os.environ.get(
-        "UNIFIED_CONTEXT_STORAGE_ROOT",
-        os.environ.get("OPENVIKING_STORAGE_ROOT", str(HOME / ".unified_context_data")),
-    )
+    storage_root()
 )
 LOCAL_SHARED_ROOT = LOCAL_STORAGE_ROOT / "resources" / "shared"
 LOCAL_CONVERSATIONS_ROOT = LOCAL_SHARED_ROOT / "conversations"
-LOCAL_SCAN_MAX_FILES = max(50, int(os.environ.get("CONTEXT_CLI_LOCAL_SCAN_MAX_FILES", "300")))
-LOCAL_SCAN_READ_BYTES = max(4096, int(os.environ.get("CONTEXT_CLI_LOCAL_SCAN_READ_BYTES", "120000")))
-ENABLE_OPENVIKING_HTTP = str(os.environ.get("CONTEXT_CLI_ENABLE_OPENVIKING_HTTP", "0")).strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-OPENVIKING_URL = os.environ.get("OPENVIKING_URL", "http://127.0.0.1:8090/api/v1")
+LOCAL_SCAN_MAX_FILES = env_int("CONTEXT_CLI_LOCAL_SCAN_MAX_FILES", "CONTEXT_MESH_LOCAL_SCAN_MAX_FILES", default=300, minimum=50)
+LOCAL_SCAN_READ_BYTES = env_int("CONTEXT_CLI_LOCAL_SCAN_READ_BYTES", "CONTEXT_MESH_LOCAL_SCAN_READ_BYTES", default=120000, minimum=4096)
+ENABLE_OPENVIKING_HTTP = env_bool("CONTEXT_MESH_ENABLE_REMOTE_MEMORY_HTTP", "CONTEXT_CLI_ENABLE_OPENVIKING_HTTP", default=False)
+OPENVIKING_URL = env_str("CONTEXT_MESH_REMOTE_URL", "OPENVIKING_URL", default="http://127.0.0.1:8090/api/v1")
 
 
 def _safe_mtime(path: Path) -> float:
@@ -176,9 +167,9 @@ def build_parser() -> argparse.ArgumentParser:
     import_cmd.add_argument("--no-sync", action="store_true")
 
     serve = sub.add_parser("serve", help="Start local memory viewer")
-    serve.add_argument("--host", default=os.environ.get("CONTEXT_VIEWER_HOST", "127.0.0.1"))
-    serve.add_argument("--port", type=int, default=int(os.environ.get("CONTEXT_VIEWER_PORT", "37677")))
-    serve.add_argument("--token", default=os.environ.get("CONTEXT_VIEWER_TOKEN", ""))
+    serve.add_argument("--host", default=env_str("CONTEXT_VIEWER_HOST", "CONTEXT_MESH_VIEWER_HOST", default="127.0.0.1"))
+    serve.add_argument("--port", type=int, default=env_int("CONTEXT_VIEWER_PORT", "CONTEXT_MESH_VIEWER_PORT", default=37677, minimum=1))
+    serve.add_argument("--token", default=env_str("CONTEXT_VIEWER_TOKEN", "CONTEXT_MESH_VIEWER_TOKEN", default=""))
 
     maintain = sub.add_parser("maintain", aliases=["onecontext-maintain"], help="Run local maintenance workflow")
     maintain.add_argument("--db", default="~/.aline/db/aline.db")

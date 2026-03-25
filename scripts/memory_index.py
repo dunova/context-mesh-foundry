@@ -13,6 +13,8 @@ import re
 import sqlite3
 from typing import Any
 
+from context_config import storage_root
+
 
 PRIVATE_BLOCK_RE = re.compile(r"<private>[\s\S]*?</private>", re.IGNORECASE)
 PRIVATE_TAG_RE = re.compile(r"</?private>", re.IGNORECASE)
@@ -26,14 +28,7 @@ def strip_private_blocks(text: str) -> str:
 
 
 def get_storage_root() -> Path:
-    return Path(
-        os.path.expanduser(
-            os.environ.get(
-                "UNIFIED_CONTEXT_STORAGE_ROOT",
-                os.environ.get("OPENVIKING_STORAGE_ROOT", "~/.unified_context_data"),
-            )
-        )
-    )
+    return storage_root()
 
 
 def get_index_db_path() -> Path:

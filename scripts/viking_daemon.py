@@ -33,11 +33,12 @@ try:
     from memory_index import strip_private_blocks, sync_index_from_storage
 except Exception:  # pragma: no cover - module import path compatibility
     from .memory_index import strip_private_blocks, sync_index_from_storage  # type: ignore[import-not-found]
+from context_config import env_bool, env_float, env_int, env_str, storage_root
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-OPENVIKING_URL = os.environ.get("OPENVIKING_URL", "http://127.0.0.1:8090/api/v1")
+OPENVIKING_URL = env_str("CONTEXT_MESH_REMOTE_URL", "OPENVIKING_URL", default="http://127.0.0.1:8090/api/v1")
 
 # Security: require HTTPS for non-localhost URLs to prevent MITM
 _ov_host = OPENVIKING_URL.split("://", 1)[-1].split("/", 1)[0].split(":")[0]
@@ -45,12 +46,7 @@ if _ov_host not in ("127.0.0.1", "localhost", "::1") and not OPENVIKING_URL.star
     print(f"FATAL: Remote OPENVIKING_URL must use https://. Got: {OPENVIKING_URL}", file=sys.stderr)
     raise SystemExit(1)
 
-LOCAL_STORAGE_ROOT = Path(
-    os.environ.get(
-        "UNIFIED_CONTEXT_STORAGE_ROOT",
-        os.environ.get("OPENVIKING_STORAGE_ROOT", str(Path.home() / ".unified_context_data")),
-    )
-).expanduser()
+LOCAL_STORAGE_ROOT = storage_root().expanduser()
 PENDING_DIR = LOCAL_STORAGE_ROOT / "resources" / "shared" / "history" / ".pending"
 
 # Security: verify storage root is not a symlink and is owned by current user
@@ -70,11 +66,11 @@ ANTIGRAVITY_BRAIN = str(Path.home() / ".gemini" / "antigravity" / "brain")
 # Claude / Antigravity / OpenClaw full-session transcripts
 CLAUDE_TRANSCRIPTS_DIR = str(Path.home() / ".claude" / "transcripts")
 # How many days back to index on first startup (avoid replay storm for old files)
-CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS = int(os.environ.get("VIKING_TRANSCRIPTS_LOOKBACK_DAYS", "7"))
+CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS = env_int("CONTEXT_MESH_TRANSCRIPTS_LOOKBACK_DAYS", "VIKING_TRANSCRIPTS_LOOKBACK_DAYS", default=7)
 # Night-mode low-power: quiet hours where poll expands to NIGHT_POLL_INTERVAL_SEC
-NIGHT_POLL_START_HOUR = int(os.environ.get("VIKING_NIGHT_POLL_START_HOUR", "23"))
-NIGHT_POLL_END_HOUR = int(os.environ.get("VIKING_NIGHT_POLL_END_HOUR", "7"))
-NIGHT_POLL_INTERVAL_SEC = max(1, int(os.environ.get("VIKING_NIGHT_POLL_INTERVAL_SEC", "600")))  # 10 min
+NIGHT_POLL_START_HOUR = env_int("CONTEXT_MESH_NIGHT_POLL_START_HOUR", "VIKING_NIGHT_POLL_START_HOUR", default=23)
+NIGHT_POLL_END_HOUR = env_int("CONTEXT_MESH_NIGHT_POLL_END_HOUR", "VIKING_NIGHT_POLL_END_HOUR", default=7)
+NIGHT_POLL_INTERVAL_SEC = env_int("CONTEXT_MESH_NIGHT_POLL_INTERVAL_SEC", "VIKING_NIGHT_POLL_INTERVAL_SEC", default=600, minimum=1)
 
 
 def _env_flag(name: str, default: str = "1") -> bool:
@@ -82,31 +78,31 @@ def _env_flag(name: str, default: str = "1") -> bool:
     return val in {"1", "true", "yes", "on"}
 
 
-ENABLE_SHELL_MONITOR = os.environ.get("VIKING_ENABLE_SHELL_MONITOR", "1") == "1"
-ENABLE_CLAUDE_HISTORY_MONITOR = _env_flag("VIKING_ENABLE_CLAUDE_HISTORY_MONITOR", "1")
-ENABLE_CODEX_HISTORY_MONITOR = _env_flag("VIKING_ENABLE_CODEX_HISTORY_MONITOR", "1")
-ENABLE_OPENCODE_MONITOR = _env_flag("VIKING_ENABLE_OPENCODE_MONITOR", "0")
-ENABLE_KILO_MONITOR = _env_flag("VIKING_ENABLE_KILO_MONITOR", "0")
-ENABLE_REMOTE_SYNC = _env_flag("VIKING_ENABLE_REMOTE_SYNC", "0")
-ENABLE_CODEX_SESSION_MONITOR = _env_flag("VIKING_ENABLE_CODEX_SESSION_MONITOR", "1")
-ENABLE_CLAUDE_TRANSCRIPTS_MONITOR = _env_flag("VIKING_ENABLE_CLAUDE_TRANSCRIPTS_MONITOR", "1")
-ENABLE_ANTIGRAVITY_MONITOR = _env_flag("VIKING_ENABLE_ANTIGRAVITY_MONITOR", "1")
-IDLE_TIMEOUT_SEC = int(os.environ.get("VIKING_IDLE_TIMEOUT_SEC", "300"))
-POLL_INTERVAL_SEC = max(1, int(os.environ.get("VIKING_POLL_INTERVAL_SEC", "30")))
-IDLE_SLEEP_CAP_SEC = max(POLL_INTERVAL_SEC, int(os.environ.get("VIKING_IDLE_SLEEP_CAP_SEC", "180")))
-HEARTBEAT_INTERVAL_SEC = max(10, int(os.environ.get("VIKING_HEARTBEAT_INTERVAL_SEC", "600")))
-FAST_POLL_INTERVAL_SEC = max(1, int(os.environ.get("VIKING_FAST_POLL_INTERVAL_SEC", "3")))
-PENDING_RETRY_INTERVAL_SEC = max(5, int(os.environ.get("VIKING_PENDING_RETRY_INTERVAL_SEC", "60")))
-CYCLE_BUDGET_SEC = max(1, int(os.environ.get("VIKING_CYCLE_BUDGET_SEC", "8")))
-ERROR_BACKOFF_MAX_SEC = max(2, int(os.environ.get("VIKING_ERROR_BACKOFF_MAX_SEC", "30")))
-LOOP_JITTER_SEC = max(0.0, float(os.environ.get("VIKING_LOOP_JITTER_SEC", "0.7")))
-INDEX_SYNC_MIN_INTERVAL_SEC = max(5, int(os.environ.get("VIKING_INDEX_SYNC_MIN_INTERVAL_SEC", "20")))
-MAX_TRACKED_SESSIONS = int(os.environ.get("VIKING_MAX_TRACKED_SESSIONS", "240"))
-MAX_FILE_CURSORS = int(os.environ.get("VIKING_MAX_FILE_CURSORS", "800"))
-SESSION_TTL_SEC = int(os.environ.get("VIKING_SESSION_TTL_SEC", "7200"))
-MAX_MESSAGES_PER_SESSION = int(os.environ.get("VIKING_MAX_MESSAGES_PER_SESSION", "500"))
-EXPORT_HTTP_TIMEOUT_SEC = max(5, int(os.environ.get("VIKING_EXPORT_HTTP_TIMEOUT_SEC", "30")))
-PENDING_HTTP_TIMEOUT_SEC = max(5, int(os.environ.get("VIKING_PENDING_HTTP_TIMEOUT_SEC", "15")))
+ENABLE_SHELL_MONITOR = env_bool("CONTEXT_MESH_ENABLE_SHELL_MONITOR", "VIKING_ENABLE_SHELL_MONITOR", default=True)
+ENABLE_CLAUDE_HISTORY_MONITOR = env_bool("CONTEXT_MESH_ENABLE_CLAUDE_HISTORY_MONITOR", "VIKING_ENABLE_CLAUDE_HISTORY_MONITOR", default=True)
+ENABLE_CODEX_HISTORY_MONITOR = env_bool("CONTEXT_MESH_ENABLE_CODEX_HISTORY_MONITOR", "VIKING_ENABLE_CODEX_HISTORY_MONITOR", default=True)
+ENABLE_OPENCODE_MONITOR = env_bool("CONTEXT_MESH_ENABLE_OPENCODE_MONITOR", "VIKING_ENABLE_OPENCODE_MONITOR", default=False)
+ENABLE_KILO_MONITOR = env_bool("CONTEXT_MESH_ENABLE_KILO_MONITOR", "VIKING_ENABLE_KILO_MONITOR", default=False)
+ENABLE_REMOTE_SYNC = env_bool("CONTEXT_MESH_ENABLE_REMOTE_SYNC", "VIKING_ENABLE_REMOTE_SYNC", default=False)
+ENABLE_CODEX_SESSION_MONITOR = env_bool("CONTEXT_MESH_ENABLE_CODEX_SESSION_MONITOR", "VIKING_ENABLE_CODEX_SESSION_MONITOR", default=True)
+ENABLE_CLAUDE_TRANSCRIPTS_MONITOR = env_bool("CONTEXT_MESH_ENABLE_CLAUDE_TRANSCRIPTS_MONITOR", "VIKING_ENABLE_CLAUDE_TRANSCRIPTS_MONITOR", default=True)
+ENABLE_ANTIGRAVITY_MONITOR = env_bool("CONTEXT_MESH_ENABLE_ANTIGRAVITY_MONITOR", "VIKING_ENABLE_ANTIGRAVITY_MONITOR", default=True)
+IDLE_TIMEOUT_SEC = env_int("CONTEXT_MESH_IDLE_TIMEOUT_SEC", "VIKING_IDLE_TIMEOUT_SEC", default=300)
+POLL_INTERVAL_SEC = env_int("CONTEXT_MESH_POLL_INTERVAL_SEC", "VIKING_POLL_INTERVAL_SEC", default=30, minimum=1)
+IDLE_SLEEP_CAP_SEC = max(POLL_INTERVAL_SEC, env_int("CONTEXT_MESH_IDLE_SLEEP_CAP_SEC", "VIKING_IDLE_SLEEP_CAP_SEC", default=180))
+HEARTBEAT_INTERVAL_SEC = env_int("CONTEXT_MESH_HEARTBEAT_INTERVAL_SEC", "VIKING_HEARTBEAT_INTERVAL_SEC", default=600, minimum=10)
+FAST_POLL_INTERVAL_SEC = env_int("CONTEXT_MESH_FAST_POLL_INTERVAL_SEC", "VIKING_FAST_POLL_INTERVAL_SEC", default=3, minimum=1)
+PENDING_RETRY_INTERVAL_SEC = env_int("CONTEXT_MESH_PENDING_RETRY_INTERVAL_SEC", "VIKING_PENDING_RETRY_INTERVAL_SEC", default=60, minimum=5)
+CYCLE_BUDGET_SEC = env_int("CONTEXT_MESH_CYCLE_BUDGET_SEC", "VIKING_CYCLE_BUDGET_SEC", default=8, minimum=1)
+ERROR_BACKOFF_MAX_SEC = env_int("CONTEXT_MESH_ERROR_BACKOFF_MAX_SEC", "VIKING_ERROR_BACKOFF_MAX_SEC", default=30, minimum=2)
+LOOP_JITTER_SEC = env_float("CONTEXT_MESH_LOOP_JITTER_SEC", "VIKING_LOOP_JITTER_SEC", default=0.7, minimum=0.0)
+INDEX_SYNC_MIN_INTERVAL_SEC = env_int("CONTEXT_MESH_INDEX_SYNC_MIN_INTERVAL_SEC", "VIKING_INDEX_SYNC_MIN_INTERVAL_SEC", default=20, minimum=5)
+MAX_TRACKED_SESSIONS = env_int("CONTEXT_MESH_MAX_TRACKED_SESSIONS", "VIKING_MAX_TRACKED_SESSIONS", default=240)
+MAX_FILE_CURSORS = env_int("CONTEXT_MESH_MAX_FILE_CURSORS", "VIKING_MAX_FILE_CURSORS", default=800)
+SESSION_TTL_SEC = env_int("CONTEXT_MESH_SESSION_TTL_SEC", "VIKING_SESSION_TTL_SEC", default=7200)
+MAX_MESSAGES_PER_SESSION = env_int("CONTEXT_MESH_MAX_MESSAGES_PER_SESSION", "VIKING_MAX_MESSAGES_PER_SESSION", default=500)
+EXPORT_HTTP_TIMEOUT_SEC = env_int("CONTEXT_MESH_EXPORT_HTTP_TIMEOUT_SEC", "VIKING_EXPORT_HTTP_TIMEOUT_SEC", default=30, minimum=5)
+PENDING_HTTP_TIMEOUT_SEC = env_int("CONTEXT_MESH_PENDING_HTTP_TIMEOUT_SEC", "VIKING_PENDING_HTTP_TIMEOUT_SEC", default=15, minimum=5)
 MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL = max(
     50, int(os.environ.get("VIKING_MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL", "500"))
 )
