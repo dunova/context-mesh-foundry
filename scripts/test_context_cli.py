@@ -138,6 +138,25 @@ class ContextCliTests(unittest.TestCase):
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
         self.assertIn("native ok", printed)
 
+    def test_native_scan_json_prints_clean_payload(self) -> None:
+        args = context_cli.build_parser().parse_args(
+            ["native-scan", "--backend", "rust", "--json", "--query", "NotebookLM"]
+        )
+        result = mock.Mock()
+        result.returncode = 0
+        result.stdout = 'Compiling...\n{"matches":[{"session_id":"abc"}],"errors":[]}\n'
+        result.stderr = "build noise\n"
+        result.json_payload.return_value = {"matches": [{"session_id": "abc"}], "errors": []}
+        with mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result):
+            with mock.patch("builtins.print") as mock_print:
+                with mock.patch("sys.stderr") as mock_stderr:
+                    rc = context_cli.run(args)
+        self.assertEqual(rc, 0)
+        printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
+        self.assertIn('"session_id": "abc"', printed)
+        self.assertNotIn("Compiling", printed)
+        mock_stderr.write.assert_not_called()
+
     def test_smoke_subcommand_delegates(self) -> None:
         args = context_cli.build_parser().parse_args(["smoke"])
         payload = {"results": [{"name": "health", "ok": True}]}

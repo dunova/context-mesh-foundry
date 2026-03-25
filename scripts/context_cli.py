@@ -318,6 +318,13 @@ def run(args: argparse.Namespace) -> int:
             json_output=bool(args.json),
             limit=args.limit,
         )
+        if args.json:
+            payload = result.json_payload()
+            if isinstance(payload, dict):
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                if result.returncode != 0 and result.stderr:
+                    print(result.stderr.rstrip(), file=sys.stderr)
+                return result.returncode
         if result.stdout:
             print(result.stdout.rstrip())
         if result.stderr:
