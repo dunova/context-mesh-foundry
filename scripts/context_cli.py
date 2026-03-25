@@ -15,11 +15,12 @@ from pathlib import Path
 try:
     from context_config import env_bool, env_int, env_str, storage_root
     import context_core
+    import context_native
     from memory_index import export_observations_payload, import_observations_payload
     import session_index
 except ImportError:  # pragma: no cover
     from .context_config import env_bool, env_int, env_str, storage_root  # type: ignore[import-not-found]
-    from . import context_core, session_index  # type: ignore[import-not-found]
+    from . import context_core, context_native, session_index  # type: ignore[import-not-found]
     from .memory_index import export_observations_payload, import_observations_payload  # type: ignore[import-not-found]
 
 
@@ -193,6 +194,13 @@ def build_parser() -> argparse.ArgumentParser:
     maintain.add_argument("--stale-minutes", type=int, default=15)
     maintain.add_argument("--dry-run", action="store_true")
 
+    native_scan = sub.add_parser("native-scan", help="Run a native scan prototype")
+    native_scan.add_argument("--backend", choices=["auto", "rust", "go"], default="auto")
+    native_scan.add_argument("--codex-root")
+    native_scan.add_argument("--claude-root")
+    native_scan.add_argument("--threads", type=int, default=4)
+    native_scan.add_argument("--debug-build", action="store_true")
+
     sub.add_parser("health", help="Check context system health")
     return parser
 
@@ -282,6 +290,20 @@ def run(args: argparse.Namespace) -> int:
         if args.dry_run:
             forwarded.append("--dry-run")
         return maintenance_module.main(forwarded)
+
+    if args.command == "native-scan":
+        result = context_native.run_native_scan(
+            backend=args.backend,
+            codex_root=args.codex_root,
+            claude_root=args.claude_root,
+            threads=args.threads,
+            release=not args.debug_build,
+        )
+        if result.stdout:
+            print(result.stdout.rstrip())
+        if result.stderr:
+            print(result.stderr.rstrip(), file=sys.stderr)
+        return result.returncode
 
     if args.command == "health":
         recall_payload = session_index.health_payload()

@@ -18,6 +18,7 @@
 - `scripts/session_index.py` / `scripts/memory_index.py`：本地 SQLite 索引，直连 Codex/Claude/shell 历史，无同步延迟。
 - `benchmarks/`：精确定位热路径，量化本地运行速度，为 Rust/Go 替换提供数据上下文。
 - `native/session_scan/`：首个 Rust hot-path 原型，示例如何逐步迁移关键子系统。
+- `native/session_scan_go/`：Go 版扫描原型，用于评估更轻的一体化二进制路径。
 
 ## 绩效与本地迁移路线
 
@@ -47,6 +48,7 @@ python3 scripts/context_cli.py import /tmp/contextmesh-export.json
 python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
 python3 scripts/context_cli.py maintain --dry-run
 python3 scripts/context_cli.py health
+python3 scripts/context_cli.py native-scan --backend auto --threads 4
 ```
 
 ### 安装态烟测

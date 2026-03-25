@@ -113,6 +113,28 @@ class ContextCliTests(unittest.TestCase):
         self.assertIn("--enqueue-missing", forwarded)
         self.assertIn("--dry-run", forwarded)
 
+    def test_native_scan_subcommand_delegates(self) -> None:
+        args = context_cli.build_parser().parse_args(
+            ["native-scan", "--backend", "go", "--threads", "2", "--debug-build"]
+        )
+        result = mock.Mock()
+        result.returncode = 0
+        result.stdout = "native ok\n"
+        result.stderr = ""
+        with mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result) as mock_run:
+            with mock.patch("builtins.print") as mock_print:
+                rc = context_cli.run(args)
+        self.assertEqual(rc, 0)
+        mock_run.assert_called_once_with(
+            backend="go",
+            codex_root=None,
+            claude_root=None,
+            threads=2,
+            release=False,
+        )
+        printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
+        self.assertIn("native ok", printed)
+
     def test_package_import_context_cli(self) -> None:
         sys.path.insert(0, str(SCRIPT_DIR.parent))
         try:
