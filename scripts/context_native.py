@@ -234,7 +234,9 @@ def _build_go_cmd(
         cmd.extend(["--limit", str(max(1, limit))])
     if json_output:
         cmd.append("--json")
-    return cmd, GO_PROJECT, os.environ.copy()
+    env = os.environ.copy()
+    env.setdefault("CONTEXTGO_ACTIVE_WORKDIR", str(Path.cwd()))
+    return cmd, GO_PROJECT, env
 
 
 def _execute_native_command(

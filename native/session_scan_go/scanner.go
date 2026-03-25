@@ -487,6 +487,9 @@ func extractCwd(payload map[string]any) string {
 }
 
 func normalizedCurrentWorkdir() string {
+	if explicit := strings.TrimSpace(os.Getenv("CONTEXTGO_ACTIVE_WORKDIR")); explicit != "" {
+		return normalizePath(explicit)
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ""
