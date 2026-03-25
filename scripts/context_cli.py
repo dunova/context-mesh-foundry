@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import context_core
+from memory_index import export_observations_payload, import_observations_payload
 
 
 HOME = Path.home()
@@ -190,6 +191,16 @@ def build_parser() -> argparse.ArgumentParser:
     save.add_argument("--content", required=True)
     save.add_argument("--tags", default="")
 
+    export = sub.add_parser("export", help="Export indexed observations to JSON")
+    export.add_argument("query", nargs="?", default="", help="Search query, empty for all")
+    export.add_argument("output", help="Output JSON path")
+    export.add_argument("--limit", type=int, default=5000)
+    export.add_argument("--source-type", default="all", choices=["all", "history", "conversation"])
+
+    import_cmd = sub.add_parser("import", help="Import observations from JSON")
+    import_cmd.add_argument("input", help="Input JSON path")
+    import_cmd.add_argument("--no-sync", action="store_true")
+
     sub.add_parser("health", help="Check context system health")
     return parser
 
@@ -230,6 +241,27 @@ def run(args: argparse.Namespace) -> int:
         message = _save_local_memory(args.title, args.content, tags)
         print(message)
         return 0 if not message.startswith("Failed to save memory:") else 1
+
+    if args.command == "export":
+        payload = export_observations_payload(
+            args.query,
+            limit=args.limit,
+            source_type=args.source_type,
+        )
+        output_path = Path(args.output).expanduser()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"exported observations={payload['total_observations']} -> {output_path}")
+        return 0
+
+    if args.command == "import":
+        input_path = Path(args.input).expanduser()
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
+        result = import_observations_payload(payload, sync_from_storage=not args.no_sync)
+        print(
+            f"import done inserted={result['inserted']} skipped={result['skipped']} db={result['db_path']}"
+        )
+        return 0
 
     if args.command == "health":
         rc, out, err = _run_recall(health=True)

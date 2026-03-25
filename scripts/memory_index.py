@@ -410,3 +410,156 @@ def index_stats() -> dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+def export_observations_payload(
+    query: str = "",
+    *,
+    limit: int = 5000,
+    source_type: str = "all",
+) -> dict[str, Any]:
+    sync_info = sync_index_from_storage()
+    target = max(1, min(int(limit), 50000))
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    page = 200
+    while len(rows) < target:
+        batch = search_index(
+            query=query,
+            limit=min(page, target - len(rows)),
+            offset=offset,
+            source_type=source_type,
+        )
+        if not batch:
+            break
+        rows.extend(batch)
+        if len(batch) < page:
+            break
+        offset += len(batch)
+
+    return {
+        "exported_at": datetime.now().isoformat(),
+        "query": query,
+        "source_type": source_type,
+        "sync": sync_info,
+        "total_observations": len(rows),
+        "observations": rows,
+    }
+
+
+SECRET_PATTERNS = [
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\bsk-proj-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+]
+
+
+def _sanitize_import_text(text: str) -> str:
+    out = strip_private_blocks(text or "")
+    for pat in SECRET_PATTERNS:
+        out = pat.sub("***REDACTED***", out)
+    return out.strip()
+
+
+def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
+    raw_tags = raw.get("tags") or []
+    if not isinstance(raw_tags, list):
+        raw_tags = [raw_tags]
+    clean_tags = []
+    for tag in raw_tags:
+        cleaned = _sanitize_import_text(str(tag))
+        if cleaned:
+            clean_tags.append(cleaned[:80])
+
+    raw_path = _sanitize_import_text(str(raw.get("file_path") or "import://json"))[:300]
+    if raw_path.startswith("/") or raw_path.startswith("~"):
+        raw_path = "import://local-path-redacted"
+
+    title = _sanitize_import_text(str(raw.get("title") or "imported memory"))[:240]
+    content = _sanitize_import_text(str(raw.get("content") or ""))
+    created_at_epoch = int(raw.get("created_at_epoch") or int(datetime.now().timestamp()))
+    fingerprint = str(raw.get("fingerprint") or "").strip()
+    if not fingerprint and content:
+        fingerprint = hashlib.sha256(
+            f"{raw.get('source_type') or 'import'}|{raw.get('session_id') or 'imported'}|{title}|{content}|{created_at_epoch}".encode(
+                "utf-8"
+            )
+        ).hexdigest()
+    return {
+        "fingerprint": fingerprint,
+        "source_type": str(raw.get("source_type") or "import"),
+        "session_id": str(raw.get("session_id") or "imported"),
+        "title": title,
+        "content": content,
+        "tags_json": json.dumps(clean_tags, ensure_ascii=False),
+        "file_path": raw_path,
+        "created_at": str(raw.get("created_at") or datetime.now().isoformat()),
+        "created_at_epoch": created_at_epoch,
+    }
+
+
+def import_observations_payload(
+    payload: dict[str, Any],
+    *,
+    sync_from_storage: bool = True,
+) -> dict[str, Any]:
+    observations = payload.get("observations") or []
+    if not isinstance(observations, list):
+        raise ValueError("invalid payload: observations must be list")
+
+    db_path = ensure_index_db()
+    conn = sqlite3.connect(db_path)
+    inserted = 0
+    skipped = 0
+    now_epoch = int(datetime.now().timestamp())
+    try:
+        for raw in observations:
+            if not isinstance(raw, dict):
+                continue
+            obs = _normalize_import_observation(raw)
+            if not obs["fingerprint"] or not obs["content"].strip():
+                skipped += 1
+                continue
+            exists = conn.execute(
+                "SELECT id FROM observations WHERE fingerprint = ?",
+                (obs["fingerprint"],),
+            ).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            conn.execute(
+                """
+                INSERT INTO observations(
+                    fingerprint, source_type, session_id, title, content, tags_json,
+                    file_path, created_at, created_at_epoch, updated_at_epoch
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    obs["fingerprint"],
+                    obs["source_type"],
+                    obs["session_id"],
+                    obs["title"],
+                    obs["content"],
+                    obs["tags_json"],
+                    obs["file_path"],
+                    obs["created_at"],
+                    obs["created_at_epoch"],
+                    now_epoch,
+                ),
+            )
+            inserted += 1
+        conn.commit()
+    finally:
+        conn.close()
+
+    if sync_from_storage:
+        sync_index_from_storage()
+
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "db_path": str(db_path),
+    }

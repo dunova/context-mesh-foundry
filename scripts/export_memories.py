@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Export memory observations to JSON."""
+"""Legacy wrapper for `context_cli.py export`."""
 
 from __future__ import annotations
 
-from datetime import datetime
 import argparse
-import json
 from pathlib import Path
+import sys
 
-try:
-    from memory_index import search_index, sync_index_from_storage
-except Exception:  # pragma: no cover
-    from .memory_index import search_index, sync_index_from_storage  # type: ignore[import-not-found]
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import context_cli
 
 
 def main() -> int:
@@ -21,40 +21,19 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=5000, help="Max observations to export.")
     parser.add_argument("--source-type", default="all", choices=["all", "history", "conversation"])
     args = parser.parse_args()
-
-    sync_info = sync_index_from_storage()
-    target = max(1, min(args.limit, 50000))
-    rows = []
-    offset = 0
-    page = 200
-    while len(rows) < target:
-        batch = search_index(
-            query=args.query,
-            limit=min(page, target - len(rows)),
-            offset=offset,
-            source_type=args.source_type,
+    return context_cli.run(
+        context_cli.build_parser().parse_args(
+            [
+                "export",
+                args.query,
+                args.output,
+                "--limit",
+                str(args.limit),
+                "--source-type",
+                args.source_type,
+            ]
         )
-        if not batch:
-            break
-        rows.extend(batch)
-        if len(batch) < page:
-            break
-        offset += len(batch)
-
-    payload = {
-        "exported_at": datetime.now().isoformat(),
-        "query": args.query,
-        "source_type": args.source_type,
-        "sync": sync_info,
-        "total_observations": len(rows),
-        "observations": rows,
-    }
-
-    output_path = Path(args.output).expanduser()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"exported observations={len(rows)} -> {output_path}")
-    return 0
+    )
 
 
 if __name__ == "__main__":
