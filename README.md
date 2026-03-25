@@ -11,30 +11,30 @@
 
 ## 这个项目做了什么
 
-Context Mesh Foundry (CMF) 是一个**本地优先、无 MCP 依赖、零 Docker 运行**的上下文持久层。它将三个子系统缝合成统一的记忆网格：
+Context Mesh Foundry (CMF) 是一个**本地优先、无 MCP、零 Docker、单仓自包含**的上下文持久层。当前主链已经收敛为三个内置组件：
 
-1. **recall.py** — 跨所有 AI 会话历史的混合搜索（SQLite 索引 + 正则）
-2. **context_cli.py** — 轻量统一 CLI，支持 `search / semantic / save / export / import / serve / onecontext-maintain / health` — **默认入口**
-3. **viking_daemon.py** — 后台守护进程，监控终端/AI 历史并将清洗后的内容导出到本地存储。
+1. **session_index.py** — 仓库内置会话索引，直接扫描本机 AI / Shell 历史并建立本地 SQLite 检索库
+2. **context_cli.py** — 统一 CLI，支持 `search / semantic / save / export / import / serve / onecontext-maintain / health` — **默认入口**
+3. **viking_daemon.py** — 后台守护进程，监控终端/AI 历史并将清洗后的内容导出到本地存储
 
 ### 🚀 零 Docker / 纯 Python 协议
 
 与许多需要 Docker 运行复杂向量数据库（Milvus、Chroma）的上下文系统不同，CMF 设计为**服务器可选**：
 
-- **默认模式**：完全作为本地 Python 脚本运行。使用本地 SQLite 索引和标准文件搜索。无需 Docker，无需后台服务器，无额外开销。
-- **高级模式（可选）**：如果你已经在运行 [OpenViking](https://github.com/Open-Wise/OpenViking) 服务器，CMF 可以自动同步到服务器以支持高维语义搜索。但对于 90% 的场景，纯本地模式更快且足够好用。
+- **默认模式**：完全作为本地 Python 脚本运行。使用仓库内置 `session_index.py` + `memory_index.py` 两套 SQLite 索引。无需 Docker，无需外部 recall/MCP 依赖。
+- **高级模式（可选）**：如果你已经在运行 [OpenViking](https://github.com/Open-Wise/OpenViking) 服务器，CMF 仍可把本地记忆同步过去做远端语义增强；但默认主链不依赖它。
 
 ### 三段式预热协议（强制执行）
 
 每个 AI 会话在执行任务前，应遵循以下检索顺序：
 
 ```
-1. Recall 精确检索       （必做，查找具体 session 或代码片段）
-2. 本地语义检索          （仅 recall 未命中时，查找宽泛概念）
+1. 本地 session index 精确检索 （必做，查找具体 session 或代码片段）
+2. 本地语义检索               （仅精确检索未命中时，查找宽泛概念）
 3. 代码库扫描            （最后手段，针对当前文件的定向扫描）
 ```
 
-未经 recall 预热就做全盘穷举扫描（如 `rg` 扫 `~/` 或 `/Volumes/*`）是**被禁止的**。
+未经 `context_cli.py search` 预热就做全盘穷举扫描（如 `rg` 扫 `~/` 或 `/Volumes/*`）是**被禁止的**。
 
 ## 系统架构
 
@@ -54,11 +54,10 @@ Context Mesh Foundry (CMF) 是一个**本地优先、无 MCP 依赖、零 Docker
                │
        ┌───────┴───────┐
        ▼               ▼
-┌────────────┐  ┌─────────────────┐
-│  recall.py │  │  OpenViking API │
-│  (SQLite   │  │  (可选向量引擎)   │
-│   混合索引) │  │                 │
-└────────────┘  └─────────────────┘
+┌────────────────┐  ┌─────────────────┐
+│ session_index.py│  │  OpenViking API │
+│ (本地会话索引)   │  │  (可选远端增强)  │
+└────────────────┘  └─────────────────┘
        ▲
        │ 空闲时自动归档
 ┌──────┴──────────────────────────────────────┐
@@ -74,22 +73,23 @@ Context Mesh Foundry (CMF) 是一个**本地优先、无 MCP 依赖、零 Docker
 graph TD
     A["AI 终端 / Agents<br/>(Claude Code, Codex, OpenCode...)"] -->|python3 context_cli.py| B["context_cli.py (核心网关)"]
     subgraph "存储与索引 (Memory Core)"
-        C["recall.py (SQLite 精确索引)"]
-        D["OpenViking API (向量语义库)"]
+        C["session_index.py (Local Session Index)"]
+        D["memory_index.py (Local Memory Index)"]
+        E["OpenViking API (Optional Remote Sync)"]
     end
     B --> C
     B --> D
-    E["viking_daemon.py (后台脱敏进程)"] -.->|自动归档| C
-    E -.->|隐私清洗 & 数据导出| E
-    F[终端历史 / Shell History] --> E
+    F["viking_daemon.py (后台脱敏进程)"] -.->|自动归档| D
+    F -.->|隐私清洗 & 数据导出| E
+    G[终端历史 / Shell History] --> F
 ```
 
 ### GSD 集成
 
 与 [GSD 工作流](https://github.com/dunova/get-shit-done)（`discuss → plan → execute → verify`）配合使用时，每个阶段都会通过 `context_cli.py` 自动预热上下文：
 
-- **discuss 阶段**: 强制执行 recall 检索历史。
-- **plan 阶段**: 执行 recall 并可选补全语义背景。
+- **discuss 阶段**: 强制执行 `context_cli.py search`。
+- **plan 阶段**: 先 `search`，再按需 `semantic`。
 - **health 阶段**: 通过 `context_healthcheck.sh` 监控系统运行状态。
 
 ## 模块地图
@@ -99,8 +99,9 @@ graph TD
 | 脚本 | 用途 |
 |--------|---------|
 | `context_cli.py` | **默认统一入口** — 搜索、语义查询、保存、导入导出、viewer、maintenance、健康检查 |
+| `session_index.py` | 仓库内置会话索引；主链搜索与健康检查的基础 |
 | `viking_daemon.py` | 后台守护进程：实时监控 → 脱敏清洗 → 自动归档 |
-| `openviking_mcp.py` | 可选 legacy MCP 兼容层，核心逻辑已复用共享运行时 |
+| `openviking_mcp.py` | 可选 legacy 兼容层；默认主链不依赖，建议停用 |
 | `context_healthcheck.sh` | 针对整个上下文系统栈的全面健康检查 |
 | `start_openviking.sh` | 安全启动 OpenViking 服务的脚本 (处理端口、配置、重试) |
 | `unified_context_deploy.sh` | 部署工具：同步脚本、安装 launchd/systemd、自动重载 |
@@ -137,9 +138,8 @@ graph TD
 ## 系统要求
 
 - Python 3.10+
-- (可选) [OpenViking](https://github.com/Open-Wise/OpenViking) 服务器已启动
 - macOS (launchd) 或 Linux (systemd)
-- [recall.py](https://github.com/dunova/get-shit-done) (归属于 GSD 技能生态)
+- (可选) [OpenViking](https://github.com/Open-Wise/OpenViking) 服务器，仅在你需要远端同步时使用
 
 ## 快速开始
 
@@ -231,30 +231,30 @@ Modern AI-assisted development spawns many parallel sessions — Claude Code, Co
 
 ## What This Does
 
-Context Mesh Foundry (CMF) is a **local-first, MCP-free, and Zero-Docker** context persistence layer. It weaves together three subsystems into a unified memory mesh:
+Context Mesh Foundry (CMF) is a **local-first, MCP-free, zero-Docker, self-contained** context persistence layer. The mainline now converges around three built-in components:
 
-1. **recall.py** — Hybrid search across all AI session histories (SQLite index + regex)
-2. **context_cli.py** — Lightweight unified CLI for `search / semantic / save / export / import / serve / onecontext-maintain / health` — the **default entry point**
-3. **viking_daemon.py** — Background daemon that watches terminal/AI histories and exports sanitized markdown to local storage.
+1. **session_index.py** — built-in local session index that scans AI / shell histories into SQLite
+2. **context_cli.py** — unified CLI for `search / semantic / save / export / import / serve / onecontext-maintain / health` — the **default entry point**
+3. **viking_daemon.py** — background daemon that watches terminal/AI histories and exports sanitized markdown to local storage
 
 ### 🚀 Zero-Docker / Pure-Python Operation
 
 Unlike many context systems that require complex vector databases (Milvus, Chroma) running in Docker, CMF is designed to be **server-optional**:
 
-- **Default Mode**: Operates entirely as local Python scripts. It uses a local SQLite index and standard file search. No Docker, no background servers, no overhead.
-- **Advanced Mode (Optional)**: If you already have [OpenViking](https://github.com/Open-Wise/OpenViking) running, CMF can automatically sync to it for high-dimensional semantic search. But for 90% of use cases, the local-only mode is faster and sufficient.
+- **Default Mode**: Operates entirely as local Python scripts using built-in `session_index.py` + `memory_index.py`. No Docker, no external recall/MCP dependency.
+- **Advanced Mode (Optional)**: If you already run [OpenViking](https://github.com/Open-Wise/OpenViking), CMF can still sync local memories there for remote semantic enhancement, but the mainline does not require it.
 
 ### Hit-First Retrieval Protocol
 
 Every AI session should follow this order before doing any work:
 
 ```
-1. Recall exact search   (mandatory: check specific sessions or snippets)
-2. Local semantic search  (only if recall misses: check broad concepts)
+1. Local session-index exact search   (mandatory: check specific sessions or snippets)
+2. Local semantic search              (only if exact search misses: check broad concepts)
 3. Codebase scan          (only as last resort: targeted local scan)
 ```
 
-Blind whole-disk scans (`~/`, `/Volumes/*`) without prior recall are **forbidden**.
+Blind whole-disk scans (`~/`, `/Volumes/*`) without prior `context_cli.py search` are **forbidden**.
 
 ## Architecture
 
@@ -274,11 +274,10 @@ Blind whole-disk scans (`~/`, `/Volumes/*`) without prior recall are **forbidden
                │
        ┌───────┴───────┐
        ▼               ▼
-┌────────────┐  ┌─────────────────┐
-│  recall.py │  │  OpenViking API │
-│  (SQLite   │  │  (vectorized    │
-│   hybrid)  │  │   search)       │
-└────────────┘  └─────────────────┘
+┌──────────────────┐  ┌─────────────────┐
+│ session_index.py │  │  OpenViking API │
+│ (local sessions) │  │ (optional sync) │
+└──────────────────┘  └─────────────────┘
        ▲
        │  auto-export on idle
 ┌──────┴──────────────────────────────────────┐
@@ -295,22 +294,23 @@ Blind whole-disk scans (`~/`, `/Volumes/*`) without prior recall are **forbidden
 graph TD
     A["AI Terminals / Agents<br/>(Claude Code, Codex, OpenCode...)"] -->|python3 context_cli.py| B["context_cli.py (CLI Gateway)"]
     subgraph "Memory Core"
-        C["recall.py (SQLite Precise Index)"]
-        D["OpenViking API (Vector Store)"]
+        C["session_index.py (Local Session Index)"]
+        D["memory_index.py (Local Memory Index)"]
+        E["OpenViking API (Optional Remote Sync)"]
     end
     B --> C
     B --> D
-    E["viking_daemon.py (Daemon Process)"] -.->|Auto-Archive| C
-    E -.->|Privacy Scrubbing & Export| E
-    F[Terminal History / Shell History] --> E
+    F["viking_daemon.py (Daemon Process)"] -.->|Auto-Archive| D
+    F -.->|Privacy Scrubbing & Export| E
+    G[Terminal History / Shell History] --> F
 ```
 
 ### GSD Integration
 
 When used with the [GSD workflow](https://github.com/dunova/get-shit-done) (`discuss → plan → execute → verify`), each phase auto-preheats context via `context_cli.py`:
 
-- **discuss-phase**: mandatory recall search
-- **plan-phase**: recall + optional semantic backfill
+- **discuss-phase**: mandatory `context_cli.py search`
+- **plan-phase**: `search` + optional `semantic`
 - **health**: stack-wide diagnostics via `context_healthcheck.sh`
 
 ## Module Map
@@ -320,8 +320,9 @@ When used with the [GSD workflow](https://github.com/dunova/get-shit-done) (`dis
 | Script | Purpose |
 |--------|---------|
 | `context_cli.py` | **Default unified entry point** — search, semantic, save, import/export, viewer, maintenance, health |
+| `session_index.py` | Built-in session index powering standalone search and health |
 | `viking_daemon.py` | Background daemon: watch → sanitize → export |
-| `openviking_mcp.py` | Optional legacy MCP bridge; core logic now reuses shared runtime helpers |
+| `openviking_mcp.py` | Optional legacy compatibility layer; not used by the default path |
 | `context_healthcheck.sh` | Comprehensive health checks for the whole stack |
 | `start_openviking.sh` | Start OpenViking safely (ports, config, retries) |
 | `unified_context_deploy.sh` | Deploy: sync scripts/skills, patch launchd, reload |
@@ -358,9 +359,8 @@ When used with the [GSD workflow](https://github.com/dunova/get-shit-done) (`dis
 ## Requirements
 
 - Python 3.10+
-- (Optional) [OpenViking](https://github.com/Open-Wise/OpenViking) server
 - macOS (launchd) or Linux (systemd)
-- [recall.py](https://github.com/dunova/get-shit-done) (from GSD skills)
+- (Optional) [OpenViking](https://github.com/Open-Wise/OpenViking) server, only for remote sync/enhancement
 
 ## Quick Start
 
