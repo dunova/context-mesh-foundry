@@ -27,7 +27,7 @@
 
 ## 数据流
 
-1. 会话输入 -> `viking_daemon.py`。  
+1. 会话输入 -> `context_daemon.py`。  
 2. 脱敏/私密过滤 -> 历史文件落盘。  
 3. `memory_index.py` / `session_index.py` 同步索引。  
 4. `context_cli.py` 或 legacy wrapper 调用索引/检索能力。  

@@ -1,6 +1,6 @@
 # Troubleshooting & Integration Gotchas
 
-This document summarizes known issues, integration blind spots, and troubleshooting steps for the standalone `context_cli.py` + `session_index.py` + `viking_daemon.py` stack, while also covering optional OpenViking legacy paths.
+This document summarizes known issues, integration blind spots, and troubleshooting steps for the standalone `context_cli.py` + `session_index.py` + `context_daemon.py` stack, while also covering optional OpenViking legacy paths.
 
 > **Note**: All paths referenced below are standard/relative forms. Actual deployment paths vary based on your environment configurations.
 
