@@ -455,17 +455,17 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             if let Some(id) = extract_session_id(&json) {
                 session_id = id;
             }
-            if session_cwd.is_none() {
-                session_cwd = extract_cwd(&json);
+            if let Some(cwd) = extract_cwd(&json) {
+                if session_cwd.is_none() {
+                    session_cwd = Some(cwd.clone());
+                }
                 if !query_lower.is_empty() {
-                    if let (Some(current_workdir), Some(session_cwd)) =
-                        (current_workdir.as_deref(), session_cwd.as_deref())
-                    {
-                        let normalized_session_cwd = std::path::Path::new(session_cwd)
+                    if let Some(current_workdir) = current_workdir.as_deref() {
+                        let normalized_session_cwd = std::path::Path::new(&cwd)
                             .canonicalize()
                             .ok()
                             .map(|path| path.to_string_lossy().to_string())
-                            .unwrap_or_else(|| session_cwd.to_string());
+                            .unwrap_or(cwd);
                         if normalized_session_cwd == current_workdir {
                             anyhow::bail!("skip current workdir session");
                         }
