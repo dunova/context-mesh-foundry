@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Local-first context &amp; memory runtime for multi-agent AI coding teams.</strong><br>
-  <em>面向多 Agent AI 编码团队的本地优先上下文与记忆运行时。</em>
+  <em>面向多 Agent AI 编码团队的本地优先上下文与记忆系统</em>
 </p>
 
 <p align="center">
