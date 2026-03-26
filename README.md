@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dunova/ContextGO/releases/tag/v0.8.0"><img src="https://img.shields.io/badge/version-v0.8.0-2563eb?style=flat" alt="Version"></a>
+  <a href="https://github.com/dunova/ContextGO/releases/tag/v0.9.0"><img src="https://img.shields.io/badge/version-v0.9.0-2563eb?style=flat" alt="Version"></a>
   <a href="https://github.com/dunova/ContextGO/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-6d28d9?style=flat" alt="License"></a>
   <a href="https://github.com/dunova/ContextGO/actions/workflows/verify.yml"><img src="https://github.com/dunova/ContextGO/actions/workflows/verify.yml/badge.svg" alt="Build"></a>
   <a href="https://codecov.io/gh/dunova/ContextGO"><img src="https://codecov.io/gh/dunova/ContextGO/branch/main/graph/badge.svg" alt="Coverage"></a>
@@ -23,7 +23,7 @@ ContextGO unifies Codex, Claude, and shell session histories into one **searchab
 ## Quick Start
 
 ```bash
-pip install contextgo
+python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
 contextgo health
 contextgo search "auth root cause" --limit 10
 ```
@@ -112,14 +112,15 @@ contextgo serve --port 37677        # start local viewer at 127.0.0.1:37677
 ### Step 1: Install
 
 ```bash
-pip install contextgo && contextgo health
+python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
+contextgo health
 ```
 
-If `contextgo` is not found after pip install, install from source:
+If you prefer a local editable install, install from source:
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git
-cd ContextGO && pip install -e . && contextgo health
+cd ContextGO && python3 -m pip install -e . && contextgo health
 ```
 
 ### Step 2: Build initial index
@@ -225,7 +226,7 @@ ContextGO 将 Codex、Claude 和 shell 的会话历史统一到一条**可检索
 ## 快速上手
 
 ```bash
-pip install contextgo
+python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
 contextgo health
 contextgo search "认证根因" --limit 10
 ```
@@ -314,14 +315,15 @@ contextgo serve --port 37677           # 在 127.0.0.1:37677 启动本地 Viewer
 ### 第一步：安装
 
 ```bash
-pip install contextgo && contextgo health
+python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
+contextgo health
 ```
 
-如果 pip 安装后找不到 `contextgo`，从源码安装：
+如果你更偏好本地可编辑安装，可直接从源码安装：
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git
-cd ContextGO && pip install -e . && contextgo health
+cd ContextGO && python3 -m pip install -e . && contextgo health
 ```
 
 ### 第二步：构建初始索引

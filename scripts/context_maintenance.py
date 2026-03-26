@@ -359,9 +359,7 @@ def main(argv: list[str] | None = None) -> int:
             print("sessions=0 turns=0 turn_content=0 events=0")
             print("session_process jobs: queued=0 processing=0 done=0")
             print("llm_error_sessions=0")
-            print(
-                f"local_files={len(local_items)} missing_codex={missing_codex} missing_claude_main={missing_claude}"
-            )
+            print(f"local_files={len(local_items)} missing_codex={missing_codex} missing_claude_main={missing_claude}")
             print("dry_run: no DB changes applied (database missing, treated as empty)")
             return 0
         print(f"ERROR: cannot open database {db_path}: database file does not exist", file=sys.stderr)

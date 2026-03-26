@@ -36,7 +36,7 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-lint-
 
       - name: Install ruff
-        run: pip install --quiet "ruff>=0.4"
+        run: pip install --quiet "ruff==0.15.7"
 
       - name: Check Bash syntax
         run: bash -n scripts/*.sh
@@ -104,12 +104,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           python -m pytest \
-            scripts/test_context_cli.py \
-            scripts/test_context_core.py \
-            scripts/test_context_native.py \
-            scripts/test_context_smoke.py \
-            scripts/test_session_index.py \
-            scripts/test_autoresearch_contextgo.py \
+            scripts \
             --cov=scripts \
             --cov-report=term-missing \
             --cov-report=xml \

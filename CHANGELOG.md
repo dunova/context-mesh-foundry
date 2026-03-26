@@ -21,22 +21,22 @@ _No unreleased changes._
 
 0.9.0 is the milestone release that completes the ContextGO rewrite journey. One hundred rounds of AutoResearch optimization — encompassing deep code rewrites, commercial-grade quality hardening, and systematic coverage expansion across every module and native backend — converge here into a single coherent version.
 
-**Four pillars:** complete Python codebase rewrite with full type annotations and zero lint suppressions; native CJK safety throughout Go and Rust hot paths; PyPI packaging (`pip install contextgo`); and a fully polished repository front door — logo, Code of Conduct, GitHub labels, shell hardening, and bilingual documentation.
+**Four pillars:** complete Python codebase rewrite with full type annotations and zero lint suppressions; native CJK safety throughout Go and Rust hot paths; release-ready packaging and source-install verification; and a fully polished repository front door — logo, Code of Conduct, GitHub labels, shell strict-mode hardening, and bilingual documentation.
 
 No breaking changes. All CLI commands, environment variables, and configuration keys from 0.7.0 remain in place.
 
-0.9.0 是 ContextGO 重写旅程的里程碑版本。历经 100 轮 AutoResearch 优化，在此版本中汇聚成单一、连贯的发布成果。四大支柱：完整 Python 代码库重写（类型注解、零 lint 抑制）；Go 与 Rust 热路径全面 CJK 安全支持；PyPI 打包（`pip install contextgo`）；完全打磨的仓库展示面。无破坏性变更。
+0.9.0 是 ContextGO 重写旅程的里程碑版本。历经 100 轮 AutoResearch 优化，在此版本中汇聚成单一、连贯的发布成果。四大支柱：完整 Python 代码库重写（类型注解、零 lint 抑制）；Go 与 Rust 热路径全面 CJK 安全支持；可发布打包链路与源码安装验证；完全打磨的仓库展示面。无破坏性变更。
 
 ### Added
 
 - `docs/RELEASE_NOTES_0.9.0.md` — formal bilingual release notes.
-- PyPI packaging: `pyproject.toml` fully wired with hatchling dynamic versioning from `VERSION`; `contextgo` entry-point CLI installable via `pip install contextgo`.
+- Release-ready packaging: `pyproject.toml` fully wired with hatchling dynamic versioning from `VERSION`; `contextgo` entry-point verified from source installs and build artifacts.
 - Project logo and visual identity assets in `docs/media/`; README updated with banner image.
 - `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1.
-- `.github/labels.yml` — canonical label taxonomy; importable via `gh label import`.
-- Shell hardening: `set -euo pipefail` and `shellcheck`-clean across all `.sh` scripts.
+- `.github/labels.yml` — canonical label taxonomy for sync workflows and GitHub API application.
+- Shell hardening: `set -euo pipefail` standardized across shell entrypoints, with Bash syntax validation in CI.
 - Native CJK safety: Go scanner operates on Unicode rune slices throughout all snippet-extraction and noise-filter hot paths, eliminating multi-byte boundary panics.
-- Rust scanner: `lto = "thin"` and `strip = "symbols"` in `[profile.release]`; binary size reduced ~35%, cold-start latency reduced ~18%.
+- Rust scanner: LTO and `strip = "symbols"` enabled in `[profile.release]`; binary size reduced ~35%, cold-start latency reduced ~18%.
 - Batch SQLite commit hardening: session index commits in configurable batch sizes (default 100 rows) with explicit transaction rollback on failure.
 - Coverage reporting wired into pytest via `pytest-cov`; coverage badge on CI and embedded in README.
 - `pyproject.toml` dev extras: `pytest-cov` added to `[project.optional-dependencies] dev`.
@@ -51,9 +51,9 @@ No breaking changes. All CLI commands, environment variables, and configuration 
 - `docs/ARCHITECTURE.md` — module graph reflects post-rewrite structure; CJK-safety and PyPI paths annotated.
 - `docs/API.md` — all function signatures updated to match rewritten implementations.
 - `docs/CONFIGURATION.md` — `CONTEXTGO_INDEX_BATCH_SIZE` documented.
-- `CONTRIBUTING.md` — PyPI publishing workflow and label import step added to release checklist.
-- `SECURITY.md` — CJK input handling added to threat model.
-- `.github/workflows/verify.yml` — coverage upload step added; label lint step added.
+- `CONTRIBUTING.md` — development, verification, and contribution flow refreshed.
+- `SECURITY.md` — local-first trust boundary and verification baseline refreshed.
+- `.github/workflows/verify.yml` — coverage upload step added and lint toolchain pinned for reproducible checks.
 
 ### Fixed
 
@@ -62,7 +62,7 @@ No breaking changes. All CLI commands, environment variables, and configuration 
 - `session_index.py` — partial batch writes on power-loss or SIGKILL left SQLite WAL ambiguous; `BEGIN EXCLUSIVE` + rollback on error now prevents index corruption.
 - `e2e_quality_gate.py` — benchmark stage could time out silently when native binary had debug symbols; now enforces a 30s per-stage deadline with named failure.
 - `pyproject.toml` — `hatch version` pattern now strips trailing newlines from VERSION, resolving parse failures on some CI runners.
-- Shell scripts — all now `shellcheck`-clean at error level with `set -euo pipefail`.
+- Shell scripts — strict mode gaps closed with `set -euo pipefail`, and syntax validation added to CI.
 
 ### Performance
 

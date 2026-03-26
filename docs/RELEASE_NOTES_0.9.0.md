@@ -11,9 +11,9 @@
 
 ContextGO 0.9.0 is the definitive commercial-grade release.
 
-Over one hundred rounds of AutoResearch-guided optimization, this cycle performed a complete rewrite of every Python module, extended native CJK safety to both the Go and Rust backends, shipped PyPI packaging, added a project logo and Code of Conduct, introduced a canonical GitHub label taxonomy, hardened every shell script to `shellcheck` clean, and polished the documentation suite to production standard.
+Over one hundred rounds of AutoResearch-guided optimization, this cycle performed a complete rewrite of every Python module, extended native CJK safety to both the Go and Rust backends, finalized release-ready packaging, added a project logo and Code of Conduct, introduced a canonical GitHub label taxonomy, hardened shell entrypoints with strict mode, and polished the documentation suite to production standard.
 
-Where 0.7.0 established the commercial baseline and proved the runtime was deployable, 0.9.0 proves it is *maintainable at scale*: every public interface carries type annotations, every module is lint-clean with zero suppressions, every native hot path is safe on multi-byte CJK input, and `pip install contextgo` works end-to-end.
+Where 0.7.0 established the commercial baseline and proved the runtime was deployable, 0.9.0 proves it is *maintainable at scale*: every public interface carries type annotations, every module is lint-clean with zero suppressions, every native hot path is safe on multi-byte CJK input, and the packaging path is ready for reproducible source and build installs.
 
 This release is suitable for adoption as shared context infrastructure in any engineering team working with multi-agent AI coding workflows.
 
@@ -48,7 +48,7 @@ Multi-byte CJK content in session files previously caused silent truncation or r
 
 #### Rust LTO + Strip
 
-The Rust release profile now enables thin LTO and symbol stripping:
+The Rust release profile now enables LTO and symbol stripping:
 
 - Binary size: ~4.2 MB → ~2.7 MB (~35% reduction)
 - Cold-start latency: ~18% reduction
@@ -56,23 +56,23 @@ The Rust release profile now enables thin LTO and symbol stripping:
 
 #### PyPI Packaging
 
-`pyproject.toml` is fully wired with hatchling dynamic versioning from the `VERSION` file. The `contextgo` entry-point CLI installs correctly via `pip install contextgo`. The `dev` extras include `pytest-cov` for coverage-gated CI.
+`pyproject.toml` is fully wired with hatchling dynamic versioning from the `VERSION` file. The `contextgo` entry-point is verified through source installs and build artifacts. The `dev` extras include `pytest-cov` for coverage-gated CI.
 
 #### Repository Front Door
 
 - Project logo and visual identity banner added to `docs/media/` and embedded in README
 - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1 adopted
-- `.github/labels.yml`: canonical issue and PR label taxonomy, importable via `gh label import`
+- `.github/labels.yml`: canonical issue and PR label taxonomy for sync workflows and GitHub API application
 - Coverage badge generated on CI and embedded in README
 - All bilingual documentation updated to reflect 0.9.0 module surface
 
 #### Shell Hardening
 
-All `.sh` scripts across `scripts/` and the project root now:
+Shell entrypoints across `scripts/` and the project root now:
 
 - Start with `#!/usr/bin/env bash`
 - Declare `set -euo pipefail` at the top
-- Pass `shellcheck` at error level with no suppressions
+- Are normalized for strict-mode execution and Bash syntax validation
 
 #### Batch SQLite Commit Hardening
 
@@ -82,10 +82,10 @@ Session index batch writes now use an explicit `BEGIN EXCLUSIVE` transaction wit
 
 ### New Features
 
-**PyPI distribution**
-- `pip install contextgo` installs the `contextgo` CLI entry point
+**Packaging**
+- Source and build installs expose the `contextgo` CLI entry point
 - Hatchling build backend reads version from `VERSION` file
-- `pyproject.toml` wired for `hatch build`, `hatch publish`, and `pip install -e .[dev]`
+- `pyproject.toml` wired for `hatch build`, publish handoff, and `pip install -e ".[dev]"`
 
 **Project identity**
 - Logo and banner assets in `docs/media/`
@@ -97,7 +97,7 @@ Session index batch writes now use an explicit `BEGIN EXCLUSIVE` transaction wit
 - Rust: bounds-checked indexing throughout all path and string operations
 
 **Rust performance profile**
-- `[profile.release]` updated with `lto = "thin"` and `strip = "symbols"`
+- `[profile.release]` updated with LTO and `strip = "symbols"`
 
 **Coverage reporting**
 - pytest-cov integrated; XML and terminal coverage reports generated on every CI run
@@ -110,7 +110,7 @@ Session index batch writes now use an explicit `BEGIN EXCLUSIVE` transaction wit
 **Code quality**
 - Complete rewrite of all Python modules: type-annotated, lint-clean, dead-code-free
 - Zero ruff suppression directives across the entire codebase
-- Shell scripts fully shellcheck-clean
+- Shell entrypoints standardized on strict mode
 
 **Native performance**
 - Rust binary ~35% smaller, ~18% faster cold-start after LTO + strip
@@ -121,13 +121,13 @@ Session index batch writes now use an explicit `BEGIN EXCLUSIVE` transaction wit
 - `docs/API.md`: all signatures updated to match rewritten implementations
 - `docs/CONFIGURATION.md`: new `CONTEXTGO_INDEX_BATCH_SIZE` env var documented
 - `docs/ARCHITECTURE.md`: module graph updated for post-rewrite structure
-- `CONTRIBUTING.md`: PyPI publish workflow and label import step added
-- `SECURITY.md`: CJK input handling added to threat model
+- `CONTRIBUTING.md`: development, verification, and contribution flow refreshed
+- `SECURITY.md`: local-first trust boundary and verification baseline refreshed
 
 **CI/CD**
 - Coverage upload step added to `verify.yml`
-- Label lint step validates `labels.yml` schema on every PR
-- All native build steps verified against post-strip binaries
+- Ruff formatter version pinned for reproducible lint checks
+- Native Go/Rust test jobs aligned with the current repository layout
 
 ---
 
@@ -138,7 +138,7 @@ Session index batch writes now use an explicit `BEGIN EXCLUSIVE` transaction wit
 - **Session index WAL corruption:** partial batch writes on SIGKILL left the SQLite WAL in an ambiguous state; `BEGIN EXCLUSIVE` + explicit rollback now prevents index corruption.
 - **e2e quality gate silent timeout:** benchmark stage could time out without reporting failure when native binary carried debug symbols; 30-second per-stage deadline with named failure now enforced.
 - **pyproject.toml VERSION parse:** `hatch version` pattern failed on some CI runners due to trailing newline in VERSION; pattern now strips whitespace before version match.
-- **Shell strict mode gaps:** several helper scripts lacked `set -euo pipefail`; now uniformly applied and shellcheck-verified.
+- **Shell strict mode gaps:** several helper scripts lacked `set -euo pipefail`; now uniformly applied and checked with Bash syntax validation.
 
 ---
 
@@ -162,10 +162,7 @@ bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py benchmarks/*.py
 
 # Unit and integration tests with coverage
-python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py \
-  scripts/test_context_native.py scripts/test_context_smoke.py \
-  scripts/test_session_index.py scripts/test_autoresearch_contextgo.py \
-  --cov=scripts --cov-report=term-missing
+python3 -m pytest scripts --cov=scripts --cov-report=term-missing
 
 # End-to-end quality gate
 python3 scripts/e2e_quality_gate.py
@@ -179,15 +176,15 @@ python3 scripts/context_cli.py health
 bash scripts/context_healthcheck.sh
 
 # Native backends
-cd native/session_scan_go && go test ./...
-cd native/session_scan && cargo test
-cd native/session_scan && cargo build --release  # verify LTO + strip
+(cd native/session_scan_go && go test ./...)
+(cd native/session_scan && cargo test)
+(cd native/session_scan && cargo build --release)
 
 # Benchmarks
 python3 -m benchmarks --mode both --iterations 1 --warmup 0 --query benchmark --format text
 
-# PyPI packaging
-pip install -e .[dev]
+# Packaging
+python3 -m pip install -e ".[dev]"
 contextgo health
 ```
 
@@ -210,9 +207,9 @@ No migration steps required from 0.7.0 or 0.6.1.
 
 `0.9.0` 是 ContextGO 商业化里程碑版本，也是完整重写周期的终点。
 
-历经超过 100 轮 AutoResearch 优化，本版本完成了 Python 代码库的完整重写、原生 CJK 安全支持全覆盖、PyPI 打包上线、项目 Logo 与行为准则落地、GitHub 标签体系建立、Shell 脚本全面加固，以及文档套件的最终打磨。
+历经超过 100 轮 AutoResearch 优化，本版本完成了 Python 代码库的完整重写、原生 CJK 安全支持全覆盖、可发布打包链路收口、项目 Logo 与行为准则落地、GitHub 标签体系建立、Shell 入口统一严格模式，以及文档套件的最终打磨。
 
-0.7.0 证明了运行时可以部署。0.9.0 证明了它**可以在规模上持续维护**：每个公开接口均有类型注解，每个模块均通过 lint 且无抑制指令，每个 Native 热路径在多字节 CJK 输入下均安全，`pip install contextgo` 端到端可用。
+0.7.0 证明了运行时可以部署。0.9.0 证明了它**可以在规模上持续维护**：每个公开接口均有类型注解，每个模块均通过 lint 且无抑制指令，每个 Native 热路径在多字节 CJK 输入下均安全，源码与构建产物安装链路均可复现。
 
 无破坏性变更。从 0.7.0 直接替换文件即可升级。
 
@@ -239,7 +236,7 @@ No migration steps required from 0.7.0 or 0.6.1.
 
 #### Rust LTO + 体积压缩
 
-Rust release profile 启用 thin LTO 与 strip symbols：
+Rust release profile 启用 LTO 与 strip symbols：
 
 - 二进制体积：~4.2 MB → ~2.7 MB（减少约 35%）
 - 冷启动延迟：降低约 18%
@@ -247,13 +244,13 @@ Rust release profile 启用 thin LTO 与 strip symbols：
 
 #### PyPI 打包
 
-`pyproject.toml` 通过 hatchling 从 `VERSION` 文件动态读取版本。`pip install contextgo` 可正确安装 `contextgo` CLI 入口点。
+`pyproject.toml` 通过 hatchling 从 `VERSION` 文件动态读取版本；`contextgo` CLI 已通过源码安装与构建产物验证。
 
 #### 仓库展示面
 
 - 项目 Logo 与视觉识别资产加入 `docs/media/`，嵌入 README
 - `CODE_OF_CONDUCT.md`：采用 Contributor Covenant 2.1
-- `.github/labels.yml`：可通过 `gh label import` 导入的规范标签集
+- `.github/labels.yml`：供同步工作流或 GitHub API 应用的规范标签集
 - 覆盖率徽章由 CI 生成并嵌入 README
 
 #### Shell 加固
@@ -262,7 +259,7 @@ Rust release profile 启用 thin LTO 与 strip symbols：
 
 - 均以 `#!/usr/bin/env bash` 开头
 - 顶部声明 `set -euo pipefail`
-- shellcheck 错误级别零抑制通过
+- 统一为 strict mode，并纳入 Bash 语法校验
 
 #### SQLite 批量提交加固
 
@@ -277,7 +274,7 @@ session index 的批量写入现在使用显式 `BEGIN EXCLUSIVE` 事务，失�
 - **session index WAL 损坏：** SIGKILL 导致部分批量写入留下歧义 WAL；`BEGIN EXCLUSIVE` + 显式回滚后消除。
 - **e2e 超时静默失败：** benchmark 阶段在 native binary 含调试符号时可能静默超时；现在强制每阶段 30 秒上限，以命名失败形式上报。
 - **pyproject.toml VERSION 解析失败：** 部分 CI runner 上 VERSION 文件尾换行导致 `hatch version` 解析失败；pattern 更新后修复。
-- **Shell strict mode 缺失：** 若干辅助脚本缺少 `set -euo pipefail`；现在全面补齐并经 shellcheck 验证。
+- **Shell strict mode 缺失：** 若干辅助脚本缺少 `set -euo pipefail`；现在全面补齐并纳入 Bash 语法校验。
 
 ---
 
@@ -322,8 +319,8 @@ python3 -m pytest scripts/ --cov=scripts --cov-report=term-missing
 # 基准测试
 python3 -m benchmarks --mode both --iterations 1 --warmup 0 --query benchmark --format text
 
-# PyPI 安装验证
-pip install -e .[dev]
+# 打包链路验证
+python3 -m pip install -e ".[dev]"
 contextgo health
 ```
 
@@ -336,7 +333,7 @@ ContextGO 0.9.0 是面向多 agent AI 编码团队的本地优先上下文运行
 - **本地优先**：默认无 MCP、无 Docker、无云向量依赖
 - **零成本上下文**：本地 SQLite FTS5，token 开销极低
 - **Native 热路径**：Rust / Go 渐进式替换，性能递增无需修改 CLI
-- **生产就绪**：完整 CI/CD、pytest-cov、shellcheck-clean、PyPI 可发布
+- **生产就绪**：完整 CI/CD、pytest-cov、strict mode shell 入口、可发布打包链路
 - **CJK 安全**：Go 与 Rust 均以码点安全方式处理多字节 session 内容
 
 ---
