@@ -130,3 +130,38 @@ python3 scripts/context_cli.py export "" /tmp/context_snapshot.json --limit 5000
 ```
 
 Storage root defaults to `~/.contextgo`. Override with `CONTEXTGO_STORAGE_ROOT`.
+
+---
+
+## Skills (Claude Code / CLI-native AI integration)
+
+ContextGO ships with three Claude Code skills in `skills/`. Install them:
+
+```bash
+bash skills/install.sh
+```
+
+This copies skills to `~/.claude/skills/` where Claude Code auto-discovers them.
+
+| Skill | Trigger | What it does |
+|-------|---------|-------------|
+| `contextgo-gsd` | "GSD", "continue", session start/end | Full recall-execute-persist loop |
+| `contextgo-recall` | "recall", "search history", "what did I do" | Search and summarize past sessions |
+| `contextgo-save` | "save this", "remember", hard problem solved | Persist conclusions for future recall |
+
+### GSD Workflow
+
+The GSD (Get Stuff Done) skill defines a three-phase loop:
+
+1. **Recall** -- At session start, `contextgo semantic` to prime context
+2. **Execute** -- Work normally; daemon captures everything in background
+3. **Persist** -- At milestones, `contextgo save` key decisions
+
+This replaces MCP with a zero-dependency CLI + Skill pattern. No server, no protocol negotiation, no Docker. The AI agent calls the CLI directly.
+
+### Design Philosophy
+
+- **CLI-first**: Skills wrap CLI commands, not HTTP APIs
+- **Local-only**: All data stays in `~/.contextgo`, zero cloud dependency
+- **Zero-config**: `pip install contextgo && bash skills/install.sh` is the entire setup
+- **Composable**: Each skill is standalone; use one, two, or all three

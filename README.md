@@ -116,18 +116,31 @@ Full reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
 ## For AI Agents
 
-If you are Claude, Codex, Cursor, or any LLM-powered tool, see [AGENTS.md](AGENTS.md) for the full onboarding guide and tool manifest.
+ContextGO is designed for AI agents. No MCP, no server protocol -- just CLI + Skills.
 
-One-command deploy and verify:
+**Install and verify:**
 
 ```bash
-git clone https://github.com/dunova/ContextGO.git \
-  && cd ContextGO \
-  && bash scripts/unified_context_deploy.sh \
-  && python3 scripts/context_cli.py smoke
+pip install contextgo && contextgo health
 ```
 
-The [`.claude/CLAUDE.md`](.claude/CLAUDE.md) file is auto-read by Claude Code and documents all commands, style rules, and test gates.
+**Install Claude Code skills:**
+
+```bash
+git clone https://github.com/dunova/ContextGO.git && bash ContextGO/skills/install.sh
+```
+
+This gives you three skills: `contextgo-gsd` (full workflow), `contextgo-recall` (search), `contextgo-save` (persist). Type `/contextgo-gsd` in Claude Code to activate.
+
+**GSD workflow (Recall -> Execute -> Persist):**
+
+```bash
+contextgo semantic "what was I working on"   # Recall
+# ... work normally ...
+contextgo save --title "Decision" --content "Chose X because Y" --tags project,decision  # Persist
+```
+
+See [AGENTS.md](AGENTS.md) for the full guide. [`.claude/CLAUDE.md`](.claude/CLAUDE.md) is auto-read by Claude Code.
 
 ---
 
@@ -273,18 +286,31 @@ contextgo serve --port 37677        # 在 127.0.0.1:37677 启动本地 Viewer
 
 ## 面向 AI Agent
 
-如果你是 Claude、Codex、Cursor 或任何 LLM 驱动的工具，请参阅 [AGENTS.md](AGENTS.md) 获取完整接入指南和工具清单。
+ContextGO 为 AI 智能体而生。无 MCP、无服务器协议 -- 只有 CLI + Skills。
 
-一键部署并验证：
+**安装并验证：**
 
 ```bash
-git clone https://github.com/dunova/ContextGO.git \
-  && cd ContextGO \
-  && bash scripts/unified_context_deploy.sh \
-  && python3 scripts/context_cli.py smoke
+pip install contextgo && contextgo health
 ```
 
-[`.claude/CLAUDE.md`](.claude/CLAUDE.md) 文件由 Claude Code 自动读取，包含所有命令说明、代码风格规范和测试门控。
+**安装 Claude Code Skills：**
+
+```bash
+git clone https://github.com/dunova/ContextGO.git && bash ContextGO/skills/install.sh
+```
+
+三个 Skill：`contextgo-gsd`（完整工作流）、`contextgo-recall`（搜索召回）、`contextgo-save`（持久化）。在 Claude Code 中输入 `/contextgo-gsd` 激活。
+
+**GSD 工作流（召回 -> 执行 -> 持久化）：**
+
+```bash
+contextgo semantic "我上次在做什么"   # 召回
+# ... 正常工作 ...
+contextgo save --title "决策" --content "选择了X方案因为Y" --tags project,decision  # 持久化
+```
+
+详见 [AGENTS.md](AGENTS.md)。[`.claude/CLAUDE.md`](.claude/CLAUDE.md) 由 Claude Code 自动读取。
 
 ---
 
