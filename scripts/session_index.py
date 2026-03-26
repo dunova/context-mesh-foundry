@@ -237,12 +237,20 @@ def _is_current_repo_meta_result(title: str, content: str, file_path: str) -> bo
     meta_markers = (
         "写集仅限",
         "改动文件：",
+        "改动文件:",
+        "**改动文件**",
         "核心变化：",
+        "核心变化:",
         "建议验证命令：",
+        "建议验证命令:",
         "职责只限测试",
         "测试集使用",
         "全平台对话测试集",
         "artifacts/testsets/dataset_",
+        "仓库：",
+        "你负责",
+        "变更概览",
+        "改动概览",
         "我先",
         "我继续",
         "我现在",
@@ -767,6 +775,14 @@ def build_query_terms(query: str) -> list[str]:
             add(token)
     for token in re.findall(r"[\u4e00-\u9fff]{2,12}", raw):
         add(token)
+        normalized = token.lstrip("的了将把从向在对与和及并或再先后")
+        if normalized != token or len(normalized) >= 6:
+            if len(normalized) >= 2:
+                add(normalized[:2])
+                add(normalized[-2:])
+            if len(normalized) >= 4:
+                add(normalized[:4])
+                add(normalized[-4:])
     if not terms:
         add(raw)
     return terms[:8]
@@ -800,10 +816,35 @@ def _build_snippet(text: str, terms: list[str], radius: int = 100) -> str:
                 matched = term
             start = pos + len(term_lower)
     if idx < 0:
+        summary_markers = (
+            "最终交付",
+            "变更概览",
+            "核心变化",
+            "改动文件",
+            "建议验证",
+            "结论",
+            "Summary",
+        )
+        for marker in summary_markers:
+            pos = compact.find(marker)
+            if pos >= 0:
+                start = max(0, pos - radius // 2)
+                end = min(len(compact), pos + len(marker) + radius + radius // 2)
+                return compact[start:end]
         return compact[: radius * 2]
     start = max(0, idx - radius)
     end = min(len(compact), idx + len(matched) + radius)
     return compact[start:end]
+
+
+def _looks_like_path_only_content(title: str, content: str) -> bool:
+    title_clean = re.sub(r"\s+", " ", str(title or "")).strip()
+    content_clean = re.sub(r"\s+", " ", str(content or "")).strip()
+    if not title_clean or not content_clean:
+        return False
+    if title_clean != content_clean:
+        return False
+    return "/" in content_clean and not any(ch in content_clean for ch in ("。", "，", ".", ":"))
 
 
 def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -910,36 +951,76 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
     conn.row_factory = sqlite3.Row
     try:
         terms = [query.strip()] if literal else build_query_terms(query)
+        literal_fallback = False
         native_rows = _native_search_rows(query, limit=max_results)
         if native_rows:
             return _enrich_native_rows(native_rows, conn, terms, max_results)
 
-        where_parts: list[str] = []
-        args: list[Any] = []
-        for term in terms:
-            like_term = f"%{term.lower()}%"
-            where_parts.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(file_path) LIKE ?)")
-            args.extend([like_term, like_term, like_term])
-        sql = """
-            SELECT * FROM session_documents
-            {where}
-            ORDER BY created_at_epoch DESC
-            LIMIT 200
-        """.format(where=f"WHERE {' OR '.join(where_parts)}" if where_parts else "")
-        rows = conn.execute(sql, args).fetchall()
+        def fetch_rows(active_terms: list[str], row_limit: int = 200) -> list[sqlite3.Row]:
+            where_parts: list[str] = []
+            args: list[Any] = []
+            for term in active_terms:
+                like_term = f"%{term.lower()}%"
+                where_parts.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(file_path) LIKE ?)")
+                args.extend([like_term, like_term, like_term])
+            sql = """
+                SELECT * FROM session_documents
+                {where}
+                ORDER BY created_at_epoch DESC
+                LIMIT {row_limit}
+            """.format(
+                where=f"WHERE {' OR '.join(where_parts)}" if where_parts else "",
+                row_limit=row_limit,
+            )
+            return conn.execute(sql, args).fetchall()
+
+        rows = fetch_rows(terms)
+        if literal and not rows:
+            expanded_terms = build_query_terms(query)
+            if expanded_terms and expanded_terms != terms:
+                terms = expanded_terms
+                literal_fallback = True
+                rows = fetch_rows(terms, row_limit=1000)
         ranked: list[tuple[int, sqlite3.Row]] = []
-        for row in rows:
-            if _is_current_repo_meta_result(row["title"], row["content"], row["file_path"]):
-                continue
-            haystack = f"{row['title']}\n{row['content']}\n{row['file_path']}".lower()
-            score = SOURCE_WEIGHT.get(str(row["source_type"]), 1)
+
+        def rank_rows(candidate_rows: list[sqlite3.Row], active_terms: list[str]) -> list[tuple[int, sqlite3.Row]]:
+            ranked_rows: list[tuple[int, sqlite3.Row]] = []
+            for row in candidate_rows:
+                if literal_fallback and row["title"] == str(Path.cwd().resolve()):
+                    continue
+                if _is_current_repo_meta_result(row["title"], row["content"], row["file_path"]):
+                    continue
+                haystack = f"{row['title']}\n{row['content']}\n{row['file_path']}".lower()
+                score = SOURCE_WEIGHT.get(str(row["source_type"]), 1)
+                for term in active_terms:
+                    if term.lower() in haystack:
+                        score += max(4, len(term) * len(term))
+                if _looks_like_path_only_content(row["title"], row["content"]):
+                    score -= 180
+                score -= _search_noise_penalty(row["title"], row["content"], row["file_path"])
+                if score <= 0:
+                    continue
+                ranked_rows.append((score, row))
+            return ranked_rows
+
+        ranked = rank_rows(rows, terms)
+        if literal_fallback and not ranked and rows:
+            term_frequencies: list[tuple[int, str]] = []
             for term in terms:
-                if term.lower() in haystack:
-                    score += max(4, len(term) * len(term))
-            score -= _search_noise_penalty(row["title"], row["content"], row["file_path"])
-            if score <= 0:
-                continue
-            ranked.append((score, row))
+                freq = 0
+                term_lower = term.lower()
+                for row in rows:
+                    haystack = f"{row['title']}\n{row['content']}\n{row['file_path']}".lower()
+                    if term_lower in haystack:
+                        freq += 1
+                if freq > 0:
+                    term_frequencies.append((freq, term))
+            term_frequencies.sort(key=lambda item: (item[0], -len(item[1])))
+            anchor_terms = [term for _, term in term_frequencies[:2]]
+            if anchor_terms and anchor_terms != terms:
+                terms = anchor_terms
+                rows = fetch_rows(terms, row_limit=1000)
+                ranked = rank_rows(rows, terms)
         ranked.sort(key=lambda item: (item[0], item[1]["created_at_epoch"]), reverse=True)
         results: list[dict[str, Any]] = []
         for _, row in ranked[:max_results]:

@@ -20,6 +20,8 @@ class SessionIndexTests(unittest.TestCase):
         lowered = {t.lower() for t in terms}
         self.assertIn("github", lowered)
         self.assertIn("notebooklm", lowered)
+        self.assertIn("终端调用", terms)
+        self.assertIn("调用方案", terms)
 
     def test_sync_and_search_local_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -374,6 +376,13 @@ class SessionIndexTests(unittest.TestCase):
                     "/tmp/session.jsonl",
                 )
             )
+            self.assertTrue(
+                session_index._is_current_repo_meta_result(
+                    repo,
+                    "仓库：/Volumes/AI/GitHub/context-mesh-foundry。你负责 `benchmarks/**`。改动文件: benchmarks/run.py",
+                    "/tmp/session.jsonl",
+                )
+            )
             self.assertFalse(
                 session_index._is_current_repo_meta_result(
                     "/tmp/other",
@@ -390,6 +399,138 @@ class SessionIndexTests(unittest.TestCase):
         )
         snippet = session_index._build_snippet(text, ["NotebookLM"])
         self.assertIn("最终交付", snippet)
+
+    def test_build_snippet_prefers_summary_marker_without_term_hit(self) -> None:
+        text = (
+            "/Volumes/AI/GitHub/context-mesh-foundry "
+            "一些过程说明。 "
+            "变更概览：统一默认安装目录与服务标签。 "
+            "后面还有更多细节。"
+        )
+        snippet = session_index._build_snippet(text, ["2026-03-25"])
+        self.assertIn("变更概览", snippet)
+
+    def test_path_only_content_is_demoted(self) -> None:
+        self.assertTrue(
+            session_index._looks_like_path_only_content(
+                "/Volumes/AI/GitHub/context-mesh-foundry",
+                "/Volumes/AI/GitHub/context-mesh-foundry",
+            )
+        )
+        self.assertFalse(
+            session_index._looks_like_path_only_content(
+                "/Volumes/AI/GitHub/context-mesh-foundry",
+                "变更概览：统一默认安装目录。",
+            )
+        )
+
+    def test_literal_long_query_falls_back_to_anchor_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archived_root = root / ".codex" / "archived_sessions"
+            archived_root.mkdir(parents=True)
+            session_file = archived_root / "archived.jsonl"
+            session_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "long-query-session",
+                                    "cwd": "/tmp/github-research",
+                                    "timestamp": "2026-03-06T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "继续搜索 GitHub 和 X，研究 notebookLM 的终端调用方案",
+                                },
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            db_path = root / "session_index.db"
+            query = "继续搜索 GitHub 和 X 研究 notebookLM 的终端调用方案"
+            with mock.patch.object(session_index, "_home", return_value=root):
+                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
+                    session_index.sync_session_index(force=True)
+                    rows = session_index._search_rows(query, limit=5, literal=True)
+            self.assertEqual(rows[0]["session_id"], "long-query-session")
+
+    def test_literal_long_query_fallback_skips_current_repo_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            archived_root = root / ".codex" / "archived_sessions"
+            session_root = root / ".codex" / "sessions" / "2026" / "03" / "26"
+            archived_root.mkdir(parents=True)
+            session_root.mkdir(parents=True)
+            (session_root / "current.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "current-session",
+                                    "cwd": "/Volumes/AI/GitHub/context-mesh-foundry",
+                                    "timestamp": "2026-03-26T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "仓库：/Volumes/AI/GitHub/context-mesh-foundry。你负责 GitHub notebookLM 测试。",
+                                },
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (archived_root / "archived.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "archived-session",
+                                    "cwd": "/tmp/github-research",
+                                    "timestamp": "2026-03-06T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "继续搜索 GitHub 和 X，研究 notebookLM 的终端调用方案",
+                                },
+                            }
+                        ),
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            db_path = root / "session_index.db"
+            query = "继续搜索 GitHub 和 X 研究 notebookLM 的终端调用方案"
+            with mock.patch.object(session_index, "_home", return_value=root):
+                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
+                    with mock.patch("pathlib.Path.cwd", return_value=Path("/Volumes/AI/GitHub/context-mesh-foundry")):
+                        session_index.sync_session_index(force=True)
+                        rows = session_index._search_rows(query, limit=5, literal=True)
+            self.assertEqual(rows[0]["session_id"], "archived-session")
 
 
 if __name__ == "__main__":
