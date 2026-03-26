@@ -100,6 +100,22 @@ ContextGO/
 - 当前最佳轮次快照：
   - [contextgo_autoresearch_best.json](artifacts/autoresearch/contextgo_autoresearch_best.json)
 
+## Product Preview / 产品预览
+
+建议在这里放 2 张真实截图，优先静态图，不急着上 GIF。
+
+推荐素材位：
+
+1. **CLI Search Preview / CLI 检索预览**
+   - 展示 `search` 命中真实历史会话
+   - 最好带 `health / smoke / native-scan` 中至少一项结果
+
+2. **Viewer Preview / Viewer 预览**
+   - 展示 `/api/health` 或 `/api/search` 的返回效果
+   - 最好体现本地 viewer 的可视化与可调试感
+
+截图规范见 [MEDIA_GUIDE.md](docs/MEDIA_GUIDE.md)。
+
 ## Quick Start / 10 分钟上手
 
 ```bash
@@ -170,6 +186,7 @@ ContextGO 不是“全面重写”，而是“热点替换”：
 ## Launch Assets / 发布与增长素材
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [MEDIA_GUIDE.md](docs/MEDIA_GUIDE.md)
 - [RELEASE_NOTES_0.6.1.md](docs/RELEASE_NOTES_0.6.1.md)
 - [LAUNCH_COPY.md](docs/LAUNCH_COPY.md)
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
