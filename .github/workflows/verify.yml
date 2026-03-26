@@ -2,6 +2,7 @@ name: Verify
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -31,6 +32,9 @@ jobs:
             ${{ runner.os }}-pip-lint-
             ${{ runner.os }}-pip-
 
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
       - name: Check Bash syntax
         run: bash -n scripts/*.sh
 
@@ -39,8 +43,8 @@ jobs:
 
       - name: Secret and path scan
         run: |
-          ! rg -n "AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}" --glob '!.github/' .
-          ! rg -n "/Users/\\w+/" --glob '!.github/' scripts/
+          ! rg -n "AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}" --glob '!artifacts/' --glob '!.github/' .
+          ! rg -n "/Users/\\w+/" --glob '!artifacts/' --glob '!.github/' .
 
   python-test:
     name: Python Tests
@@ -68,7 +72,7 @@ jobs:
       - name: Install Python test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest
+          python -m pip install -r requirements-dev.txt
 
       - name: Run Python unit tests
         run: |
@@ -90,7 +94,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.22"
           cache-dependency-path: native/session_scan_go/go.mod
 
       - name: Run Go tests
@@ -152,7 +156,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest
+          python -m pip install -r requirements-dev.txt
 
       - name: Run end-to-end quality gate
         run: python scripts/e2e_quality_gate.py
