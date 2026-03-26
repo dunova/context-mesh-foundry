@@ -1,6 +1,10 @@
-# Configuration Reference
+# Configuration Reference / 配置参考
+
+> Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [API.md](API.md)
 
 ContextGO is configured through environment variables. All variables are optional. The defaults are designed for local single-user operation with no external dependencies.
+
+ContextGO 通过环境变量进行配置。所有变量均为可选项，默认值适用于本地单用户模式，无需外部依赖。
 
 Copy `.env.example` to `.env` and uncomment the variables you want to change. Never commit a populated `.env` file.
 
@@ -133,6 +137,7 @@ These variables control the daemon's polling frequency, resource limits, and err
 | `CONTEXTGO_SESSION_MAX_CONTENT_CHARS` | `24000` | Maximum characters of session content stored per indexed entry. |
 | `CONTEXTGO_SESSION_SYNC_MIN_INTERVAL_SEC` | `15` | Minimum seconds between session index sync operations. |
 | `CONTEXTGO_SOURCE_CACHE_TTL_SEC` | `10` | TTL in seconds for the source path discovery cache. |
+| `CONTEXTGO_INDEX_BATCH_SIZE` | `100` | Number of rows per SQLite transaction batch during session index sync. Increase for bulk imports; decrease if memory is constrained. Minimum: 10. |
 | `CONTEXTGO_EXPERIMENTAL_SEARCH_BACKEND` | (empty) | Enable an experimental search backend by name. Leave empty for the default backend. |
 | `CONTEXTGO_EXPERIMENTAL_SYNC_BACKEND` | (empty) | Enable an experimental sync backend by name. Leave empty for the default backend. |
 

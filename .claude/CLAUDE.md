@@ -20,7 +20,7 @@ Entry point: `python3 scripts/context_cli.py` (or `contextgo` if pip-installed)
   - `context_maintenance.py` — index cleanup and repair
 - `native/session_scan/` — Rust hot-path binary for file scanning
 - `native/session_scan_go/` — Go hot-path binary for parallel scanning
-- `docs/` — full documentation suite (ARCHITECTURE, CONFIGURATION, TROUBLESHOOTING)
+- `docs/` — full documentation suite (ARCHITECTURE, CONFIGURATION, TROUBLESHOOTING, API, CONTRIBUTING)
 - `benchmarks/` — Python vs. native-wrapper performance harness
 - `templates/` — systemd/launchd service templates
 - `artifacts/` — autoresearch outputs (do not edit)
@@ -45,14 +45,11 @@ python3 scripts/smoke_installed_runtime.py
 
 # Health check
 bash scripts/context_healthcheck.sh
-
-# Quick smoke via CLI (sandboxed)
-python3 scripts/context_cli.py smoke --sandbox
 ```
 
 ## Style Rules
 
-- **Python:** ruff-compatible, type hints required on all new functions and public interfaces, English docstrings, target Python 3.9+
+- **Python:** ruff-compatible, type hints required on all new functions and public interfaces, English docstrings, target Python 3.10+
 - **Rust:** `cargo clippy` clean before commit
 - **Go:** `go vet` clean before commit
 - **Shell:** `shellcheck` clean, always start with `#!/usr/bin/env bash` and `set -euo pipefail`

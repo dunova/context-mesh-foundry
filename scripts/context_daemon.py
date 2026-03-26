@@ -82,8 +82,7 @@ REMOTE_HISTORY_TARGET: str = "contextgo://resources/shared/history"
 _remote_host = REMOTE_SYNC_URL.split("://", 1)[-1].split("/", 1)[0].split(":")[0]
 if _remote_host not in ("127.0.0.1", "localhost", "::1") and not REMOTE_SYNC_URL.startswith("https://"):
     print(
-        f"FATAL: CONTEXTGO_REMOTE_URL must use https:// for non-localhost targets."
-        f" Got: {REMOTE_SYNC_URL}",
+        f"FATAL: CONTEXTGO_REMOTE_URL must use https:// for non-localhost targets. Got: {REMOTE_SYNC_URL}",
         file=sys.stderr,
     )
     raise SystemExit(1)
@@ -99,8 +98,7 @@ if LOCAL_STORAGE_ROOT.exists():
     _storage_stat = LOCAL_STORAGE_ROOT.lstat()
     if _storage_stat.st_uid != os.getuid():
         print(
-            f"FATAL: {LOCAL_STORAGE_ROOT} is not owned by current user"
-            f" (uid={_storage_stat.st_uid})",
+            f"FATAL: {LOCAL_STORAGE_ROOT} is not owned by current user (uid={_storage_stat.st_uid})",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -465,9 +463,7 @@ def _acquire_single_instance_lock() -> bool:
                 pid = 0
 
             if pid > 0 and _pid_alive(pid):
-                logger.error(
-                    "Another ContextGO daemon instance is already running (pid=%s).", pid
-                )
+                logger.error("Another ContextGO daemon instance is already running (pid=%s).", pid)
                 return False
 
             # Stale lock — remove and retry.
@@ -679,9 +675,7 @@ class SessionTracker:
             logger.warning("Skipping symlinked source: %s", path)
             return False
         if st.st_uid != os.getuid():
-            logger.warning(
-                "Skipping source not owned by current user: %s (uid=%d)", path, st.st_uid
-            )
+            logger.warning("Skipping source not owned by current user: %s (uid=%d)", path, st.st_uid)
             return False
         if not stat.S_ISREG(st.st_mode):
             logger.warning("Skipping non-regular source: %s", path)
@@ -794,10 +788,7 @@ class SessionTracker:
         now = time.time()
 
         # Refresh the glob cache on interval to amortise filesystem cost.
-        if (
-            now - self._last_codex_scan >= CODEX_SESSION_SCAN_INTERVAL_SEC
-            or not self._cached_codex_session_files
-        ):
+        if now - self._last_codex_scan >= CODEX_SESSION_SCAN_INTERVAL_SEC or not self._cached_codex_session_files:
             try:
                 session_files = glob.glob(str(CODEX_SESSIONS / "**" / "*.jsonl"), recursive=True)
                 if len(session_files) > MAX_CODEX_SESSION_FILES_PER_SCAN:
@@ -858,9 +849,7 @@ class SessionTracker:
                         text = ""
                         if ptype == "message":
                             texts = [
-                                c.get("text", "")
-                                for c in payload.get("content", [])
-                                if c.get("type") == "output_text"
+                                c.get("text", "") for c in payload.get("content", []) if c.get("type") == "output_text"
                             ]
                             text = "\n".join(t for t in texts if t)
                         elif ptype == "reasoning":
@@ -915,9 +904,7 @@ class SessionTracker:
                     )[:MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL]
                 self._cached_claude_transcript_files = session_files
                 self._last_claude_transcript_scan = now
-                logger.debug(
-                    "Claude transcript cache refreshed: %d files.", len(session_files)
-                )
+                logger.debug("Claude transcript cache refreshed: %d files.", len(session_files))
             except OSError as exc:
                 self._error_count += 1
                 logger.error("glob claude_transcripts: %s", exc)
@@ -1052,10 +1039,7 @@ class SessionTracker:
         now = time.time()
 
         # Refresh the directory glob on interval.
-        if (
-            now - self._last_antigravity_scan >= ANTIGRAVITY_SCAN_INTERVAL_SEC
-            or not self._cached_antigravity_dirs
-        ):
+        if now - self._last_antigravity_scan >= ANTIGRAVITY_SCAN_INTERVAL_SEC or not self._cached_antigravity_dirs:
             try:
                 dirs = glob.glob(str(ANTIGRAVITY_BRAIN / "*-*-*-*-*"))
                 if len(dirs) > MAX_ANTIGRAVITY_DIRS_PER_SCAN:
@@ -1166,9 +1150,7 @@ class SessionTracker:
         # Evict oldest unseen entries when the tracking map exceeds its limit.
         if len(self.antigravity_sessions) > MAX_ANTIGRAVITY_SESSIONS:
             stale = [
-                (sid, meta.get("mtime", 0.0))
-                for sid, meta in self.antigravity_sessions.items()
-                if sid not in seen_sids
+                (sid, meta.get("mtime", 0.0)) for sid, meta in self.antigravity_sessions.items() if sid not in seen_sids
             ]
             stale.sort(key=lambda x: x[1])
             remove_n = len(self.antigravity_sessions) - MAX_ANTIGRAVITY_SESSIONS
@@ -1179,9 +1161,7 @@ class SessionTracker:
     # Parsing helpers
     # ------------------------------------------------------------------
 
-    def _extract_sid(
-        self, data: dict[str, Any], sid_keys: list[str], source_name: str
-    ) -> str:
+    def _extract_sid(self, data: dict[str, Any], sid_keys: list[str], source_name: str) -> str:
         for key in sid_keys:
             val = data.get(key)
             if isinstance(val, (str, int)) and str(val).strip():
@@ -1373,9 +1353,7 @@ class SessionTracker:
     # Export — local write and optional remote push
     # ------------------------------------------------------------------
 
-    def _export(
-        self, sid: str, data: dict[str, Any], title_prefix: str = ""
-    ) -> bool:
+    def _export(self, sid: str, data: dict[str, Any], title_prefix: str = "") -> bool:
         """Write session data to local storage and optionally push to the remote.
 
         Returns True on success (local write always counts as success when
@@ -1446,9 +1424,7 @@ class SessionTracker:
                 )
                 self._retry_pending()
                 return True
-            logger.warning(
-                "Remote sync returned HTTP %d for %s %s.", resp.status_code, source, sid[:12]
-            )
+            logger.warning("Remote sync returned HTTP %d for %s %s.", resp.status_code, source, sid[:12])
         except Exception as exc:
             logger.warning("Remote unreachable — queuing pending export: %s", exc)
 
@@ -1618,10 +1594,7 @@ class SessionTracker:
 
         # Recent activity — keep polling fast to catch rapid bursts.
         recent_activity_window = max(15, FAST_POLL_INTERVAL_SEC * 4)
-        if (
-            self._last_activity_ts is not None
-            and (now - self._last_activity_ts) < recent_activity_window
-        ):
+        if self._last_activity_ts is not None and (now - self._last_activity_ts) < recent_activity_window:
             sleep_s = min(sleep_s, FAST_POLL_INTERVAL_SEC)
 
         return max(1, sleep_s)
@@ -1650,8 +1623,7 @@ class SessionTracker:
         active_sources = list(self.active_jsonl.keys()) + list(self.active_shell.keys())
 
         logger.info(
-            "heartbeat sessions=%d cursors=%d exported=%d errors=%d pending=%d"
-            " mem_mb=%.1f active_sources=%s",
+            "heartbeat sessions=%d cursors=%d exported=%d errors=%d pending=%d mem_mb=%.1f active_sources=%s",
             len(self.sessions),
             len(self.file_cursors),
             self._export_count,
@@ -1705,8 +1677,7 @@ def main() -> None:
         "on" if ENABLE_ANTIGRAVITY_MONITOR else "off",
     )
     logger.info(
-        "config antigravity ingest_mode=%s quiet=%ds min_doc=%dB"
-        " suspend_busy=%s busy_threshold=%d scan_interval=%ds",
+        "config antigravity ingest_mode=%s quiet=%ds min_doc=%dB suspend_busy=%s busy_threshold=%d scan_interval=%ds",
         ANTIGRAVITY_INGEST_MODE,
         ANTIGRAVITY_QUIET_SEC,
         ANTIGRAVITY_MIN_DOC_BYTES,
@@ -1789,9 +1760,7 @@ def main() -> None:
     if tracker._http_client is not None:
         with contextlib.suppress(Exception):
             tracker._http_client.close()
-    logger.info(
-        "ContextGO daemon stopped. Total sessions exported: %d.", tracker._export_count
-    )
+    logger.info("ContextGO daemon stopped. Total sessions exported: %d.", tracker._export_count)
 
 
 if __name__ == "__main__":

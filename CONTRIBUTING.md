@@ -1,21 +1,26 @@
 # Contributing to ContextGO
+# 参与贡献 ContextGO
 
 Thank you for considering a contribution to ContextGO. This guide covers the development setup, code style, testing requirements, and pull request process.
 
-## Contents
+感谢你考虑为 ContextGO 做贡献。本指南涵盖开发环境搭建、代码风格、测试要求和 PR 流程。
 
-- [Development setup](#development-setup)
-- [Project principles](#project-principles)
-- [Code style](#code-style)
-- [Testing requirements](#testing-requirements)
-- [Pull request process](#pull-request-process)
-- [Pre-submission checklist](#pre-submission-checklist)
+## Contents / 目录
+
+- [Development setup / 开发环境](#development-setup)
+- [Project principles / 项目原则](#project-principles)
+- [Code style / 代码风格](#code-style)
+- [Testing requirements / 测试要求](#testing-requirements)
+- [Pull request process / PR 流程](#pull-request-process)
+- [Pre-submission checklist / 提交前检查清单](#pre-submission-checklist)
 
 ---
 
 ## Development setup
 
-**Prerequisites:** Python 3.9+, Bash, Git. Rust and Go are optional and only required if working on native hot paths.
+**Prerequisites:** Python 3.10+, Bash, Git. Rust and Go are optional and only required if working on native hot paths.
+
+**前置条件：** Python 3.10+、Bash、Git。Rust 和 Go 为可选项，仅在修改 native 热路径时需要。
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git
@@ -29,7 +34,7 @@ bash scripts/unified_context_deploy.sh
 
 # Verify the setup
 python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
+python3 scripts/context_cli.py smoke --sandbox
 ```
 
 A `Makefile` is provided for common operations:
@@ -39,7 +44,7 @@ make install   # pip install -e ".[dev]"
 make test      # run the full pytest suite
 make lint      # ruff check + format check
 make format    # ruff format + auto-fix
-make smoke     # contextgo smoke via context_cli.py
+make smoke     # contextgo smoke --sandbox via context_cli.py
 make health    # contextgo health via context_cli.py
 make bench     # run the benchmark harness
 make clean     # remove __pycache__ and .pyc files
@@ -61,7 +66,7 @@ go build .
 
 ---
 
-## Project principles
+## Project principles / 项目原则
 
 - **All changes serve the core entry points.** Contributions must have a clear relationship to `context_cli.py`, `context_daemon.py`, `session_index.py`, `memory_index.py`, or the validation chain. Changes to legacy or bridge paths require justification.
 
@@ -75,7 +80,7 @@ go build .
 
 ---
 
-## Code style
+## Code style / 代码风格
 
 ### Shell scripts
 
@@ -85,7 +90,7 @@ go build .
 
 ### Python
 
-- Target Python 3.9+.
+- Target Python 3.10+.
 - Prefer the standard library. When a third-party package is required, add it to `requirements.txt` and ensure it passes CI.
 - Use type hints for new functions and public interfaces.
 - Write comments only to explain non-obvious runtime or operational logic. Let the code be self-explanatory where possible.
@@ -104,7 +109,7 @@ go build .
 
 ---
 
-## Testing requirements
+## Testing requirements / 测试要求
 
 Run the following before submitting a pull request. All steps must pass.
 
@@ -113,7 +118,7 @@ The Makefile shortcuts cover the most common checks:
 ```bash
 make test    # full pytest suite
 make lint    # ruff check + format check
-make smoke   # contextgo smoke
+make smoke   # contextgo smoke --sandbox
 make health  # contextgo health
 make bench   # benchmark baseline
 ```
@@ -137,7 +142,7 @@ python3 scripts/e2e_quality_gate.py
 python3 -m benchmarks --mode both --iterations 1 --warmup 0 --query benchmark --format text
 
 # Smoke and health via the contextgo CLI
-python3 scripts/context_cli.py smoke
+python3 scripts/context_cli.py smoke --sandbox
 python3 scripts/context_cli.py health
 python3 scripts/smoke_installed_runtime.py
 
@@ -153,7 +158,7 @@ The installed runtime smoke (`smoke_installed_runtime.py`) expects `context_cli.
 
 ---
 
-## Pull request process
+## Pull request process / PR 流程
 
 1. **Target `main`.** All work goes to the `main` branch. Do not target `scripts/legacy` or historical bridge paths.
 
@@ -169,7 +174,7 @@ The installed runtime smoke (`smoke_installed_runtime.py`) expects `context_cli.
 
 ---
 
-## Pre-submission checklist
+## Pre-submission checklist / 提交前检查清单
 
 - [ ] No secrets, API keys, tokens, or passwords are present in any committed file.
 - [ ] No hardcoded absolute paths (e.g., `/Users/name/`, `/home/name/`). Use `~` or environment variables.

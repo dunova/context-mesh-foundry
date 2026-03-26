@@ -6,7 +6,7 @@ This checklist must be completed in order for every release. Each step has a def
 
 ## Phase 1: Pre-release — Code and Configuration Audit
 
-- [ ] **Version file updated.** `VERSION` contains exactly the new version string (e.g. `0.7.0`) with no trailing whitespace or extra lines.
+- [ ] **Version file updated.** `VERSION` contains exactly the new version string (e.g. `0.9.0`) with no trailing whitespace or extra lines.
 - [ ] **VERSION references updated in README.** `README.md` version badge and the `## Version` section reference the new version and link to the correct release notes file.
 - [ ] **CHANGELOG entry added.** `CHANGELOG.md` contains a new section at the top for the new version with date, Story, Added, Changed, Fixed, and Removed subsections as applicable.
 - [ ] **Release notes file created.** `docs/RELEASE_NOTES_<version>.md` exists and contains Highlights, Breaking Changes, New Features, Improvements, Bug Fixes, Performance, Documentation, Contributors, Verification, and Upgrade Path sections.
@@ -123,8 +123,8 @@ This checklist must be completed in order for every release. Each step has a def
 
 ## Phase 6: Release
 
-- [ ] **Git tag created.** Tag the release commit: `git tag -a v0.7.0 -m "ContextGO 0.7.0"`.
-- [ ] **Tag pushed to remote.** `git push origin v0.7.0`.
+- [ ] **Git tag created.** Tag the release commit: `git tag -a v0.9.0 -m "ContextGO 0.9.0"`.
+- [ ] **Tag pushed to remote.** `git push origin v0.9.0`.
 - [ ] **GitHub Release created.** Release created from the tag with the contents of `docs/RELEASE_NOTES_<version>.md` as the body.
 - [ ] **Release artifacts attached** (if applicable): compiled native binaries for supported platforms, or a note confirming source-only release.
 

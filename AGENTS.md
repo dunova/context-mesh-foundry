@@ -1,17 +1,27 @@
 # AGENTS.md — AI Agent Onboarding for ContextGO
+# AI 智能体入门指南
 
 > If you are an AI agent (Claude, Codex, Cursor, Windsurf, or any LLM-powered tool),
 > this file tells you everything you need to set up and use ContextGO in under 60 seconds.
+>
+> 如果你是 AI 智能体（Claude、Codex、Cursor、Windsurf 等），本文档可让你在 60 秒内完成 ContextGO 的配置与上手。
 
 ---
 
-## Quick Setup (AI Auto-Install)
+## Quick Setup (AI Auto-Install) / 快速安装
+
+**Requirements:** Python 3.10+, Bash, Git.
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git && cd ContextGO && bash scripts/unified_context_deploy.sh && python3 scripts/context_cli.py smoke --sandbox
 ```
 
 Works on macOS and Linux. No Docker. No MCP. No external services required.
+
+适用于 macOS 和 Linux。无需 Docker、无需 MCP、无外部服务依赖。
+
+> For full configuration options, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+> For HTTP API reference, see [docs/API.md](docs/API.md).
 
 ---
 

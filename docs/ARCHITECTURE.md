@@ -1,5 +1,7 @@
 # ContextGO 架构 / ContextGO Architecture
 
+> Related: [CONFIGURATION.md](CONFIGURATION.md) · [API.md](API.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [../CONTRIBUTING.md](../CONTRIBUTING.md)
+
 ## 中文版
 
 ### 架构图
@@ -33,6 +35,7 @@ ContextGO/
 │   ├── session_scan/          # Rust 热路径
 │   └── session_scan_go/       # Go 热路径
 ├── benchmarks/                # Python / native-wrapper 基准
+├── config/                    # 运行时配置文件（noise_markers.json）
 ├── integrations/gsd/          # GSD / gstack 对接
 ├── artifacts/                 # autoresearch 结果、测试集、QA 报告
 ├── templates/                 # launchd / systemd-user 模板
@@ -103,6 +106,7 @@ ContextGO/
 │   ├── session_scan/          # Rust hot path
 │   └── session_scan_go/       # Go hot path
 ├── benchmarks/                # Python / native-wrapper performance baselines
+├── config/                    # runtime configuration files (noise_markers.json)
 ├── integrations/gsd/          # GSD / gstack workflow integration
 ├── artifacts/                 # autoresearch outputs, test sets, QA reports
 ├── templates/                 # launchd / systemd-user service templates

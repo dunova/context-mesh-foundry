@@ -1,8 +1,12 @@
-# API Reference
+# API Reference / API 参考
+
+> Related: [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 This document covers all HTTP endpoints exposed by the ContextGO viewer server.
 The implementation lives in `scripts/memory_viewer.py`; `scripts/context_server.py`
 is a thin wrapper that re-exports `main()` and `apply_runtime_config()`.
+
+本文档涵盖 ContextGO viewer 服务暴露的所有 HTTP 端点。HTTP 处理逻辑位于 `scripts/memory_viewer.py`，`scripts/context_server.py` 是对外的薄封装层。
 
 ## Server
 
@@ -36,6 +40,21 @@ CORS headers are reflected only for loopback origins (`127.0.0.1`, `localhost`,
 `::1`).  Non-loopback origins receive no `Access-Control-Allow-Origin` header.
 Allowed methods: `GET, POST, OPTIONS`.  Allowed headers: `Content-Type,
 X-Context-Token`.
+
+## Endpoint Summary / 端点概览
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `OPTIONS` | `*` | No | CORS pre-flight |
+| `GET` | `/` | No | Viewer web UI |
+| `GET` | `/index.html` | No | Alias for `/` |
+| `GET` | `/api/health` | Yes* | Index health and sync status |
+| `GET` | `/api/search` | Yes* | Full-text search over observations |
+| `GET` | `/api/timeline` | Yes* | Observations surrounding an anchor ID |
+| `GET` | `/api/events` | Yes* | Server-Sent Events heartbeat stream |
+| `POST` | `/api/observations/batch` | Yes* | Fetch observations by ID |
+
+*Auth required only when `CONTEXTGO_VIEWER_TOKEN` is set.
 
 ---
 
@@ -416,6 +435,8 @@ python3 scripts/context_cli.py serve
 Programmatically:
 
 ```python
+import sys
+sys.path.insert(0, "scripts")
 import context_server
 context_server.apply_runtime_config(host="127.0.0.1", port=37677, token="mysecret")
 context_server.main()  # blocks until KeyboardInterrupt

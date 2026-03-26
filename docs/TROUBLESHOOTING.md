@@ -1,26 +1,31 @@
-# Troubleshooting
+# Troubleshooting / 故障排查
 
-This guide covers common issues with ContextGO, organized by symptom. Run the health check first for any issue:
+> Related: [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [API.md](API.md)
+
+This guide covers common issues with ContextGO, organized by symptom. Run the health check first for any issue.
+
+本指南按症状组织，涵盖 ContextGO 的常见问题。遇到任何问题，请先运行健康检查：
 
 ```bash
 python3 scripts/context_cli.py health
 bash scripts/context_healthcheck.sh
 ```
 
-## Contents
+## Contents / 目录
 
-- [Slow initial indexing](#slow-initial-indexing)
-- [Viewer not reachable](#viewer-not-reachable)
-- [Search returns no results](#search-returns-no-results)
-- [Permission or path errors](#permission-or-path-errors)
-- [Daemon not capturing sessions](#daemon-not-capturing-sessions)
-- [Smoke test failures](#smoke-test-failures)
-- [Installed runtime issues](#installed-runtime-issues)
-- [Pre-release validation](#pre-release-validation)
+- [Slow initial indexing / 首次索引慢](#slow-initial-indexing)
+- [Viewer not reachable / Viewer 无法访问](#viewer-not-reachable)
+- [Search returns no results / 搜索无结果](#search-returns-no-results)
+- [Permission or path errors / 权限或路径错误](#permission-or-path-errors)
+- [Daemon not capturing sessions / Daemon 未采集会话](#daemon-not-capturing-sessions)
+- [Native binary not found / 找不到 native 二进制](#native-binary-not-found)
+- [Smoke test failures / Smoke 测试失败](#smoke-test-failures)
+- [Installed runtime issues / 已安装运行时问题](#installed-runtime-issues)
+- [Pre-release validation / 发布前验证](#pre-release-validation)
 
 ---
 
-## Slow initial indexing
+## Slow initial indexing / 首次索引慢
 
 **Symptom:** `python3 scripts/context_cli.py health` or `search` takes noticeably long on first run.
 
@@ -48,7 +53,7 @@ bash scripts/context_healthcheck.sh
 
 ---
 
-## Viewer not reachable
+## Viewer not reachable / Viewer 无法访问
 
 **Symptom:** After running `python3 scripts/context_cli.py serve`, `http://127.0.0.1:37677/api/health` returns a connection error.
 
@@ -76,12 +81,12 @@ bash scripts/context_healthcheck.sh
 
 4. Run the smoke test, which includes the viewer health check:
    ```bash
-   python3 scripts/context_smoke.py
+   python3 scripts/context_cli.py smoke --sandbox
    ```
 
 ---
 
-## Search returns no results
+## Search returns no results / 搜索无结果
 
 **Symptom:** `python3 scripts/context_cli.py search "..."` returns empty results for sessions you expect to find.
 
@@ -120,7 +125,7 @@ bash scripts/context_healthcheck.sh
 
 ---
 
-## Permission or path errors
+## Permission or path errors / 权限或路径错误
 
 **Symptom:** Errors like `PermissionError`, `FileNotFoundError`, or `OSError` when reading or writing index files.
 
@@ -157,7 +162,7 @@ bash scripts/context_healthcheck.sh
 
 ---
 
-## Daemon not capturing sessions
+## Daemon not capturing sessions / Daemon 未采集会话
 
 **Symptom:** New terminal or agent sessions are not appearing in search results even after running `health`.
 
@@ -189,9 +194,44 @@ bash scripts/context_healthcheck.sh
 
 ---
 
-## Smoke test failures
+## Native binary not found / 找不到 native 二进制
 
-**Symptom:** `python3 scripts/context_smoke.py` exits with a non-zero code or reports failures.
+**Symptom:** `python3 scripts/context_cli.py health` or `native-scan` reports the native backend is unavailable, or `context_native.py` logs a warning that no binary was found.
+
+**Cause:** The Rust or Go native binary has not been built, was removed, or is not in the expected path.
+
+**Resolution:**
+
+1. Check native backend health from the CLI:
+   ```bash
+   python3 scripts/context_cli.py health
+   python3 scripts/context_cli.py native-scan --backend auto --query test
+   ```
+
+2. Build the Go binary:
+   ```bash
+   cd native/session_scan_go
+   go build -o session_scan_go .
+   ```
+
+3. Build the Rust binary:
+   ```bash
+   cd native/session_scan
+   CARGO_TARGET_DIR="${CONTEXTGO_NATIVE_TARGET_DIR:-$HOME/.cache/contextgo/target}" cargo build --release
+   ```
+
+4. Verify the built binary is discoverable:
+   ```bash
+   python3 scripts/context_native.py
+   ```
+
+5. The health probe result is cached (default TTL 30 s). After rebuilding, wait for the cache to expire or restart the process. Override the TTL with `CONTEXTGO_NATIVE_HEALTH_CACHE_TTL_SEC=0` to disable caching during development.
+
+---
+
+## Smoke test failures / Smoke 测试失败
+
+**Symptom:** `python3 scripts/context_cli.py smoke --sandbox` exits with a non-zero code or reports failures.
 
 **Resolution:**
 
@@ -222,11 +262,13 @@ bash scripts/context_healthcheck.sh
    python3 -m pytest scripts/test_context_cli.py -v
    python3 -m pytest scripts/test_context_core.py -v
    python3 -m pytest scripts/test_session_index.py -v
+   python3 -m pytest scripts/test_context_native.py -v
+   python3 -m pytest scripts/test_context_smoke.py -v
    ```
 
 ---
 
-## Installed runtime issues
+## Installed runtime issues / 已安装运行时问题
 
 **Symptom:** `python3 scripts/smoke_installed_runtime.py` fails, or scripts are missing from the installed location.
 
@@ -257,7 +299,7 @@ bash scripts/context_healthcheck.sh
 
 ---
 
-## Pre-release validation
+## Pre-release validation / 发布前验证
 
 Run this full sequence before tagging a release:
 
@@ -275,8 +317,8 @@ python3 scripts/e2e_quality_gate.py
 # Performance baseline
 python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
 
-# Smoke tests (working copy and installed runtime)
-python3 scripts/context_smoke.py
+# Smoke tests (sandboxed working copy and installed runtime)
+python3 scripts/context_cli.py smoke --sandbox
 python3 scripts/smoke_installed_runtime.py
 
 # Health check

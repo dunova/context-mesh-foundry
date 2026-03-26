@@ -53,7 +53,7 @@ EXPERIMENTAL_SYNC_BACKEND: str = os.environ.get("CONTEXTGO_EXPERIMENTAL_SYNC_BAC
 SESSION_INDEX_SCHEMA_VERSION = "2026-03-26-search-noise-v5"
 
 #: Number of upsert rows per SQLite transaction batch during sync.
-_BATCH_COMMIT_SIZE = 100
+_BATCH_COMMIT_SIZE: int = env_int("CONTEXTGO_INDEX_BATCH_SIZE", default=100, minimum=10)
 
 
 def _load_noise_config() -> dict[str, list[str]]:
@@ -96,11 +96,37 @@ _NOISE_TEXT_LOWER_MARKERS: tuple[str, ...] = tuple(_NOISE_CONFIG["text_noise_low
 
 STOPWORDS: frozenset[str] = frozenset(
     {
-        "the", "and", "for", "with", "that", "this", "from", "into",
-        "what", "when", "where", "which", "who", "how",
-        "please", "search", "session", "history", "continue", "find",
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "how",
+        "please",
+        "search",
+        "session",
+        "history",
+        "continue",
+        "find",
         # Chinese stopwords
-        "继续", "搜索", "终端", "方案", "项目", "历史", "会话", "相关", "那个", "这个",
+        "继续",
+        "搜索",
+        "终端",
+        "方案",
+        "项目",
+        "历史",
+        "会话",
+        "相关",
+        "那个",
+        "这个",
     }
 )
 
@@ -126,6 +152,7 @@ _SNIPPET_MAX_CHARS = 120
 # ═══════════════════════════════════════════════════════════════
 # Section: Helpers
 # ═══════════════════════════════════════════════════════════════
+
 
 def _home() -> Path:
     """Return the current user's home directory.
@@ -219,6 +246,7 @@ def _compact_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
 # Section: Noise Filtering
 # ═══════════════════════════════════════════════════════════════
 
+
 def _is_noise_text(text: str) -> bool:
     """Return ``True`` if *text* should be excluded from the session index.
 
@@ -239,9 +267,7 @@ def _is_noise_text(text: str) -> bool:
     # Composite heuristics for benchmark/meta-session content.
     if "已预热" in compact and "样本定位" in compact:
         return True
-    if "主链不再是瓶颈" in compact and "native 搜索结果质量" in compact:
-        return True
-    return False
+    return "主链不再是瓶颈" in compact and "native 搜索结果质量" in compact
 
 
 def _search_noise_penalty(*parts: str) -> int:
@@ -275,9 +301,7 @@ def _search_noise_penalty(*parts: str) -> int:
 
     lines = [line.strip() for line in haystack.splitlines() if line.strip()]
     short_token_lines = sum(
-        1
-        for line in lines
-        if len(line) <= 40 and " " not in line and line.count("/") < 2 and line.count("-") <= 3
+        1 for line in lines if len(line) <= 40 and " " not in line and line.count("/") < 2 and line.count("-") <= 3
     )
     if short_token_lines >= 8:
         penalty += 200
@@ -288,9 +312,7 @@ def _search_noise_penalty(*parts: str) -> int:
     meta_terms = ("notebooklm", "search", "session_index", "native-scan")
     if all(term in haystack for term in meta_terms):
         penalty += 240
-    if ("我先" in haystack or "我继续" in haystack) and (
-        "native-scan" in haystack or "session_index" in haystack
-    ):
+    if ("我先" in haystack or "我继续" in haystack) and ("native-scan" in haystack or "session_index" in haystack):
         penalty += 240
 
     return penalty
@@ -310,13 +332,30 @@ def _is_current_repo_meta_result(title: str, content: str, file_path: str) -> bo
     if not compact:
         return True
     meta_markers = (
-        "写集仅限", "改动文件：", "改动文件:", "**改动文件**",
-        "核心变化：", "核心变化:", "建议验证命令：", "建议验证命令:",
-        "职责只限测试", "测试集使用", "全平台对话测试集",
-        "artifacts/testsets/dataset_", "仓库：", "你负责",
-        "变更概览", "改动概览", "我先", "我继续", "我现在",
-        "已收到任务", "已变更概览", "search NotebookLM",
-        "native-scan", "session_index",
+        "写集仅限",
+        "改动文件：",
+        "改动文件:",
+        "**改动文件**",
+        "核心变化：",
+        "核心变化:",
+        "建议验证命令：",
+        "建议验证命令:",
+        "职责只限测试",
+        "测试集使用",
+        "全平台对话测试集",
+        "artifacts/testsets/dataset_",
+        "仓库：",
+        "你负责",
+        "变更概览",
+        "改动概览",
+        "我先",
+        "我继续",
+        "我现在",
+        "已收到任务",
+        "已变更概览",
+        "search NotebookLM",
+        "native-scan",
+        "session_index",
     )
     return any(marker in compact for marker in meta_markers)
 
@@ -339,6 +378,7 @@ def _looks_like_path_only_content(title: str, content: str) -> bool:
 # Section: Document Model
 # ═══════════════════════════════════════════════════════════════
 
+
 @dataclass
 class SessionDocument:
     """In-memory representation of a single indexed session file."""
@@ -357,6 +397,7 @@ class SessionDocument:
 # ═══════════════════════════════════════════════════════════════
 # Section: Document Parsers
 # ═══════════════════════════════════════════════════════════════
+
 
 def _parse_codex_session(path: Path) -> SessionDocument | None:
     """Parse a Codex JSONL session file into a ``SessionDocument``.
@@ -390,9 +431,7 @@ def _parse_codex_session(path: Path) -> SessionDocument | None:
                     payload = obj.get("payload") or {}
                     session_id = str(payload.get("id") or session_id)
                     title = str(payload.get("cwd") or title or "")
-                    created_at = str(
-                        payload.get("timestamp") or created_at or obj.get("timestamp") or ""
-                    )
+                    created_at = str(payload.get("timestamp") or created_at or obj.get("timestamp") or "")
                 elif kind == "event_msg":
                     payload = obj.get("payload") or {}
                     if payload.get("type") == "user_message":
@@ -599,6 +638,7 @@ def _parse_source(source_type: str, path: Path) -> SessionDocument | None:
 # Section: Source Discovery
 # ═══════════════════════════════════════════════════════════════
 
+
 def _iter_sources() -> list[tuple[str, Path]]:
     """Return a list of ``(source_type, path)`` pairs for all discoverable sources.
 
@@ -679,6 +719,7 @@ def _iter_sources() -> list[tuple[str, Path]]:
 # Section: Database Schema and Initialization
 # ═══════════════════════════════════════════════════════════════
 
+
 def get_session_db_path() -> Path:
     """Return the path to the session index SQLite database.
 
@@ -724,13 +765,9 @@ def ensure_session_db() -> Path:
             )
             """
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_session_created ON session_documents(created_at_epoch DESC)")
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_session_created"
-            " ON session_documents(created_at_epoch DESC)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_session_source"
-            " ON session_documents(source_type, created_at_epoch DESC)"
+            "CREATE INDEX IF NOT EXISTS idx_session_source ON session_documents(source_type, created_at_epoch DESC)"
         )
         conn.execute(
             """
@@ -749,9 +786,7 @@ def ensure_session_db() -> Path:
 
 def _meta_get(conn: sqlite3.Connection, key: str) -> str | None:
     """Retrieve a value from the ``session_index_meta`` table, or ``None``."""
-    row = conn.execute(
-        "SELECT value FROM session_index_meta WHERE key = ?", (key,)
-    ).fetchone()
+    row = conn.execute("SELECT value FROM session_index_meta WHERE key = ?", (key,)).fetchone()
     return str(row[0]) if row else None
 
 
@@ -769,6 +804,7 @@ def _meta_set(conn: sqlite3.Connection, key: str, value: str) -> None:
 # ═══════════════════════════════════════════════════════════════
 # Section: Index Synchronisation
 # ═══════════════════════════════════════════════════════════════
+
 
 def sync_session_index(force: bool = False) -> dict[str, int]:
     """Scan source files and upsert changed documents into the session index.
@@ -910,6 +946,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
 # Section: Search and Ranking
 # ═══════════════════════════════════════════════════════════════
 
+
 def build_query_terms(query: str) -> list[str]:
     """Decompose a natural-language query into ranked search terms.
 
@@ -1006,8 +1043,13 @@ def _build_snippet(text: str, terms: list[str], radius: int = 80) -> str:
 
     if idx < 0:
         summary_markers = (
-            "最终交付", "变更概览", "核心变化", "改动文件",
-            "建议验证", "结论", "Summary",
+            "最终交付",
+            "变更概览",
+            "核心变化",
+            "改动文件",
+            "建议验证",
+            "结论",
+            "Summary",
         )
         for marker in summary_markers:
             pos = compact.find(marker)
@@ -1080,9 +1122,7 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
     return rows
 
 
-def _fetch_session_docs_by_paths(
-    conn: sqlite3.Connection, file_paths: Iterable[str]
-) -> dict[str, sqlite3.Row]:
+def _fetch_session_docs_by_paths(conn: sqlite3.Connection, file_paths: Iterable[str]) -> dict[str, sqlite3.Row]:
     """Batch-fetch ``session_documents`` rows by a collection of file paths.
 
     Resolves each path to its canonical form before querying.  Returns a
@@ -1125,9 +1165,7 @@ def _enrich_native_rows(
     content for richer context.
     """
     max_results = max(1, min(limit, 100))
-    docs = _fetch_session_docs_by_paths(
-        conn, (row.get("file_path") for row in rows if row.get("file_path"))
-    )
+    docs = _fetch_session_docs_by_paths(conn, (row.get("file_path") for row in rows if row.get("file_path")))
     enriched: list[dict[str, Any]] = []
 
     for row in rows:
@@ -1199,21 +1237,14 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
             args: list[Any] = []
             for term in active_terms:
                 like_term = f"%{term.lower()}%"
-                where_parts.append(
-                    "(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(file_path) LIKE ?)"
-                )
+                where_parts.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(file_path) LIKE ?)")
                 args.extend([like_term, like_term, like_term])
             where_clause = f"WHERE {' OR '.join(where_parts)}" if where_parts else ""
-            sql = (
-                f"SELECT * FROM session_documents {where_clause}"
-                " ORDER BY created_at_epoch DESC LIMIT ?"
-            )
+            sql = f"SELECT * FROM session_documents {where_clause} ORDER BY created_at_epoch DESC LIMIT ?"
             args.append(max(1, int(row_limit)))
             return conn.execute(sql, args).fetchall()
 
-        def _rank_rows(
-            candidate_rows: list[sqlite3.Row], active_terms: list[str]
-        ) -> list[tuple[int, sqlite3.Row]]:
+        def _rank_rows(candidate_rows: list[sqlite3.Row], active_terms: list[str]) -> list[tuple[int, sqlite3.Row]]:
             """Score each candidate row.
 
             Scoring factors (additive):
@@ -1262,9 +1293,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
             for term in terms:
                 term_lower = term.lower()
                 freq = sum(
-                    1
-                    for row in rows
-                    if term_lower in f"{row['title']}\n{row['content']}\n{row['file_path']}".lower()
+                    1 for row in rows if term_lower in f"{row['title']}\n{row['content']}\n{row['file_path']}".lower()
                 )
                 if freq > 0:
                     term_freq.append((freq, term))
@@ -1296,6 +1325,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
 # ═══════════════════════════════════════════════════════════════
 # Section: Public API
 # ═══════════════════════════════════════════════════════════════
+
 
 def format_search_results(
     query: str,
