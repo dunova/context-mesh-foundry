@@ -4,12 +4,11 @@
 
 ### Story
 
-<<<<<<< HEAD
 0.7 is the commercial-grade polish release. The runtime feature set from 0.6.1 is frozen; this cycle was spent hardening every layer of the stack to the standard a production engineering team would require before treating the context runtime as a shared infrastructure dependency.
 
 The three pillars of this release are: comprehensive test coverage across all Python modules and both native backends, a fully integrated CI/CD pipeline that gates merges on the complete validation chain, and documentation that accurately reflects the current behavior of every operator-facing surface.
 
-A new autoresearch module (`autoresearch_contextgo.py`) ships with full test coverage, extending the agentic workflow surface. Session index write performance improved substantially through batched SQLite commits. The Go and Rust native scanners received targeted hardening against unusual filesystem layouts.
+A new autoresearch module (`autoresearch_contextgo.py`) ships with full test coverage, extending the agentic workflow surface. Session index write performance improved substantially through batched SQLite commits. The Go and Rust native scanners received targeted hardening against unusual filesystem layouts. The repository front door — README, architecture doc, release notes, media assets, and CI workflow — has been unified into a coherent bilingual product surface.
 
 No breaking changes. No migration required from 0.6.1.
 
@@ -20,6 +19,10 @@ No breaking changes. No migration required from 0.6.1.
 - `benchmarks/session_index_benchmark.py`: standalone benchmark for the SQLite-backed session index covering write throughput, read latency under concurrent load, and rescan convergence time.
 - GitHub Actions CI workflow running the full validation chain (shell check, Python compile, pytest, Go tests, Rust tests, e2e quality gate, smoke) on every push and pull request.
 - `docs/RELEASE_NOTES_0.7.0.md`: formal release notes for this version.
+- `docs/LAUNCH_COPY.md`: bilingual launch copy for the GitHub release page and repository description.
+- `docs/MEDIA_GUIDE.md`: guidelines and naming conventions for repository media assets.
+- `docs/media/cli-search.svg`, `docs/media/viewer-health.svg`: committed SVG preview assets for the README.
+- `.github/workflows/release.yml`: release workflow for tagging and publishing GitHub releases.
 
 ### Changed
 
@@ -28,11 +31,14 @@ No breaking changes. No migration required from 0.6.1.
 - `native/session_scan_go/scanner.go`: error handling tightened around file read failures during directory walk; unreadable files now emit structured warnings to stderr instead of being silently skipped; hot-path snippet extraction operates on byte slices to reduce allocations.
 - `native/session_scan_go/scanner_test.go`: test coverage expanded to include directory walk over fixture trees with intentionally unreadable files.
 - `native/session_scan/src/`: all remaining `unwrap()` calls on path operations replaced with explicit error handling to eliminate potential panics on unusual filesystem layouts.
-- `docs/ARCHITECTURE.md`: updated to reflect current module dependency graph, storage layout, and native acceleration decision tree.
+- `README.md`: rewritten as a bilingual (Chinese/English) product surface with preview media assets.
+- `docs/ARCHITECTURE.md`: updated to reflect current module dependency graph, storage layout, native acceleration decision tree; bilingual architecture diagram and tree added.
 - `docs/TROUBLESHOOTING.md`: expanded with sections for native binary not found, session index schema migration failures, and health probe cache stale reads.
 - `CONTRIBUTING.md`: updated with full local development setup, test execution instructions, and PR quality gate definition of done.
 - `SECURITY.md`: updated with current threat model, trust boundary description, and responsible disclosure guidance.
 - `docs/RELEASE_CHECKLIST.md`: fully rewritten as a structured pre- and post-release checklist.
+- `.github/workflows/verify.yml`: aligned with the current repository test matrix and Go/Rust paths.
+- Local deployment directory and service name changes are now explicit in operator docs, making the single-machine deployment model clear.
 
 ### Fixed
 
@@ -41,33 +47,8 @@ No breaking changes. No migration required from 0.6.1.
 - `context_smoke.py`: native contract check raised an unhandled `FileNotFoundError` when the fixture directory did not exist. Now caught and reported as a named structured failure.
 - `benchmarks/run.py`: `native-wrapper` timing column was silently skipped in text output when the native backend returned a non-zero exit code. Now marked as `FAIL` with the exit code.
 - `e2e_quality_gate.py`: stdout buffering caused gate stage output to appear out of order in CI ptys. Now explicitly flushed after each stage result line.
-=======
-- `0.7.0` 标志着 ContextGO 从“已经能用的本地上下文运行时”进一步收口成“可对外展示、可商业交付、可持续发布”的仓库形态。
-- 这一轮不再围绕旧项目缝合，而是统一了仓库首页、架构图、发布文案、媒体素材规范、GitHub Release 页面和 CI workflow。
-- 发布页、README、架构文档和仓库右侧简介现在都对齐到 `ContextGO` 的双语产品口径。
-
-### Added
-
-- `docs/RELEASE_NOTES_0.7.0.md`
-- `docs/LAUNCH_COPY.md`
-- `docs/MEDIA_GUIDE.md`
-- `docs/media/cli-search.svg`
-- `docs/media/viewer-health.svg`
-- `.github/workflows/release.yml`
-
-### Changed
-
-- `VERSION` bump 到 `0.7.0`
-- `README.md` 改为中英分离双语版，并加入预览素材区
-- `docs/ARCHITECTURE.md` 改为中英分离双语版，并补双语架构图
-- `.github/workflows/verify.yml` 对齐当前仓库测试矩阵与 Go/Rust 路径
-
-### Fixed
-
-- 修复 GitHub Release `v0.7.0` 正文与仓库当前真实状态不一致的问题
-- 修复 GitHub Release 页仅英文、缺少中文完整说明的问题
-- 修复 workflow 中使用旧缓存路径与缺测当前测试模块的问题
->>>>>>> dc4bf4c (release: prepare v0.7.0)
+- GitHub Release `v0.7.0` body mismatched the actual repository state; now aligned.
+- CI workflow referenced stale cache paths and was missing current test modules; now corrected.
 
 ## 0.6.1 - 2026-03-25
 
@@ -115,20 +96,20 @@ No breaking changes. No migration required from 0.6.1.
   - `maintain`
   - `health`
 - built-in session index backed by local SQLite
-- benchmark harness under [`benchmarks/`](/Volumes/AI/GitHub/ContextGO/benchmarks)
-- Rust session-scan prototype under [`native/session_scan/`](/Volumes/AI/GitHub/ContextGO/native/session_scan)
+- benchmark harness under [`benchmarks/`](benchmarks/)
+- Rust session-scan prototype under [`native/session_scan/`](native/session_scan/)
 - 文档中补充了平台安装矩阵、验证清单与 Native 迁移叙事，帮助商业用户理解从 Python 到 Rust/Go 的确定性路线。
-- README/CHANGELOG/docs/RELEASE_NOTES_0.5.0.md 继续强化商业价值、安装矩阵、FAQ 与 native 验证流程，命令统一为 `python3 scripts/context_cli.py health`/`smoke`/`native-scan --backend auto --threads 4`，方便部署后复盘。
+- README and CHANGELOG narrative strengthened with commercial value story, installation matrix, FAQ, and native verification workflow; commands unified as `python3 scripts/context_cli.py health`/`smoke`/`native-scan --backend auto --threads 4`.
 
 ### Changed
 
 - converged the mainline into a local-first monolith
 - switched deployment defaults to `contextgo` service names
 - disabled remote sync by default for lower overhead and more predictable local behavior
--明确化本地部署目录与服务名的变更，使运维侧清楚这一版本聚焦“单机可控”的部署体验。
+- clarified local deployment directory and service name changes so operators understand this release focuses on a single-machine, self-contained deployment model.
 - removed archived bridge entrypoints from the default code surface
 - normalized package-safe imports so the runtime works in both script mode and package mode
-- strengthened the README/CHANGELOG/docs/RELEASE_NOTES_0.5.0.md narrative so the GitHub homepage now foregrounds the commercial story, FAQ, installation matrix, and native migration instructions with the same verified CLI commands operators will run.
+- strengthened the README and CHANGELOG narrative so the GitHub homepage foregrounds the commercial story, FAQ, installation matrix, and native migration instructions with the same verified CLI commands operators will run.
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 [Unit]
 Description=ContextGO Health Check (user)
-Documentation=https://github.com/your-org/ContextGO
+Documentation=https://github.com/dunova/ContextGO
 # This service is triggered by context-healthcheck.timer; it runs once and exits.
 
 [Service]

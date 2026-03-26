@@ -188,7 +188,6 @@ if [ "$RELOAD_LAUNCHD" = "1" ] && command -v launchctl >/dev/null 2>&1; then
     python3 - <<PY
 import subprocess
 import time
-import urllib.request
 from pathlib import Path
 
 home = Path.home()

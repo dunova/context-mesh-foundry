@@ -1,6 +1,6 @@
 [Unit]
 Description=Run ContextGO Health Check periodically (user)
-Documentation=https://github.com/your-org/ContextGO
+Documentation=https://github.com/dunova/ContextGO
 # Ensure the service unit is available before activating the timer.
 Requires=context-healthcheck.service
 

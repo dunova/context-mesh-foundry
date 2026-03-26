@@ -345,7 +345,7 @@ def _parse_codex_session(path: Path) -> SessionDocument | None:
                     continue
                 try:
                     obj = json.loads(line)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     continue
                 kind = obj.get("type")
                 if kind == "session_meta":
@@ -365,7 +365,7 @@ def _parse_codex_session(path: Path) -> SessionDocument | None:
                         for text in _collect_content_text(payload.get("content")):
                             if not _is_noise_text(text):
                                 pieces.append(text)
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError):
         return None
 
     content = _truncate(pieces)
@@ -400,7 +400,7 @@ def _parse_claude_session(path: Path) -> SessionDocument | None:
                     continue
                 try:
                     obj = json.loads(line)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     continue
                 kind = obj.get("type")
                 session_id = str(obj.get("sessionId") or session_id)
@@ -418,7 +418,7 @@ def _parse_claude_session(path: Path) -> SessionDocument | None:
                     for text in _collect_content_text(message.get("content")):
                         if not _is_noise_text(text):
                             pieces.append(text)
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError):
         return None
 
     content = _truncate(pieces)
@@ -450,14 +450,14 @@ def _parse_history_jsonl(path: Path, source_type: str) -> SessionDocument | None
                     continue
                 try:
                     obj = json.loads(line)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     continue
                 for key in ("display", "text", "input", "prompt", "message"):
                     value = obj.get(key)
                     if isinstance(value, str) and value.strip():
                         texts.append(value)
                         break
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError):
         return None
 
     content = _truncate(texts)
@@ -491,7 +491,7 @@ def _parse_shell_history(path: Path, source_type: str) -> SessionDocument | None
                         texts.append(command.strip())
                 else:
                     texts.append(line)
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError):
         return None
     content = _truncate(texts)
     if not content:
@@ -541,7 +541,7 @@ def _iter_sources() -> list[tuple[str, Path]]:
                         _SOURCE_CACHE["expires_at"] = now + SOURCE_CACHE_TTL_SEC
                         _SOURCE_CACHE["home"] = current_home
                     return items
-        except Exception:
+        except (OSError, RuntimeError):
             pass
 
     home = Path(current_home)

@@ -1,6 +1,6 @@
 [Unit]
 Description=ContextGO Daemon (user)
-Documentation=https://github.com/your-org/ContextGO
+Documentation=https://github.com/dunova/ContextGO
 # Start after the user session network is available.
 After=network.target
 

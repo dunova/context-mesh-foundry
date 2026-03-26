@@ -8,6 +8,8 @@ Goals:
 - Safe long-running behavior (bounded memory, rotating logs, retries)
 """
 
+from __future__ import annotations
+
 import atexit
 import glob
 import hashlib
@@ -1202,7 +1204,8 @@ class SessionTracker:
                 if resp.status_code < 300:
                     pf.unlink(missing_ok=True)
                     logger.info("Retried pending OK: %s", pf.name)
-            except Exception:
+            except Exception as e:
+                logger.warning("retry_pending failed: %s", e)
                 break
 
     def _prune_pending_files(self) -> None:
@@ -1269,11 +1272,8 @@ class SessionTracker:
 
         sleep_s = max(1, POLL_INTERVAL_SEC)
 
-        try:
-            if has_pending_files:
-                sleep_s = min(sleep_s, FAST_POLL_INTERVAL_SEC)
-        except Exception:
-            pass
+        if has_pending_files:
+            sleep_s = min(sleep_s, FAST_POLL_INTERVAL_SEC)
 
         now = time.time()
         nearest_due = None

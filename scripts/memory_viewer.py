@@ -6,7 +6,6 @@ from __future__ import annotations
 from datetime import datetime
 import hmac
 import json
-import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 import time
@@ -14,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 
 try:
     from context_config import env_float, env_int, env_str
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     from .context_config import env_float, env_int, env_str  # type: ignore[import-not-found]
 
 try:
@@ -25,7 +24,7 @@ try:
         sync_index_from_storage,
         timeline_index,
     )
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     from .memory_index import (  # type: ignore[import-not-found]
         get_observations_by_ids,
         index_stats,

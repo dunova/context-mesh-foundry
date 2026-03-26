@@ -29,6 +29,8 @@ data/
 
 # Database files
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 
@@ -39,7 +41,6 @@ data/
 
 # Secrets/config
 *.secret
-ov.conf
 *.bak
 *.key
 *.pem
@@ -70,3 +71,6 @@ node_modules/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Autoresearch artifacts (committed intentionally for metric tracking)
+# artifacts/autoresearch/

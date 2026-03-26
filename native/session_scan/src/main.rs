@@ -79,7 +79,9 @@ const NOISE_MARKERS: &[&str] = &[
     "我先做"全局一致性同步"检查",
     "主链不再是瓶颈",
     "现在真正该优化的是",
+    "native 结果质量现状",
     "native 搜索结果质量",
+    "no matches found in local session index.",
     "不是再融合，而是",
     "我继续的话，就沿这条质量线往下打",
     "把 rust `native-scan` 结果里的",
@@ -576,7 +578,6 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                     if should_skip_meta_text(
                         current_workdir.as_deref(),
                         session_cwd.as_deref(),
-                        modified_epoch,
                         &detail.text,
                     ) {
                         continue;
@@ -723,7 +724,6 @@ fn is_noise_line(line: &str) -> bool {
 fn should_skip_meta_text(
     current_workdir: Option<&str>,
     session_cwd: Option<&str>,
-    _modified_epoch: u64,
     text: &str,
 ) -> bool {
     let (Some(workdir), Some(cwd)) = (current_workdir, session_cwd) else {
@@ -1021,13 +1021,13 @@ mod tests {
     #[test]
     fn should_skip_path_filters_skills_sources() {
         assert!(should_skip_path(
-            "/users/dunova/.codex/skills/notebooklm/skill.md"
+            "/users/testuser/.codex/skills/notebooklm/skill.md"
         ));
         assert!(should_skip_path(
-            "/users/dunova/.claude/projects/-users-dunova-skills-repo/a.jsonl"
+            "/users/testuser/.claude/projects/-users-testuser-skills-repo/a.jsonl"
         ));
         assert!(!should_skip_path(
-            "/users/dunova/.codex/sessions/2026/03/test.jsonl"
+            "/users/testuser/.codex/sessions/2026/03/test.jsonl"
         ));
     }
 

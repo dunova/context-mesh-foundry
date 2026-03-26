@@ -57,7 +57,11 @@ func (o ScanOutput) Aggregates() []Aggregate {
 }
 
 func main() {
-	home := os.Getenv("HOME")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot determine home directory: %v\n", err)
+		home = "."
+	}
 	codexRoot := flag.String("codex-root", filepath.Join(home, ".codex", "sessions"), "Root directory for Codex session files")
 	claudeRoot := flag.String("claude-root", filepath.Join(home, ".claude", "projects"), "Root directory for Claude session files")
 	threads := flag.Int("threads", 4, "Number of parallel worker goroutines")
@@ -144,7 +148,11 @@ func collectFiles(roots []WorkItem) []WorkItem {
 			continue
 		}
 		walkErr := filepath.Walk(root.Path, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info == nil || info.IsDir() {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", path, err)
+				return nil
+			}
+			if info == nil || info.IsDir() {
 				return nil
 			}
 			if shouldSkipPath(path) {

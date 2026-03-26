@@ -163,9 +163,9 @@ func TestShouldSkipPath(t *testing.T) {
 		path string
 		skip bool
 	}{
-		{"/Users/dunova/.codex/skills/notebooklm/SKILL.md", true},
-		{"/Users/dunova/.claude/projects/-Users-dunova-skills-repo/a.jsonl", true},
-		{"/Users/dunova/.codex/sessions/2026/03/test.jsonl", false},
+		{"/Users/testuser/.codex/skills/notebooklm/SKILL.md", true},
+		{"/Users/testuser/.claude/projects/-Users-testuser-skills-repo/a.jsonl", true},
+		{"/Users/testuser/.codex/sessions/2026/03/test.jsonl", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {

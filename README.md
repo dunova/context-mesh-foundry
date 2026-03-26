@@ -1,289 +1,333 @@
+<!-- Project logo placeholder: place a 600x120 banner at docs/media/banner.png and uncomment the line below -->
+<!-- <p align="center"><img src="docs/media/banner.png" alt="ContextGO" width="600"/></p> -->
+
 # ContextGO
 
-[![GitHub stars](https://img.shields.io/github/stars/dunova/ContextGO?style=flat)](https://github.com/dunova/ContextGO/stargazers)
-[![Verify](https://github.com/dunova/ContextGO/actions/workflows/verify.yml/badge.svg)](https://github.com/dunova/ContextGO/actions/workflows/verify.yml)
-[![Release](https://img.shields.io/github/v/release/dunova/ContextGO)](https://github.com/dunova/ContextGO/releases)
-[![License](https://img.shields.io/github/license/dunova/ContextGO)](https://github.com/dunova/ContextGO/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/dunova/ContextGO)](https://github.com/dunova/ContextGO/commits/main)
-![Local First](https://img.shields.io/badge/local--first-yes-1d4ed8)
-![MCP Free](https://img.shields.io/badge/MCP-free-111827)
+**Local-first context and memory runtime for multi-agent AI coding teams.**
+
+**面向多 Agent AI 编码团队的本地优先上下文与记忆运行时。**
+
+---
+
+[![Build](https://github.com/dunova/ContextGO/actions/workflows/verify.yml/badge.svg)](https://github.com/dunova/ContextGO/actions/workflows/verify.yml)
+[![Release](https://img.shields.io/badge/release-v0.7.0-2563eb?style=flat)](https://github.com/dunova/ContextGO/releases/tag/v0.7.0)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-6d28d9?style=flat)](https://github.com/dunova/ContextGO/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/dunova/ContextGO?style=flat&color=f59e0b)](https://github.com/dunova/ContextGO/stargazers)
+[![Python](https://img.shields.io/badge/python-3.10%2B-0ea5e9?style=flat)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-0d9488?style=flat)](#quick-start)
+[![Local-First](https://img.shields.io/badge/local--first-yes-1d4ed8?style=flat)](#architecture)
+[![MCP-Free](https://img.shields.io/badge/MCP-free-111827?style=flat)](#why-contextgo)
+
+---
+
+## English
+
+### What is ContextGO?
+
+ContextGO is a local-first context and memory runtime that unifies Codex, Claude, and shell session histories into one searchable, auditable chain — with no Docker, no MCP, and no external bridge required by default. It runs entirely on your machine, stores everything in local SQLite, and exposes a single CLI for search, memory management, and operational validation. Native hot paths in Rust and Go accelerate performance without changing the operator interface.
+
+### Why ContextGO?
+
+- **Local-first privacy.** All session data stays on your machine by default. No context leaves your trust boundary unless you explicitly configure remote sync.
+- **Zero infrastructure.** No Docker. No MCP broker. No external vector database. Clone, deploy, and run in under five minutes on a bare machine.
+- **Multi-agent ready.** Designed for teams running Codex, Claude, and shell agents in parallel. One searchable index across all agent histories.
+- **Rust/Go performance.** Python handles the stable control plane. Rust and Go replace only the measured hot paths, delivering native scan speed without a full-stack rewrite.
+- **Battle-tested delivery chain.** Ships with `health`, `smoke`, `benchmark`, and installed-runtime validation as first-class commands, not afterthoughts.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    A["AI Sessions<br/>Codex / Claude / Shell"] --> B["ContextGO Daemon<br/>Capture and Sanitization"]
+    B --> C["Session Index + Memory Index<br/>Local SQLite / Files"]
+    C --> D["ContextGO CLI<br/>Search / Semantic / Save / Export / Import"]
+    D --> E["Viewer API<br/>Local Visualization and Query"]
+    D --> F["Health / Smoke / Benchmark<br/>Delivery Validation Chain"]
+    C --> G["Rust / Go Hot Paths<br/>Incremental Acceleration"]
+```
+
+### Quick Start
+
+**1. Clone the repository.**
+
+```bash
+git clone https://github.com/dunova/ContextGO.git
+cd ContextGO
+```
+
+**2. Run the unified deploy script.** This installs dependencies, initializes the local storage root, and sets up service templates.
+
+```bash
+bash scripts/unified_context_deploy.sh
+```
+
+**3. Verify the installation with a health check.**
+
+```bash
+python3 scripts/context_cli.py health
+```
+
+**4. Run the smoke test to confirm the full command surface is working.**
+
+```bash
+python3 scripts/context_cli.py smoke
+```
+
+**5. Run your first search.**
+
+```bash
+python3 scripts/context_cli.py search "auth root cause" --limit 10
+```
+
+**6. Start the local viewer.**
+
+```bash
+python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
+```
+
+### Core Commands
+
+#### Search
+
+| Command | Description | Example |
+|---|---|---|
+| `search QUERY` | Full-text keyword search across all indexed sessions | `python3 scripts/context_cli.py search "schema migration" --limit 10` |
+| `semantic QUERY` | Semantic similarity search using local embeddings | `python3 scripts/context_cli.py semantic "database design decision" --limit 5` |
+| `native-scan` | Run the Rust or Go native scanner directly | `python3 scripts/context_cli.py native-scan --backend auto --threads 4` |
+
+#### Memory
+
+| Command | Description | Example |
+|---|---|---|
+| `save` | Save a titled memory entry with optional tags | `python3 scripts/context_cli.py save --title "Auth fix" --content "..." --tags auth,bug` |
+| `export` | Export indexed entries to a JSON file | `python3 scripts/context_cli.py export "" /tmp/export.json --limit 1000` |
+| `import` | Import a previously exported JSON file | `python3 scripts/context_cli.py import /tmp/export.json` |
+
+#### Server
+
+| Command | Description | Example |
+|---|---|---|
+| `serve` | Start the local viewer API server | `python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677` |
+
+#### Maintenance and Validation
+
+| Command | Description | Example |
+|---|---|---|
+| `health` | Check installation state and storage integrity | `python3 scripts/context_cli.py health` |
+| `smoke` | Run the full smoke test suite against a working copy | `python3 scripts/context_cli.py smoke` |
+| `maintain` | Run cleanup and maintenance on the local index | `python3 scripts/context_cli.py maintain --dry-run` |
+
+### Performance
+
+- **Rust scanner** (`native/session_scan/`) delivers low-allocation file scanning on large directory trees with explicit error handling on every path operation.
+- **Go parallel scanner** (`native/session_scan_go/`) uses concurrent directory walks and byte-slice snippet extraction to minimize heap allocations per result.
+- **SQLite FTS5** backs the full-text search index with batched writes (per-100-row commit) that reduce write amplification by approximately 80% compared to per-row commits on large ingest loads.
+
+### Project Structure
+
+```text
+ContextGO/
+├── docs/                      # Architecture, release notes, troubleshooting, media guide
+├── scripts/                   # Unified control plane: CLI, daemon, server, smoke, deploy
+│   ├── context_cli.py         # Single operator entry point for all commands
+│   ├── context_daemon.py      # Session capture and sanitization
+│   ├── session_index.py       # SQLite-backed session index and retrieval
+│   ├── memory_index.py        # Memory and observation index
+│   ├── context_server.py      # Local viewer API server
+│   ├── context_maintenance.py # Index cleanup and repair
+│   ├── context_smoke.py       # Working-copy smoke tests
+│   ├── context_healthcheck.sh # Installation-state health probe
+│   └── unified_context_deploy.sh
+├── native/
+│   ├── session_scan/          # Rust hot path for file scanning
+│   └── session_scan_go/       # Go hot path for parallel scanning
+├── benchmarks/                # Python vs. native-wrapper performance harness
+├── integrations/gsd/          # GSD and gstack workflow integration
+├── artifacts/                 # Autoresearch outputs, test sets, QA reports
+├── templates/                 # launchd and systemd-user service templates
+├── examples/                  # Configuration examples
+└── patches/                   # Compatibility notes
+```
+
+### Comparison
+
+| Feature | ContextGO | Cursor Context | Continue.dev | Mem0 |
+|---|---|---|---|---|
+| Local-first by default | Yes | Partial | Partial | No |
+| Docker-free | Yes | Yes | Partial | No |
+| Multi-agent session index | Yes | No | No | Partial |
+| Native Rust/Go speed | Yes | No | No | No |
+| MCP-free by default | Yes | No | No | No |
+
+### Contributing and Resources
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — local development setup, test execution, PR quality gate
+- [SECURITY.md](SECURITY.md) — threat model, trust boundary, responsible disclosure
+- [CHANGELOG.md](CHANGELOG.md) — full version history
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component breakdown, data flow, design principles
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common failure modes and resolution steps
+- [docs/RELEASE_NOTES_0.7.0.md](docs/RELEASE_NOTES_0.7.0.md) — 0.7.0 release notes
+
+### License
+
+AGPL-3.0. See [LICENSE](LICENSE) for details.
+
+---
 
 ## 中文版
 
-把多 agent 团队的上下文、记忆、检索和验证链路收进一个本地优先、可回滚、可交付的运行时。
+### ContextGO 是什么？
 
-如果你也在做 Codex / Claude / shell 协作，而且你需要一套本地优先、可回滚、可交付的上下文底座，先点个 `star`，等你真正要接这条链时能直接找回它。
+ContextGO 是一个本地优先的上下文与记忆运行时，将 Codex、Claude 和 shell 的会话历史统一到一条可检索、可追溯的主链中。默认无需 Docker、无需 MCP、无需外部桥接，所有数据存储在本机 SQLite 中，通过唯一 CLI 完成检索、记忆管理和运维验证。Rust 与 Go 热路径在不改变操作接口的前提下提升扫描性能。
 
-### 它解决什么
+### 为什么选择 ContextGO？
 
-很多团队已经有很多 agent，但没有一条统一、可信、可运维的上下文主链。
-
-ContextGO 主要解决四件事：
-
-- 把 Codex、Claude、shell、本地记忆统一检索
-- 让 `health / smoke / benchmark` 成为默认交付链路
-- 让数据默认留在本机，而不是先依赖云向量层
-- 让 Rust / Go 提速挂在同一 CLI 下渐进落地
-
-### 为什么值得收藏
-
-- 不是 demo：自带 `health / smoke / benchmark / installed-runtime` 闭环
-- 不是壳层：默认无 MCP、无 Docker、无外部桥接前置
-- 不是一次性重写：Python 主链稳定交付，Rust / Go 只替换热点
-- 不是“更智能优先”：先把命中率、可追溯性、可回滚性做好
-
-### 适用对象
-
-适合：
-
-- 多 agent AI 编码团队
-- 本地优先、数据边界敏感的研发组织
-- 希望把“上下文系统”做成可交付内部产品的团队
-- 想提速，但不想重写整套工作流的团队
-
-不适合：
-
-- 只需要一个简单聊天记录查看器的场景
-- 默认接受云记忆 / 云向量 / 中心化编排的团队
-- 不需要本地部署、不关心 `health/smoke` 的场景
+- **本地优先的隐私保障。** 所有会话数据默认留在本机，上下文不会离开你的信任边界，除非你主动配置远程同步。
+- **零基础设施依赖。** 无 Docker，无 MCP 代理，无外部向量数据库。在一台裸机上克隆、部署、运行，五分钟之内可以完成。
+- **多 Agent 就绪。** 专为同时运行 Codex、Claude、shell agent 的团队设计，所有 agent 历史共用一个可检索的统一索引。
+- **Rust/Go 性能加速。** Python 负责稳定的控制层，Rust 与 Go 只替换经基准测试确认的热点路径，性能递增，不需要重写整套工作流。
+- **经过验证的交付链。** `health`、`smoke`、`benchmark` 和已安装运行时验证是一等命令，不是事后补充的附件。
 
 ### 架构图
 
 ```mermaid
 flowchart LR
-    A["Codex / Claude / Shell<br/>会话与历史源"] --> B["ContextGO Daemon<br/>采集与脱敏"]
-    B --> C["Session Index + Memory Index<br/>本地 SQLite / Files"]
-    C --> D["ContextGO CLI<br/>Search / Semantic / Save / Export / Import"]
+    A["AI 会话源<br/>Codex / Claude / Shell"] --> B["ContextGO Daemon<br/>采集与脱敏"]
+    B --> C["会话索引 + 记忆索引<br/>本地 SQLite / 文件"]
+    C --> D["ContextGO CLI<br/>检索 / 语义 / 保存 / 导出 / 导入"]
     D --> E["Viewer API<br/>本地可视化与查询"]
     D --> F["Health / Smoke / Benchmark<br/>交付验证链"]
-    C --> G["Rust / Go Hot Paths<br/>渐进式提速"]
+    C --> G["Rust / Go 热路径<br/>渐进式提速"]
 ```
 
-### 架构树
+### 快速上手
 
-```text
-ContextGO/
-├── docs/                      # 架构、发布、故障排查、商业交付文档
-├── scripts/                   # 单体主链：CLI / daemon / server / smoke / health / deploy
-│   ├── context_cli.py         # 唯一入口：search / semantic / save / serve / smoke
-│   ├── context_daemon.py      # 会话采集、脱敏、写盘
-│   ├── session_index.py       # 会话索引与检索排序
-│   ├── memory_index.py        # 记忆 / observation 索引
-│   ├── context_server.py      # viewer 服务入口
-│   ├── context_maintenance.py # 清理与维护
-│   ├── context_smoke.py       # 工作副本 smoke
-│   ├── context_healthcheck.sh # 安装态 / 本地健康检查
-│   └── unified_context_deploy.sh
-├── native/
-│   ├── session_scan/          # Rust 热路径
-│   └── session_scan_go/       # Go 热路径
-├── benchmarks/                # Python / native-wrapper 基准
-├── integrations/gsd/          # GSD / gstack 工作流接入
-├── artifacts/                 # autoresearch 结果、测试集、QA 报告
-├── templates/                 # launchd / systemd-user 模板
-├── examples/                  # 配置模板
-└── patches/                   # 兼容补丁说明
-```
-
-更详细的架构说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-
-### 信任块
-
-- 默认运行链路：`local-first / MCP-free / Docker-free`
-- 当前高分基线：`autoresearch = 99.0`
-- 当前关键体积指标：
-  - `health_bytes = 386`
-  - `smoke_bytes = 346`
-  - `search_bytes = 1417`
-  - `native_total_bytes = 4382`
-- 当前最佳轮次快照：
-  - [artifacts/autoresearch/contextgo_autoresearch_best.json](artifacts/autoresearch/contextgo_autoresearch_best.json)
-
-### 产品预览
-
-#### CLI 检索预览
-
-![CLI Search Preview](docs/media/cli-search.svg)
-
-#### Viewer 预览
-
-![Viewer Preview](docs/media/viewer-health.svg)
-
-更多截图规范见 [docs/MEDIA_GUIDE.md](docs/MEDIA_GUIDE.md)。
-
-### 10 分钟上手
+**1. 克隆仓库。**
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git
 cd ContextGO
-bash scripts/unified_context_deploy.sh
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
 ```
 
-如果你只想先确认“它到底能不能跑”，直接执行：
+**2. 执行统一部署脚本。** 该脚本安装依赖、初始化本地存储根目录并配置服务模板。
+
+```bash
+bash scripts/unified_context_deploy.sh
+```
+
+**3. 执行健康检查，验证安装状态。**
 
 ```bash
 python3 scripts/context_cli.py health
+```
+
+**4. 执行 smoke 测试，确认完整命令面正常工作。**
+
+```bash
 python3 scripts/context_cli.py smoke
+```
+
+**5. 运行第一次检索。**
+
+```bash
+python3 scripts/context_cli.py search "认证根因" --limit 10
+```
+
+**6. 启动本地 Viewer。**
+
+```bash
+python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
 ```
 
 ### 核心命令
 
-```bash
-python3 scripts/context_cli.py search "auth root cause" --limit 10 --literal
-python3 scripts/context_cli.py semantic "数据库 schema 决策" --limit 5
-python3 scripts/context_cli.py save --title "Auth fix" --content "..." --tags auth,bug
-python3 scripts/context_cli.py export "" /tmp/contextgo-export.json --limit 1000
-python3 scripts/context_cli.py import /tmp/contextgo-export.json
-python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
-python3 scripts/context_cli.py maintain --dry-run
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
-python3 scripts/context_cli.py native-scan --backend auto --threads 4
-```
+#### 检索
 
-### 为什么不是 MCP / 云记忆 / 云向量路线
-
-| 对比项 | ContextGO | 典型 MCP / 云记忆方案 |
+| 命令 | 说明 | 示例 |
 |---|---|---|
-| 默认依赖 | 本地文件系统 + SQLite | 外部服务 / 桥接层 / 远程 API |
-| 数据边界 | 默认留在本机 | 经常要把上下文送出本地 |
-| 运维复杂度 | 单体部署 + 本地验证 | 多进程、多服务、多连接点 |
-| 故障定位 | `health + smoke + benchmark` 一条链 | 常分散在桥接与外部状态 |
-| 提速路径 | 渐进式 Rust/Go 热点替换 | 常常需要改接口或改运行方式 |
-| 目标用户 | 真正在交付内部工具的团队 | 更偏实验集成与演示编排 |
+| `search QUERY` | 对所有已索引会话执行全文关键词检索 | `python3 scripts/context_cli.py search "schema 迁移" --limit 10` |
+| `semantic QUERY` | 使用本地向量执行语义相似度检索 | `python3 scripts/context_cli.py semantic "数据库设计决策" --limit 5` |
+| `native-scan` | 直接调用 Rust 或 Go 原生扫描器 | `python3 scripts/context_cli.py native-scan --backend auto --threads 4` |
 
-### 验证矩阵
+#### 记忆
 
-```bash
-bash -n scripts/*.sh
-python3 -m py_compile scripts/*.py benchmarks/*.py
-python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_context_native.py scripts/test_context_smoke.py scripts/test_session_index.py scripts/test_autoresearch_contextgo.py
-python3 scripts/e2e_quality_gate.py
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
-python3 scripts/smoke_installed_runtime.py
-cd native/session_scan_go && go test ./...
-cd native/session_scan && CARGO_INCREMENTAL=0 cargo test
-python3 -m benchmarks --mode both --iterations 1 --warmup 0 --query benchmark --format text
+| 命令 | 说明 | 示例 |
+|---|---|---|
+| `save` | 保存一条带标题和标签的记忆条目 | `python3 scripts/context_cli.py save --title "认证修复" --content "..." --tags auth,bug` |
+| `export` | 将已索引条目导出为 JSON 文件 | `python3 scripts/context_cli.py export "" /tmp/export.json --limit 1000` |
+| `import` | 导入之前导出的 JSON 文件 | `python3 scripts/context_cli.py import /tmp/export.json` |
+
+#### 服务
+
+| 命令 | 说明 | 示例 |
+|---|---|---|
+| `serve` | 启动本地 Viewer API 服务 | `python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677` |
+
+#### 维护与验证
+
+| 命令 | 说明 | 示例 |
+|---|---|---|
+| `health` | 检查安装状态与存储完整性 | `python3 scripts/context_cli.py health` |
+| `smoke` | 对工作副本执行完整 smoke 测试套件 | `python3 scripts/context_cli.py smoke` |
+| `maintain` | 对本地索引执行清理与维护 | `python3 scripts/context_cli.py maintain --dry-run` |
+
+### 性能
+
+- **Rust 扫描器**（`native/session_scan/`）在大型目录树上实现低分配文件扫描，所有路径操作均有显式错误处理。
+- **Go 并行扫描器**（`native/session_scan_go/`）使用并发目录遍历和字节切片 snippet 提取，最大限度减少每条结果的堆分配。
+- **SQLite FTS5** 支撑全文检索索引，批量写入（每 100 行提交一次）相比逐行提交可将大批量入库的写放大降低约 80%。
+
+### 目录结构
+
+```text
+ContextGO/
+├── docs/                      # 架构、发布说明、故障排查、媒体规范
+├── scripts/                   # 统一控制层：CLI、守护进程、服务、smoke、部署
+│   ├── context_cli.py         # 所有命令的唯一操作入口
+│   ├── context_daemon.py      # 会话采集与脱敏写盘
+│   ├── session_index.py       # SQLite 会话索引与检索排序
+│   ├── memory_index.py        # 记忆与 observation 索引
+│   ├── context_server.py      # 本地 Viewer API 服务
+│   ├── context_maintenance.py # 索引清理与修复
+│   ├── context_smoke.py       # 工作副本 smoke 测试
+│   ├── context_healthcheck.sh # 安装态健康探针
+│   └── unified_context_deploy.sh
+├── native/
+│   ├── session_scan/          # Rust 文件扫描热路径
+│   └── session_scan_go/       # Go 并行扫描热路径
+├── benchmarks/                # Python 与 native-wrapper 性能基准
+├── integrations/gsd/          # GSD 与 gstack 工作流对接
+├── artifacts/                 # autoresearch 输出、测试集、QA 报告
+├── templates/                 # launchd / systemd-user 服务模板
+├── examples/                  # 配置样例
+└── patches/                   # 兼容性补丁说明
 ```
 
-### 性能路线
+### 对比
 
-ContextGO 不是“全面重写”，而是“热点替换”：
+| 特性 | ContextGO | Cursor Context | Continue.dev | Mem0 |
+|---|---|---|---|---|
+| 默认本地优先 | 是 | 部分 | 部分 | 否 |
+| 无需 Docker | 是 | 是 | 部分 | 否 |
+| 多 Agent 会话索引 | 是 | 否 | 否 | 部分 |
+| Rust/Go 原生性能 | 是 | 否 | 否 | 否 |
+| 默认无 MCP | 是 | 否 | 否 | 否 |
 
-1. 先把 Python 主链做到最稳
-2. 用 benchmark 找出瓶颈
-3. 只把热点挪到 Rust / Go
-4. 用户侧继续只面对同一套 `context_cli.py`
+### 参与贡献与相关资源
 
-### 相关文档
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 本地开发环境搭建、测试执行、PR 质量门标准
+- [SECURITY.md](SECURITY.md) — 威胁模型、信任边界、负责任披露指南
+- [CHANGELOG.md](CHANGELOG.md) — 完整版本变更记录
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 组件概览、数据流、设计原则
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — 常见故障与排查步骤
+- [docs/RELEASE_NOTES_0.7.0.md](docs/RELEASE_NOTES_0.7.0.md) — 0.7.0 发布说明
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/MEDIA_GUIDE.md](docs/MEDIA_GUIDE.md)
-- [docs/RELEASE_NOTES_0.7.0.md](docs/RELEASE_NOTES_0.7.0.md)
-- [docs/LAUNCH_COPY.md](docs/LAUNCH_COPY.md)
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+### 许可证
 
-### FAQ
+AGPL-3.0，详见 [LICENSE](LICENSE)。
 
-#### 它是库还是产品？
+---
 
-首先是产品，其次才是代码仓库。
+## Star History
 
-#### 它是否依赖 MCP？
-
-默认不依赖。当前主链是 MCP-free。
-
-#### 它是否必须接远程服务？
-
-不需要。默认完全本地。
-
-#### 它是否必须接向量数据库或向量 API？
-
-默认不需要。只有在你要做跨语义、低关键词重合、超长文本弱召回时，才值得评估可选向量层。
-
-## English Version
-
-ContextGO is a local-first context and memory runtime for multi-agent AI coding teams.
-
-If your team works across Codex, Claude, shell, and local memory files, ContextGO gives you one auditable, searchable, rollback-friendly runtime instead of another bridge stack.
-
-### What It Solves
-
-- unifies Codex, Claude, shell, and local memory into one searchable chain
-- makes `health / smoke / benchmark` part of the default delivery workflow
-- keeps data local by default
-- upgrades hot paths with Rust / Go without changing operator workflows
-
-### Why It Gets Stars
-
-- not a demo: ships with health, smoke, benchmark, and installed-runtime validation
-- not another wrapper stack: MCP-free, Docker-free, no external bridge required by default
-- not a rewrite-first project: Python stays the stable control plane, Rust/Go replace only hotspots
-- not “AI magic first”: trust, recall quality, and operational clarity come first
-
-### Best Fit
-
-- multi-agent AI coding teams
-- local-first engineering organizations
-- private internal memory/runtime tooling
-- teams that want gradual acceleration without rebuilding everything
-
-### Architecture
-
-See the diagram above and the full breakdown in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-### Quick Start
-
-```bash
-git clone https://github.com/dunova/ContextGO.git
-cd ContextGO
-bash scripts/unified_context_deploy.sh
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
-```
-
-### Core Commands
-
-```bash
-python3 scripts/context_cli.py search "auth root cause" --limit 10 --literal
-python3 scripts/context_cli.py semantic "schema decision" --limit 5
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
-python3 scripts/context_cli.py native-scan --backend auto --threads 4
-```
-
-### Why Not MCP / Cloud Memory
-
-ContextGO favors:
-
-- local trust boundaries
-- one CLI
-- one validation chain
-- gradual Rust/Go acceleration
-- lower token cost through exact search and compact snippets
-
-### Validation
-
-```bash
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
-python3 scripts/smoke_installed_runtime.py
-cd native/session_scan_go && go test ./...
-cd native/session_scan && CARGO_INCREMENTAL=0 cargo test
-```
-
-### Launch Assets
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/MEDIA_GUIDE.md](docs/MEDIA_GUIDE.md)
-- [docs/LAUNCH_COPY.md](docs/LAUNCH_COPY.md)
-- [docs/RELEASE_NOTES_0.7.0.md](docs/RELEASE_NOTES_0.7.0.md)
-
-### Version
-
-- Current version: `0.7.0`
-- Release notes: [docs/RELEASE_NOTES_0.7.0.md](docs/RELEASE_NOTES_0.7.0.md)
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
+[![Star History Chart](https://api.star-history.com/svg?repos=dunova/ContextGO&type=Date)](https://star-history.com/#dunova/ContextGO&Date)

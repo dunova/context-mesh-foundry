@@ -281,10 +281,10 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ContextGO AutoResearch runner")
-    parser.add_argument("--round", type=int, default=1, help="当前轮次编号")
-    parser.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS, help="总轮次目标")
-    parser.add_argument("--query", default=DEFAULT_QUERY, help="召回质量评估查询")
-    parser.add_argument("--note", default="baseline", help="本轮说明")
+    parser.add_argument("--round", type=int, default=1, help="current round number")
+    parser.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS, help="total number of rounds")
+    parser.add_argument("--query", default=DEFAULT_QUERY, help="recall quality evaluation query")
+    parser.add_argument("--note", default="baseline", help="description for this round")
     return parser
 
 
