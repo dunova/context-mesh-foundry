@@ -15,7 +15,7 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 import memory_viewer  # noqa: E402
-from memory_viewer import Handler, _json_bytes, _maybe_sync_index  # noqa: E402
+from memory_viewer import Handler, _json_bytes, _maybe_sync_index, _qs_int  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal fake HTTP handler plumbing
@@ -98,8 +98,8 @@ class TestJsonBytes(unittest.TestCase):
 class TestMaybeSyncIndex(unittest.TestCase):
     def setUp(self) -> None:
         # Reset sync state before each test
-        memory_viewer._SYNC_STATE["at"] = 0.0
-        memory_viewer._SYNC_STATE["payload"] = None
+        memory_viewer._sync_at = 0.0
+        memory_viewer._sync_payload = None
 
     def test_calls_sync_when_cache_empty(self) -> None:
         fake_payload = {"total_observations": 5}
@@ -112,8 +112,8 @@ class TestMaybeSyncIndex(unittest.TestCase):
         import time
 
         fake_payload = {"total_observations": 7}
-        memory_viewer._SYNC_STATE["at"] = time.monotonic()  # very fresh
-        memory_viewer._SYNC_STATE["payload"] = dict(fake_payload)
+        memory_viewer._sync_at = time.monotonic()  # very fresh
+        memory_viewer._sync_payload = dict(fake_payload)
         with patch("memory_viewer.sync_index_from_storage") as m:
             result = _maybe_sync_index()
         m.assert_not_called()
@@ -121,39 +121,42 @@ class TestMaybeSyncIndex(unittest.TestCase):
 
     def test_refreshes_when_stale(self) -> None:
         fresh_payload = {"total_observations": 99}
-        memory_viewer._SYNC_STATE["at"] = 0.0  # definitely stale
-        memory_viewer._SYNC_STATE["payload"] = {"total_observations": 1}
+        memory_viewer._sync_at = 0.0  # definitely stale
+        memory_viewer._sync_payload = {"total_observations": 1}
         with patch("memory_viewer.sync_index_from_storage", return_value=fresh_payload):
             result = _maybe_sync_index()
         self.assertEqual(result["total_observations"], 99)
 
 
 # ---------------------------------------------------------------------------
-# Tests: Handler._parse_int
+# Tests: _qs_int (module-level query string integer parser)
 # ---------------------------------------------------------------------------
 
 
-class TestHandlerParseInt(unittest.TestCase):
-    def setUp(self) -> None:
-        self.h, _ = _make_handler()
-
+class TestQsInt(unittest.TestCase):
     def test_valid_int(self) -> None:
-        self.assertEqual(self.h._parse_int("10", 5, 1, 100), 10)
+        qs = {"limit": ["10"]}
+        self.assertEqual(_qs_int(qs, "limit", 5, 1, 100), 10)
 
     def test_invalid_falls_back_to_default(self) -> None:
-        self.assertEqual(self.h._parse_int("abc", 5, 1, 100), 5)
+        qs = {"limit": ["abc"]}
+        self.assertEqual(_qs_int(qs, "limit", 5, 1, 100), 5)
 
     def test_clamps_to_min(self) -> None:
-        self.assertEqual(self.h._parse_int("0", 5, 2, 100), 2)
+        qs = {"limit": ["0"]}
+        self.assertEqual(_qs_int(qs, "limit", 5, 2, 100), 2)
 
     def test_clamps_to_max(self) -> None:
-        self.assertEqual(self.h._parse_int("999", 5, 1, 50), 50)
+        qs = {"limit": ["999"]}
+        self.assertEqual(_qs_int(qs, "limit", 5, 1, 50), 50)
 
     def test_exact_min(self) -> None:
-        self.assertEqual(self.h._parse_int("1", 5, 1, 100), 1)
+        qs = {"limit": ["1"]}
+        self.assertEqual(_qs_int(qs, "limit", 5, 1, 100), 1)
 
     def test_exact_max(self) -> None:
-        self.assertEqual(self.h._parse_int("100", 5, 1, 100), 100)
+        qs = {"limit": ["100"]}
+        self.assertEqual(_qs_int(qs, "limit", 5, 1, 100), 100)
 
 
 # ---------------------------------------------------------------------------
@@ -381,16 +384,16 @@ class TestHandlerBatchFetch(unittest.TestCase):
         self.assertEqual(h._status_code, 400)
 
     def test_too_many_ids_returns_400(self) -> None:
-        original_max = memory_viewer.MAX_BATCH_IDS
+        original_max = memory_viewer._MAX_BATCH_IDS
         try:
-            memory_viewer.MAX_BATCH_IDS = 3
+            memory_viewer._MAX_BATCH_IDS = 3
             body = json.dumps({"ids": [1, 2, 3, 4, 5]}).encode()
             h, wfile = self._make_post_handler(body)
             with patch("memory_viewer._maybe_sync_index", return_value={}):
                 h._handle_batch_fetch()
             self.assertEqual(h._status_code, 400)
         finally:
-            memory_viewer.MAX_BATCH_IDS = original_max
+            memory_viewer._MAX_BATCH_IDS = original_max
 
     def test_invalid_json_returns_400(self) -> None:
         body = b"not json at all"
@@ -495,7 +498,7 @@ class TestHandlerCors(unittest.TestCase):
         h, _ = _make_handler(headers={"Origin": "http://localhost:3000"})
         sent: list[tuple[str, str]] = []
         h.send_header = lambda k, v: sent.append((k, v))  # type: ignore[method-assign]
-        h._cors_headers()
+        h._add_cors_headers()
         header_names = [k for k, _ in sent]
         self.assertIn("Access-Control-Allow-Origin", header_names)
 
@@ -503,7 +506,7 @@ class TestHandlerCors(unittest.TestCase):
         h, _ = _make_handler(headers={"Origin": "http://evil.com"})
         sent: list[tuple[str, str]] = []
         h.send_header = lambda k, v: sent.append((k, v))  # type: ignore[method-assign]
-        h._cors_headers()
+        h._add_cors_headers()
         header_names = [k for k, _ in sent]
         self.assertNotIn("Access-Control-Allow-Origin", header_names)
 
@@ -511,7 +514,7 @@ class TestHandlerCors(unittest.TestCase):
         h, _ = _make_handler()
         sent: list[tuple[str, str]] = []
         h.send_header = lambda k, v: sent.append((k, v))  # type: ignore[method-assign]
-        h._cors_headers()
+        h._add_cors_headers()
         self.assertEqual(sent, [])
 
 

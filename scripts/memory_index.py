@@ -26,15 +26,92 @@ import json
 import os
 import re
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
 
 try:
     from context_config import storage_root
 except ImportError:  # pragma: no cover
     from .context_config import storage_root  # type: ignore[import-not-found]
+
+
+# ---------------------------------------------------------------------------
+# SQL constants
+# ---------------------------------------------------------------------------
+
+_DDL_OBSERVATIONS = """
+CREATE TABLE IF NOT EXISTS observations (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    fingerprint      TEXT    UNIQUE NOT NULL,
+    source_type      TEXT    NOT NULL,
+    session_id       TEXT    NOT NULL,
+    title            TEXT    NOT NULL,
+    content          TEXT    NOT NULL,
+    tags_json        TEXT    NOT NULL,
+    file_path        TEXT    NOT NULL,
+    created_at       TEXT    NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    updated_at_epoch INTEGER NOT NULL
+)
+"""
+
+_DDL_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_obs_created ON observations(created_at_epoch DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_obs_source  ON observations(source_type, created_at_epoch DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id, created_at_epoch DESC)",
+]
+
+_SQL_INSERT_OBS = """
+    INSERT INTO observations(
+        fingerprint, source_type, session_id, title, content,
+        tags_json, file_path, created_at, created_at_epoch,
+        updated_at_epoch
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+_SQL_UPDATE_OBS_FULL = """
+    UPDATE observations
+    SET fingerprint      = ?,
+        source_type      = ?,
+        session_id       = ?,
+        title            = ?,
+        content          = ?,
+        tags_json        = ?,
+        created_at       = ?,
+        created_at_epoch = ?,
+        updated_at_epoch = ?
+    WHERE id = ?
+"""
+
+_SQL_TOUCH_OBS = "UPDATE observations SET updated_at_epoch = ? WHERE id = ?"
+_SQL_UPDATE_PATH = "UPDATE observations SET file_path = ?, updated_at_epoch = ? WHERE id = ?"
+_SQL_DELETE_OBS = "DELETE FROM observations WHERE id = ?"
+
+_SQL_FIND_BY_PATH = (
+    "SELECT id, fingerprint FROM observations"
+    " WHERE file_path = ?"
+    " ORDER BY updated_at_epoch DESC, id DESC"
+)
+_SQL_FIND_BY_FP = "SELECT id, file_path FROM observations WHERE fingerprint = ?"
+_SQL_FIND_BY_FPS = "SELECT fingerprint FROM observations WHERE fingerprint IN ({})"
+_SQL_STALE_LOCAL = (
+    "SELECT id, file_path FROM observations WHERE source_type IN ('history', 'conversation')"
+)
+_SQL_COUNT = "SELECT COUNT(*) FROM observations"
+_SQL_MAX_EPOCH = "SELECT MAX(created_at_epoch) FROM observations"
+_SQL_FETCH_BY_IDS = (
+    "SELECT * FROM observations WHERE id IN ({}) ORDER BY created_at_epoch DESC"
+)
+_SQL_ANCHOR = "SELECT id, created_at_epoch FROM observations WHERE id = ?"
+_SQL_BEFORE = (
+    "SELECT * FROM observations WHERE created_at_epoch <= ? ORDER BY created_at_epoch DESC LIMIT ?"
+)
+_SQL_AFTER = (
+    "SELECT * FROM observations WHERE created_at_epoch > ? ORDER BY created_at_epoch ASC LIMIT ?"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +140,7 @@ def strip_private_blocks(text: str) -> str:
     """Remove ``<private>…</private>`` blocks and stray tags from *text*."""
     if not text:
         return ""
-    without_block = _PRIVATE_BLOCK_RE.sub("", text)
-    return _PRIVATE_TAG_RE.sub("", without_block).strip()
+    return _PRIVATE_TAG_RE.sub("", _PRIVATE_BLOCK_RE.sub("", text)).strip()
 
 
 def _sanitize_text(text: str) -> str:
@@ -83,7 +159,7 @@ def _sanitize_text(text: str) -> str:
 def get_index_db_path() -> Path:
     """Return the path to the memory index SQLite database.
 
-    Honour ``MEMORY_INDEX_DB_PATH`` when set; otherwise place the database
+    Honours ``MEMORY_INDEX_DB_PATH`` when set; otherwise places the database
     under the configured storage root.
     """
     override = os.environ.get("MEMORY_INDEX_DB_PATH", "").strip()
@@ -117,6 +193,17 @@ def _to_epoch(ts: str, fallback: int) -> int:
         return int(datetime.fromisoformat(ts).timestamp())
     except (ValueError, OverflowError):
         return fallback
+
+
+@contextmanager
+def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
+    """Open a SQLite connection with Row factory and ensure it is closed."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +282,9 @@ def _parse_markdown(path: Path) -> Observation | None:
     source_type = "conversation" if "/conversations/" in path_str else "history"
     session_id = path.stem.split("_")[-1] if "_" in path.stem else path.stem
 
-    fingerprint = hashlib.sha256(f"{source_type}|{title}|{content}|{created_at_epoch}".encode()).hexdigest()
+    fingerprint = hashlib.sha256(
+        f"{source_type}|{title}|{content}|{created_at_epoch}".encode()
+    ).hexdigest()
 
     return Observation(
         fingerprint=fingerprint,
@@ -214,28 +303,6 @@ def _parse_markdown(path: Path) -> Observation | None:
 # Database schema
 # ---------------------------------------------------------------------------
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS observations (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    fingerprint      TEXT    UNIQUE NOT NULL,
-    source_type      TEXT    NOT NULL,
-    session_id       TEXT    NOT NULL,
-    title            TEXT    NOT NULL,
-    content          TEXT    NOT NULL,
-    tags_json        TEXT    NOT NULL,
-    file_path        TEXT    NOT NULL,
-    created_at       TEXT    NOT NULL,
-    created_at_epoch INTEGER NOT NULL,
-    updated_at_epoch INTEGER NOT NULL
-)
-"""
-
-_INDEXES = [
-    "CREATE INDEX IF NOT EXISTS idx_obs_created ON observations(created_at_epoch DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_obs_source  ON observations(source_type, created_at_epoch DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id, created_at_epoch DESC)",
-]
-
 
 def ensure_index_db() -> Path:
     """Ensure the SQLite index database and its schema exist.
@@ -245,14 +312,11 @@ def ensure_index_db() -> Path:
     """
     db_path = get_index_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(_DDL)
-        for idx_sql in _INDEXES:
+    with _open_db(db_path) as conn:
+        conn.execute(_DDL_OBSERVATIONS)
+        for idx_sql in _DDL_INDEXES:
             conn.execute(idx_sql)
         conn.commit()
-    finally:
-        conn.close()
     return db_path
 
 
@@ -268,12 +332,11 @@ def sync_index_from_storage() -> dict[str, int]:
     and ``removed``.
     """
     db_path = ensure_index_db()
-    conn = sqlite3.connect(db_path)
     added = updated = removed = scanned = 0
     now_epoch = int(datetime.now().timestamp())
     seen_local_paths: set[str] = set()
 
-    try:
+    with _open_db(db_path) as conn:
         for base in _history_dirs():
             if not base.exists():
                 continue
@@ -284,34 +347,16 @@ def sync_index_from_storage() -> dict[str, int]:
                 if obs is None:
                     continue
 
-                # Reconcile by file path first to avoid duplicate rows.
-                same_path_rows = conn.execute(
-                    "SELECT id, fingerprint FROM observations"
-                    " WHERE file_path = ?"
-                    " ORDER BY updated_at_epoch DESC, id DESC",
-                    (obs.file_path,),
-                ).fetchall()
+                same_path_rows = conn.execute(_SQL_FIND_BY_PATH, (obs.file_path,)).fetchall()
 
                 if same_path_rows:
-                    keep_id = int(same_path_rows[0][0])
+                    keep_id = int(same_path_rows[0]["id"])
                     for dup in same_path_rows[1:]:
-                        conn.execute("DELETE FROM observations WHERE id = ?", (int(dup[0]),))
+                        conn.execute(_SQL_DELETE_OBS, (int(dup["id"]),))
                         removed += 1
-                    if str(same_path_rows[0][1]) != obs.fingerprint:
+                    if str(same_path_rows[0]["fingerprint"]) != obs.fingerprint:
                         conn.execute(
-                            """
-                            UPDATE observations
-                            SET fingerprint      = ?,
-                                source_type      = ?,
-                                session_id       = ?,
-                                title            = ?,
-                                content          = ?,
-                                tags_json        = ?,
-                                created_at       = ?,
-                                created_at_epoch = ?,
-                                updated_at_epoch = ?
-                            WHERE id = ?
-                            """,
+                            _SQL_UPDATE_OBS_FULL,
                             (
                                 obs.fingerprint,
                                 obs.source_type,
@@ -327,33 +372,18 @@ def sync_index_from_storage() -> dict[str, int]:
                         )
                         updated += 1
                     else:
-                        conn.execute(
-                            "UPDATE observations SET updated_at_epoch = ? WHERE id = ?",
-                            (now_epoch, keep_id),
-                        )
+                        conn.execute(_SQL_TOUCH_OBS, (now_epoch, keep_id))
                     continue
 
                 # Reconcile by fingerprint to handle renames.
-                row = conn.execute(
-                    "SELECT id, file_path FROM observations WHERE fingerprint = ?",
-                    (obs.fingerprint,),
-                ).fetchone()
+                row = conn.execute(_SQL_FIND_BY_FP, (obs.fingerprint,)).fetchone()
                 if row:
-                    if row[1] != obs.file_path:
-                        conn.execute(
-                            "UPDATE observations SET file_path = ?, updated_at_epoch = ? WHERE id = ?",
-                            (obs.file_path, now_epoch, row[0]),
-                        )
+                    if row["file_path"] != obs.file_path:
+                        conn.execute(_SQL_UPDATE_PATH, (obs.file_path, now_epoch, row["id"]))
                         updated += 1
                 else:
                     conn.execute(
-                        """
-                        INSERT INTO observations(
-                            fingerprint, source_type, session_id, title, content,
-                            tags_json, file_path, created_at, created_at_epoch,
-                            updated_at_epoch
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
+                        _SQL_INSERT_OBS,
                         (
                             obs.fingerprint,
                             obs.source_type,
@@ -370,17 +400,12 @@ def sync_index_from_storage() -> dict[str, int]:
                     added += 1
 
         # Remove stale rows whose backing files have been deleted.
-        stale = conn.execute(
-            "SELECT id, file_path FROM observations WHERE source_type IN ('history', 'conversation')"
-        ).fetchall()
-        for rid, fpath in stale:
-            if fpath not in seen_local_paths:
-                conn.execute("DELETE FROM observations WHERE id = ?", (rid,))
+        for row in conn.execute(_SQL_STALE_LOCAL).fetchall():
+            if row["file_path"] not in seen_local_paths:
+                conn.execute(_SQL_DELETE_OBS, (row["id"],))
                 removed += 1
 
         conn.commit()
-    finally:
-        conn.close()
 
     return {"scanned": scanned, "added": added, "updated": updated, "removed": removed}
 
@@ -438,9 +463,7 @@ def search_index(
         List of observation dicts ordered by ``created_at_epoch`` descending.
     """
     db_path = ensure_index_db()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
+    with _open_db(db_path) as conn:
         where: list[str] = []
         args: list[Any] = []
         q = strip_private_blocks(query).strip()
@@ -461,10 +484,7 @@ def search_index(
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
         sql = f"SELECT * FROM observations {where_clause} ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
         args.extend([max(1, min(limit, 200)), max(0, offset)])
-        rows = conn.execute(sql, args).fetchall()
-        return [_row_to_dict(r) for r in rows]
-    finally:
-        conn.close()
+        return [_row_to_dict(r) for r in conn.execute(sql, args).fetchall()]
 
 
 def timeline_index(
@@ -484,29 +504,21 @@ def timeline_index(
         empty list when *anchor_id* does not exist.
     """
     db_path = ensure_index_db()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        anchor = conn.execute(
-            "SELECT id, created_at_epoch FROM observations WHERE id = ?",
-            (anchor_id,),
-        ).fetchone()
+    with _open_db(db_path) as conn:
+        anchor = conn.execute(_SQL_ANCHOR, (anchor_id,)).fetchone()
         if not anchor:
             return []
 
         before_rows = conn.execute(
-            "SELECT * FROM observations WHERE created_at_epoch <= ? ORDER BY created_at_epoch DESC LIMIT ?",
+            _SQL_BEFORE,
             (anchor["created_at_epoch"], max(1, depth_before + 1)),
         ).fetchall()
         after_rows = conn.execute(
-            "SELECT * FROM observations WHERE created_at_epoch > ? ORDER BY created_at_epoch ASC LIMIT ?",
+            _SQL_AFTER,
             (anchor["created_at_epoch"], max(0, depth_after)),
         ).fetchall()
 
-        merged = list(reversed(before_rows)) + list(after_rows)
-        return [_row_to_dict(r) for r in merged]
-    finally:
-        conn.close()
+        return [_row_to_dict(r) for r in list(reversed(before_rows)) + list(after_rows)]
 
 
 def get_observations_by_ids(
@@ -526,18 +538,14 @@ def get_observations_by_ids(
     if not ids:
         return []
     db_path = ensure_index_db()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        cleaned = [int(x) for x in ids[: max(1, min(limit, 300))]]
-        qmarks = ",".join("?" for _ in cleaned)
+    cleaned = [int(x) for x in ids[: max(1, min(limit, 300))]]
+    qmarks = ",".join("?" for _ in cleaned)
+    with _open_db(db_path) as conn:
         rows = conn.execute(
-            f"SELECT * FROM observations WHERE id IN ({qmarks}) ORDER BY created_at_epoch DESC",
+            _SQL_FETCH_BY_IDS.format(qmarks),
             cleaned,
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
-    finally:
-        conn.close()
+    return [_row_to_dict(r) for r in rows]
 
 
 def index_stats() -> dict[str, Any]:
@@ -547,17 +555,14 @@ def index_stats() -> dict[str, Any]:
         Dict with ``db_path``, ``total_observations``, and ``latest_epoch``.
     """
     db_path = ensure_index_db()
-    conn = sqlite3.connect(db_path)
-    try:
-        total = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
-        newest = conn.execute("SELECT MAX(created_at_epoch) FROM observations").fetchone()[0]
-        return {
-            "db_path": str(db_path),
-            "total_observations": int(total or 0),
-            "latest_epoch": int(newest or 0),
-        }
-    finally:
-        conn.close()
+    with _open_db(db_path) as conn:
+        total = conn.execute(_SQL_COUNT).fetchone()[0]
+        newest = conn.execute(_SQL_MAX_EPOCH).fetchone()[0]
+    return {
+        "db_path": str(db_path),
+        "total_observations": int(total or 0),
+        "latest_epoch": int(newest or 0),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -584,23 +589,36 @@ def export_observations_payload(
     """
     sync_info = sync_index_from_storage()
     target = max(1, min(int(limit), 50_000))
+
+    # Fetch all matching rows in a single paginated pass using one connection.
+    db_path = ensure_index_db()
     rows: list[dict[str, Any]] = []
-    offset = 0
     page = 200
 
-    while len(rows) < target:
-        batch = search_index(
-            query=query,
-            limit=min(page, target - len(rows)),
-            offset=offset,
-            source_type=source_type,
-        )
-        if not batch:
-            break
-        rows.extend(batch)
-        if len(batch) < page:
-            break
-        offset += len(batch)
+    with _open_db(db_path) as conn:
+        where: list[str] = []
+        args: list[Any] = []
+        q = strip_private_blocks(query).strip()
+        if q:
+            where.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(tags_json) LIKE ?)")
+            like_q = f"%{q.lower()}%"
+            args.extend([like_q, like_q, like_q])
+        if source_type and source_type != "all":
+            where.append("source_type = ?")
+            args.append(source_type)
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+
+        offset = 0
+        while len(rows) < target:
+            batch_limit = min(page, target - len(rows))
+            sql = f"SELECT * FROM observations {where_clause} ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
+            batch = conn.execute(sql, [*args, batch_limit, offset]).fetchall()
+            if not batch:
+                break
+            rows.extend(_row_to_dict(r) for r in batch)
+            if len(batch) < page:
+                break
+            offset += len(batch)
 
     return {
         "exported_at": datetime.now().isoformat(),
@@ -636,7 +654,9 @@ def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
     if not fingerprint and content:
         src = raw.get("source_type") or "import"
         sid = raw.get("session_id") or "imported"
-        fingerprint = hashlib.sha256(f"{src}|{sid}|{title}|{content}|{created_at_epoch}".encode()).hexdigest()
+        fingerprint = hashlib.sha256(
+            f"{src}|{sid}|{title}|{content}|{created_at_epoch}".encode()
+        ).hexdigest()
 
     return {
         "fingerprint": fingerprint,
@@ -659,7 +679,8 @@ def import_observations_payload(
     """Import observations from an export payload into the local index.
 
     Skips records that already exist (matched by fingerprint) and records
-    with no usable content.
+    with no usable content.  Duplicate detection is done in a single batch
+    query rather than per-row lookups.
 
     Args:
         payload: Dict containing an ``observations`` list, as produced by
@@ -678,51 +699,53 @@ def import_observations_payload(
         raise ValueError("invalid payload: observations must be a list")
 
     db_path = ensure_index_db()
-    conn = sqlite3.connect(db_path)
     inserted = 0
     skipped = 0
     now_epoch = int(datetime.now().timestamp())
 
-    try:
-        for raw in observations:
-            if not isinstance(raw, dict):
-                continue
-            obs = _normalize_import_observation(raw)
-            if not obs["fingerprint"] or not obs["content"].strip():
-                skipped += 1
-                continue
-            exists = conn.execute(
-                "SELECT id FROM observations WHERE fingerprint = ?",
-                (obs["fingerprint"],),
-            ).fetchone()
-            if exists:
-                skipped += 1
-                continue
-            conn.execute(
-                """
-                INSERT INTO observations(
-                    fingerprint, source_type, session_id, title, content,
-                    tags_json, file_path, created_at, created_at_epoch,
-                    updated_at_epoch
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    obs["fingerprint"],
-                    obs["source_type"],
-                    obs["session_id"],
-                    obs["title"],
-                    obs["content"],
-                    obs["tags_json"],
-                    obs["file_path"],
-                    obs["created_at"],
-                    obs["created_at_epoch"],
-                    now_epoch,
-                ),
-            )
-            inserted += 1
-        conn.commit()
-    finally:
-        conn.close()
+    # Normalise all incoming records and drop those with no usable content.
+    candidates: list[dict[str, Any]] = []
+    for raw in observations:
+        if not isinstance(raw, dict):
+            continue
+        obs = _normalize_import_observation(raw)
+        if not obs["fingerprint"] or not obs["content"].strip():
+            skipped += 1
+        else:
+            candidates.append(obs)
+
+    if candidates:
+        with _open_db(db_path) as conn:
+            # Batch-check which fingerprints already exist.
+            fps = [c["fingerprint"] for c in candidates]
+            qmarks = ",".join("?" for _ in fps)
+            existing = {
+                row["fingerprint"]
+                for row in conn.execute(_SQL_FIND_BY_FPS.format(qmarks), fps).fetchall()
+            }
+
+            for obs in candidates:
+                if obs["fingerprint"] in existing:
+                    skipped += 1
+                    continue
+                conn.execute(
+                    _SQL_INSERT_OBS,
+                    (
+                        obs["fingerprint"],
+                        obs["source_type"],
+                        obs["session_id"],
+                        obs["title"],
+                        obs["content"],
+                        obs["tags_json"],
+                        obs["file_path"],
+                        obs["created_at"],
+                        obs["created_at_epoch"],
+                        now_epoch,
+                    ),
+                )
+                inserted += 1
+
+            conn.commit()
 
     if sync_from_storage:
         sync_index_from_storage()

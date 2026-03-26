@@ -52,13 +52,13 @@ ENABLE_REMOTE_MEMORY_HTTP = env_bool(
 REMOTE_MEMORY_URL = env_str("CONTEXTGO_REMOTE_URL", default="http://127.0.0.1:8090/api/v1")
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Shared Helpers
-# ═══════════════════════════════════════════════════════════════
+# ───────────────────────────────────────────────
+# Shared helpers
+# ───────────────────────────────────────────────
 
 
 def _local_memory_matches(query: str, limit: int = 3) -> list[dict]:
-    """Return local memory items matching query, up to limit results."""
+    """Return local memory items matching *query*, up to *limit* results."""
     return context_core.local_memory_matches(
         query,
         shared_root=LOCAL_SHARED_ROOT,
@@ -70,7 +70,7 @@ def _local_memory_matches(query: str, limit: int = 3) -> list[dict]:
 
 
 def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
-    """Write a memory markdown file and optionally index it remotely.
+    """Write a memory markdown file and optionally notify the remote index.
 
     Returns a human-readable status message.
     """
@@ -110,16 +110,19 @@ def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
 
 
 def _load_module(name: str) -> ModuleType:
-    """Dynamically import and return a module by name."""
+    """Import and return a module by name.
+
+    Exists as a named function so tests can mock late imports (serve, maintain)
+    without patching importlib globally.
+    """
     return importlib.import_module(name)
 
 
 def _configure_viewer_module(module: ModuleType, host: str, port: int, token: str) -> None:
-    """Push viewer runtime config into environment variables and the module itself.
+    """Push viewer runtime config into environment variables and the module.
 
-    Prefers module.apply_runtime_config() when available; falls back to direct
-    attribute assignment so that both old and new viewer implementations are
-    supported without an adapter layer.
+    Calls ``module.apply_runtime_config()`` when available; falls back to
+    direct attribute assignment for older viewer implementations.
     """
     token_value = (token or "").strip()
     os.environ["CONTEXTGO_VIEWER_HOST"] = host
@@ -138,7 +141,7 @@ def _configure_viewer_module(module: ModuleType, host: str, port: int, token: st
 
 
 def _compact_smoke_payload(payload: dict[str, object]) -> dict[str, object]:
-    """Return a condensed smoke payload with only name/ok/rc (plus detail on failure)."""
+    """Return a condensed smoke payload with name/ok/rc fields only (plus detail on failure)."""
     results = []
     for item in payload.get("results", []):
         if not isinstance(item, dict):
@@ -151,14 +154,11 @@ def _compact_smoke_payload(payload: dict[str, object]) -> dict[str, object]:
         if not item.get("ok"):
             row["detail"] = item.get("detail")
         results.append(row)
-    return {
-        "summary": payload.get("summary"),
-        "results": results,
-    }
+    return {"summary": payload.get("summary"), "results": results}
 
 
 def _print_json(payload: object, *, pretty: bool = False) -> None:
-    """Serialize payload to stdout as compact or pretty-printed JSON."""
+    """Serialize *payload* to stdout as compact or pretty-printed JSON."""
     if pretty:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -179,18 +179,18 @@ def _source_freshness() -> dict[str, dict[str, object]]:
         "shell_zsh": HOME / ".zsh_history",
         "antigravity_latest": antigravity_candidates[0] if antigravity_candidates else None,
     }
-    payload: dict[str, dict[str, object]] = {}
+    result: dict[str, dict[str, object]] = {}
     for name, path in sources.items():
         if path is None:
-            payload[name] = {"exists": False}
+            result[name] = {"exists": False}
             continue
         p = Path(path)
-        payload[name] = {
+        result[name] = {
             "exists": p.exists(),
             "path": str(p),
             "mtime": datetime.fromtimestamp(context_core.safe_mtime(p)).isoformat() if p.exists() else None,
         }
-    return payload
+    return result
 
 
 def _remote_process_count() -> int:
@@ -207,9 +207,9 @@ def _remote_process_count() -> int:
     return sum(1 for line in (proc.stdout or "").splitlines() if line.strip())
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Command Handlers
-# ═══════════════════════════════════════════════════════════════
+# ───────────────────────────────────────────────
+# Command handlers
+# ───────────────────────────────────────────────
 
 
 def cmd_search(args: argparse.Namespace) -> int:
@@ -293,30 +293,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
 def cmd_maintain(args: argparse.Namespace) -> int:
     """Run local index maintenance (repair queue, enqueue missing sessions)."""
     maintenance_module = _load_module("context_maintenance")
-    # Forward flags to context_maintenance.main() as an argv list.
-    # context_maintenance.parse_args() owns its own argument definitions;
-    # we re-serialise only the values that were actually parsed here so
-    # the downstream parser remains the single source of truth for defaults.
-    forwarded = [
-        "--db",
-        args.db,
-        "--codex-root",
-        args.codex_root,
-        "--claude-root",
-        args.claude_root,
-        "--max-enqueue",
-        str(args.max_enqueue),
-        "--stale-minutes",
-        str(args.stale_minutes),
+    # Re-serialize only the flags parsed here so context_maintenance.parse_args()
+    # remains the single source of truth for its own defaults.
+    forwarded: list[str] = [
+        "--db", args.db,
+        "--codex-root", args.codex_root,
+        "--claude-root", args.claude_root,
+        "--max-enqueue", str(args.max_enqueue),
+        "--stale-minutes", str(args.stale_minutes),
     ]
-    if args.include_subagents:
-        forwarded.append("--include-subagents")
-    if args.repair_queue:
-        forwarded.append("--repair-queue")
-    if args.enqueue_missing:
-        forwarded.append("--enqueue-missing")
-    if args.dry_run:
-        forwarded.append("--dry-run")
+    for flag in ("--include-subagents", "--repair-queue", "--enqueue-missing", "--dry-run"):
+        attr = flag.lstrip("-").replace("-", "_")
+        if getattr(args, attr, False):
+            forwarded.append(flag)
     return maintenance_module.main(forwarded)
 
 
@@ -366,20 +355,20 @@ def cmd_smoke(args: argparse.Namespace) -> int:
 
     output = payload if args.verbose else _compact_smoke_payload(payload)
     _print_json(output, pretty=args.verbose)
-    failed = [item for item in payload["results"] if not item["ok"]]
-    return 1 if failed else 0
+    return 1 if any(not item["ok"] for item in payload["results"]) else 0
 
 
 def cmd_health(args: argparse.Namespace) -> int:
     """Check context system health and print a JSON status payload."""
-    recall_payload = session_index.health_payload()
+    recall = session_index.health_payload()
+    db_ok = bool(recall.get("session_index_db_exists"))
     payload: dict[str, object] = {
         "checked_at": datetime.now().isoformat(),
         "session_search_lite": {
-            "ok": bool(recall_payload.get("session_index_db_exists")),
-            "sessions": recall_payload.get("total_sessions"),
-            "indexed_this_run": recall_payload.get("sync"),
-            "db": recall_payload.get("session_index_db"),
+            "ok": db_ok,
+            "sessions": recall.get("total_sessions"),
+            "indexed_this_run": recall.get("sync"),
+            "db": recall.get("session_index_db"),
         },
         "source_freshness": _source_freshness(),
         "local_memory_root": {
@@ -392,32 +381,32 @@ def cmd_health(args: argparse.Namespace) -> int:
             "remote_processes": _remote_process_count(),
         },
         "native_backends": context_native.health_payload(),
-        "all_ok": bool(recall_payload.get("session_index_db_exists")),
+        "all_ok": db_ok,
     }
 
     if args.verbose:
-        output: object = payload
+        _print_json(payload, pretty=True)
     else:
         session_lite = payload["session_search_lite"]  # type: ignore[index]
-        output = {
-            "checked_at": payload["checked_at"],
-            "all_ok": payload["all_ok"],
-            "session_search_lite": {
-                "ok": session_lite["ok"],
-                "sessions": session_lite["sessions"],
-                "db": session_lite["db"],
-            },
-            "remote_sync_policy": payload["remote_sync_policy"],
-            "native_backends": payload["native_backends"],
-        }
-
-    _print_json(output, pretty=args.verbose)
+        _print_json(
+            {
+                "checked_at": payload["checked_at"],
+                "all_ok": payload["all_ok"],
+                "session_search_lite": {
+                    "ok": session_lite["ok"],  # type: ignore[index]
+                    "sessions": session_lite["sessions"],  # type: ignore[index]
+                    "db": session_lite["db"],  # type: ignore[index]
+                },
+                "remote_sync_policy": payload["remote_sync_policy"],
+                "native_backends": payload["native_backends"],
+            }
+        )
     return 0 if payload["all_ok"] else 1
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Command Dispatch Table
-# ═══════════════════════════════════════════════════════════════
+# ───────────────────────────────────────────────
+# Command dispatch table
+# ───────────────────────────────────────────────
 
 COMMANDS: dict[str, object] = {
     "search": cmd_search,
@@ -433,9 +422,9 @@ COMMANDS: dict[str, object] = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Argument Parser
-# ═══════════════════════════════════════════════════════════════
+# ───────────────────────────────────────────────
+# Argument parser
+# ───────────────────────────────────────────────
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -445,68 +434,77 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    search = sub.add_parser("search", help="Search session/history context")
-    search.add_argument("query", help="Query text")
-    search.add_argument("--type", default="all", choices=["all", "event", "session", "turn", "content"])
-    search.add_argument("--limit", type=int, default=10)
-    search.add_argument("--literal", action="store_true")
+    # search
+    p = sub.add_parser("search", help="Search session/history context")
+    p.add_argument("query", help="Query text")
+    p.add_argument("--type", default="all", choices=["all", "event", "session", "turn", "content"])
+    p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--literal", action="store_true")
 
-    semantic = sub.add_parser("semantic", help="Search local memories, then fallback to history content")
-    semantic.add_argument("query", help="Query text")
-    semantic.add_argument("--limit", type=int, default=5)
+    # semantic
+    p = sub.add_parser("semantic", help="Search local memories, then fallback to history content")
+    p.add_argument("query", help="Query text")
+    p.add_argument("--limit", type=int, default=5)
 
-    save = sub.add_parser("save", help="Save key conclusion to local memory")
-    save.add_argument("--title", required=True)
-    save.add_argument("--content", required=True)
-    save.add_argument("--tags", default="")
+    # save
+    p = sub.add_parser("save", help="Save key conclusion to local memory")
+    p.add_argument("--title", required=True)
+    p.add_argument("--content", required=True)
+    p.add_argument("--tags", default="")
 
-    export = sub.add_parser("export", help="Export indexed observations to JSON")
-    export.add_argument("query", nargs="?", default="", help="Search query, empty for all")
-    export.add_argument("output", help="Output JSON path")
-    export.add_argument("--limit", type=int, default=5000)
-    export.add_argument("--source-type", default="all", choices=["all", "history", "conversation"])
+    # export
+    p = sub.add_parser("export", help="Export indexed observations to JSON")
+    p.add_argument("query", nargs="?", default="", help="Search query, empty for all")
+    p.add_argument("output", help="Output JSON path")
+    p.add_argument("--limit", type=int, default=5000)
+    p.add_argument("--source-type", default="all", choices=["all", "history", "conversation"])
 
-    import_cmd = sub.add_parser("import", help="Import observations from JSON")
-    import_cmd.add_argument("input", help="Input JSON path")
-    import_cmd.add_argument("--no-sync", action="store_true")
+    # import
+    p = sub.add_parser("import", help="Import observations from JSON")
+    p.add_argument("input", help="Input JSON path")
+    p.add_argument("--no-sync", action="store_true")
 
-    serve = sub.add_parser("serve", help="Start local memory viewer")
-    serve.add_argument("--host", default=env_str("CONTEXTGO_VIEWER_HOST", default="127.0.0.1"))
-    serve.add_argument("--port", type=int, default=env_int("CONTEXTGO_VIEWER_PORT", default=37677, minimum=1))
-    serve.add_argument("--token", default=env_str("CONTEXTGO_VIEWER_TOKEN", default=""))
+    # serve
+    p = sub.add_parser("serve", help="Start local memory viewer")
+    p.add_argument("--host", default=env_str("CONTEXTGO_VIEWER_HOST", default="127.0.0.1"))
+    p.add_argument("--port", type=int, default=env_int("CONTEXTGO_VIEWER_PORT", default=37677, minimum=1))
+    p.add_argument("--token", default=env_str("CONTEXTGO_VIEWER_TOKEN", default=""))
 
-    maintain = sub.add_parser("maintain", help="Run local maintenance workflow")
-    maintain.add_argument("--db", default="~/.aline/db/aline.db")
-    maintain.add_argument("--codex-root", default="~/.codex/sessions")
-    maintain.add_argument("--claude-root", default="~/.claude/projects")
-    maintain.add_argument("--include-subagents", action="store_true")
-    maintain.add_argument("--repair-queue", action="store_true")
-    maintain.add_argument("--enqueue-missing", action="store_true")
-    maintain.add_argument("--max-enqueue", type=int, default=2000)
-    maintain.add_argument("--stale-minutes", type=int, default=15)
-    maintain.add_argument("--dry-run", action="store_true")
+    # maintain
+    p = sub.add_parser("maintain", help="Run local maintenance workflow")
+    p.add_argument("--db", default="~/.contextgo/db/contextgo.db")
+    p.add_argument("--codex-root", default="~/.codex/sessions")
+    p.add_argument("--claude-root", default="~/.claude/projects")
+    p.add_argument("--include-subagents", action="store_true")
+    p.add_argument("--repair-queue", action="store_true")
+    p.add_argument("--enqueue-missing", action="store_true")
+    p.add_argument("--max-enqueue", type=int, default=2000)
+    p.add_argument("--stale-minutes", type=int, default=15)
+    p.add_argument("--dry-run", action="store_true")
 
-    native_scan = sub.add_parser(
+    # native-scan
+    p = sub.add_parser(
         "native-scan",
         help="Run the ContextGO native scan workflow",
         description="Run the native scan workflow that exercises the Rust/Go backends without extra wrappers.",
     )
-    native_scan.add_argument("--backend", choices=["auto", "rust", "go"], default="auto")
-    native_scan.add_argument("--codex-root")
-    native_scan.add_argument("--claude-root")
-    native_scan.add_argument("--threads", type=int, default=4)
-    native_scan.add_argument("--query")
-    native_scan.add_argument("--limit", type=int)
-    native_scan.add_argument("--json", action="store_true")
-    native_scan.add_argument("--debug-build", action="store_true")
+    p.add_argument("--backend", choices=["auto", "rust", "go"], default="auto")
+    p.add_argument("--codex-root")
+    p.add_argument("--claude-root")
+    p.add_argument("--threads", type=int, default=4)
+    p.add_argument("--query")
+    p.add_argument("--limit", type=int)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--debug-build", action="store_true")
 
-    smoke = sub.add_parser(
+    # smoke
+    p = sub.add_parser(
         "smoke",
         help="Run the ContextGO smoke gate",
         description="Run the smoke gate that checks CLI, viewer, and memory flows end to end.",
     )
-    smoke.add_argument("--verbose", action="store_true", help="Print full smoke payload")
-    smoke.add_argument(
+    p.add_argument("--verbose", action="store_true", help="Print full smoke payload")
+    p.add_argument(
         "--sandbox",
         action="store_true",
         help=(
@@ -516,14 +514,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    health = sub.add_parser("health", help="Check context system health")
-    health.add_argument("--verbose", action="store_true", help="Print full health payload")
+    # health
+    p = sub.add_parser("health", help="Check context system health")
+    p.add_argument("--verbose", action="store_true", help="Print full health payload")
+
     return parser
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Entry Points
-# ═══════════════════════════════════════════════════════════════
+# ───────────────────────────────────────────────
+# Entry points
+# ───────────────────────────────────────────────
 
 
 def run(args: argparse.Namespace) -> int:
@@ -536,7 +536,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Parse argv and run the selected command. Returns an exit code."""
+    """Parse *argv* and run the selected command. Returns an exit code."""
     return run(build_parser().parse_args(argv))
 
 

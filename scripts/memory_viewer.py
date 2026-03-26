@@ -4,6 +4,15 @@
 Exposes a local-only web interface and JSON REST endpoints backed by the
 memory index.  Binds to 127.0.0.1 by default; non-loopback binds require
 ``CONTEXTGO_VIEWER_TOKEN`` to be set.
+
+Endpoints
+---------
+GET  /                          Single-page viewer UI
+GET  /api/health                Health check + index stats
+GET  /api/search?query=…        Full-text search
+GET  /api/timeline?anchor=…     Timeline traversal
+GET  /api/events                Server-Sent Events stream
+POST /api/observations/batch    Fetch observations by ID
 """
 
 from __future__ import annotations
@@ -14,7 +23,7 @@ import hmac
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -43,32 +52,70 @@ except ImportError:  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
-# Server configuration (resolved once at import time)
+# Server configuration (resolved once at import time; mutable by context_server)
 # ---------------------------------------------------------------------------
 
-HOST = env_str("CONTEXTGO_VIEWER_HOST", default="127.0.0.1")
-PORT = env_int("CONTEXTGO_VIEWER_PORT", default=37677, minimum=1)
-VIEWER_TOKEN = env_str("CONTEXTGO_VIEWER_TOKEN", default="").strip()
-LOOPBACK_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
-MAX_POST_BYTES = env_int("CONTEXTGO_VIEWER_MAX_POST_BYTES", default=1_048_576, minimum=1024)
-MAX_BATCH_IDS = env_int("CONTEXTGO_VIEWER_MAX_BATCH_IDS", default=500, minimum=1)
-SSE_INTERVAL_SEC = env_float("CONTEXTGO_VIEWER_SSE_INTERVAL_SEC", default=1.0, minimum=0.2)
-SSE_MAX_TICKS = env_int("CONTEXTGO_VIEWER_SSE_MAX_TICKS", default=120, minimum=1)
-SYNC_MIN_INTERVAL_SEC = env_float("CONTEXTGO_VIEWER_SYNC_MIN_INTERVAL_SEC", default=5.0, minimum=0.0)
+HOST: str = env_str("CONTEXTGO_VIEWER_HOST", default="127.0.0.1")
+PORT: int = env_int("CONTEXTGO_VIEWER_PORT", default=37677, minimum=1)
+VIEWER_TOKEN: str = env_str("CONTEXTGO_VIEWER_TOKEN", default="").strip()
+
+_LOOPBACK_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
+_MAX_POST_BYTES: int = env_int("CONTEXTGO_VIEWER_MAX_POST_BYTES", default=1_048_576, minimum=1024)
+_MAX_BATCH_IDS: int = env_int("CONTEXTGO_VIEWER_MAX_BATCH_IDS", default=500, minimum=1)
+_SSE_INTERVAL_SEC: float = env_float("CONTEXTGO_VIEWER_SSE_INTERVAL_SEC", default=1.0, minimum=0.2)
+_SSE_MAX_TICKS: int = env_int("CONTEXTGO_VIEWER_SSE_MAX_TICKS", default=120, minimum=1)
+_SYNC_MIN_INTERVAL_SEC: float = env_float(
+    "CONTEXTGO_VIEWER_SYNC_MIN_INTERVAL_SEC", default=5.0, minimum=0.0
+)
 
 # ---------------------------------------------------------------------------
-# Sync state cache
+# Sync state cache  (thread-safe, double-checked locking)
 # ---------------------------------------------------------------------------
 
-_SyncState = dict[str, Any]
-_SYNC_STATE: _SyncState = {"at": 0.0, "payload": None}
-_SYNC_LOCK = threading.Lock()
+_sync_lock = threading.Lock()
+_sync_at: float = 0.0
+_sync_payload: dict[str, Any] | None = None
+
+
+def _maybe_sync_index() -> dict[str, Any]:
+    """Return cached sync results, refreshing only when the TTL has expired.
+
+    Uses a lock-free fast path so already-cached results bypass the mutex
+    entirely and avoid contention under concurrent requests.
+    """
+    global _sync_at, _sync_payload  # noqa: PLW0603
+
+    now = time.monotonic()
+
+    # Fast path: read without acquiring the lock when cache is warm.
+    cached = _sync_payload
+    if (
+        _SYNC_MIN_INTERVAL_SEC > 0
+        and cached is not None
+        and (_sync_at + _SYNC_MIN_INTERVAL_SEC) > now
+    ):
+        return dict(cached)
+
+    # Slow path: refresh outside the lock so only one expensive I/O call runs
+    # at a time, but other threads can still serve the stale cache.
+    with _sync_lock:
+        # Re-check after acquiring the lock (another thread may have refreshed).
+        if (
+            _sync_payload is not None
+            and (_sync_at + _SYNC_MIN_INTERVAL_SEC) > time.monotonic()
+        ):
+            return dict(_sync_payload)
+        payload = sync_index_from_storage()
+        _sync_at = time.monotonic()
+        _sync_payload = dict(payload)
+    return payload
+
 
 # ---------------------------------------------------------------------------
 # Viewer HTML (single-page application)
 # ---------------------------------------------------------------------------
 
-_VIEWER_HTML = """<!doctype html>
+_VIEWER_HTML: str = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -100,9 +147,7 @@ _VIEWER_HTML = """<!doctype html>
     #status-dot.err  { background: #f44336; }
     #stats { font-size: 0.8rem; color: #90a4ae; }
     main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
-    .search-row {
-      display: flex; gap: 8px; margin-bottom: 20px;
-    }
+    .search-row { display: flex; gap: 8px; margin-bottom: 20px; }
     #q {
       flex: 1; padding: 9px 12px;
       border: 1px solid #c5cae9; border-radius: 6px;
@@ -152,7 +197,7 @@ async function run() {
   const out = document.getElementById('out');
   const banner = document.getElementById('err-banner');
   banner.style.display = 'none';
-  out.textContent = 'Searching...';
+  out.textContent = 'Searching\u2026';
   try {
     const res = await fetch(
       '/api/search?query=' + encodeURIComponent(q) + '&limit=20',
@@ -162,8 +207,7 @@ async function run() {
       const j = await res.json().catch(() => ({}));
       throw new Error('HTTP ' + res.status + ': ' + (j.error || res.statusText));
     }
-    const j = await res.json();
-    out.textContent = JSON.stringify(j, null, 2);
+    out.textContent = JSON.stringify(await res.json(), null, 2);
   } catch (e) {
     out.textContent = '';
     banner.textContent = 'Search failed: ' + e.message;
@@ -175,15 +219,15 @@ document.getElementById('q').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') run();
 });
 
-(function startSSE() {
+(function connectSSE() {
   const dot = document.getElementById('status-dot');
   const stats = document.getElementById('stats');
   const es = new EventSource('/api/events');
-  es.onopen = () => dot.className = 'live';
+  es.onopen = () => { dot.className = 'live'; };
   es.onmessage = function(e) {
     try {
       const d = JSON.parse(e.data);
-      const n = d.total_observations != null ? d.total_observations : '?';
+      const n = d.total_observations ?? '?';
       document.title = 'ContextGO Viewer (' + n + ')';
       stats.textContent = n + ' observations';
       dot.className = 'live';
@@ -191,8 +235,8 @@ document.getElementById('q').addEventListener('keydown', function(e) {
   };
   es.onerror = function() {
     dot.className = 'err';
-    setTimeout(startSSE, 5000);
     es.close();
+    setTimeout(connectSSE, 5000);
   };
 })();
 </script>
@@ -210,30 +254,48 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
-def _maybe_sync_index() -> dict[str, Any]:
-    """Return cached sync results, refreshing when the cache has expired.
+def _clamp_int(value: str, default: int, min_v: int, max_v: int) -> int:
+    """Parse *value* as an integer clamped to [*min_v*, *max_v*]."""
+    try:
+        return max(min_v, min(max_v, int(value)))
+    except (ValueError, TypeError):
+        return default
 
-    Avoids hammering the filesystem by honouring ``SYNC_MIN_INTERVAL_SEC``.
-    """
-    now = time.monotonic()
-    with _SYNC_LOCK:
-        cached = _SYNC_STATE.get("payload")
-        if (
-            SYNC_MIN_INTERVAL_SEC > 0
-            and cached is not None
-            and (_SYNC_STATE.get("at", 0.0) + SYNC_MIN_INTERVAL_SEC) > now
-        ):
-            return dict(cached)
-    payload = sync_index_from_storage()
-    with _SYNC_LOCK:
-        _SYNC_STATE["at"] = now
-        _SYNC_STATE["payload"] = dict(payload)
-    return payload
+
+def _qs_str(qs: dict[str, list[str]], key: str, default: str = "") -> str:
+    """Return the first value for *key* in *qs*, stripped, or *default*."""
+    return (qs.get(key, [default])[0] or default).strip()
+
+
+def _qs_int(
+    qs: dict[str, list[str]], key: str, default: int, min_v: int, max_v: int
+) -> int:
+    """Return the first value for *key* in *qs* as a clamped integer."""
+    return _clamp_int(qs.get(key, [str(default)])[0] or str(default), default, min_v, max_v)
 
 
 # ---------------------------------------------------------------------------
 # HTTP request handler
 # ---------------------------------------------------------------------------
+
+# Security headers sent with every response.
+_SECURITY_HEADERS: list[tuple[str, str]] = [
+    ("X-Content-Type-Options", "nosniff"),
+    ("X-Frame-Options", "DENY"),
+    ("Referrer-Policy", "no-referrer"),
+]
+
+# CSP for the HTML viewer page.
+_CSP_HTML = (
+    "default-src 'self'; "
+    "script-src 'unsafe-inline'; "
+    "style-src 'unsafe-inline'; "
+    "connect-src 'self'; "
+    "img-src 'none'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'"
+)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -241,48 +303,43 @@ class Handler(BaseHTTPRequestHandler):
 
     server_version = "ContextGOViewer/1.0"
 
-    # Suppress per-request access logging; errors are surfaced via JSON responses.
+    # Silence per-request access logging; errors surface as JSON responses.
     def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
-        """Suppress the default HTTP request logging."""
         return
 
     # ------------------------------------------------------------------
-    # Utility methods
+    # Security helpers
     # ------------------------------------------------------------------
-
-    def _parse_int(self, value: str, default: int, min_v: int, max_v: int) -> int:
-        """Parse *value* as an int clamped to [*min_v*, *max_v*]."""
-        try:
-            parsed = int(value)
-        except (ValueError, TypeError):
-            return default
-        return max(min_v, min(max_v, parsed))
 
     def _authorized(self) -> bool:
         """Return ``True`` when the request carries a valid auth token.
 
-        Token comparison uses :func:`hmac.compare_digest` to prevent
-        timing-based enumeration attacks.
+        Uses :func:`hmac.compare_digest` to prevent timing-based attacks.
         """
         if not VIEWER_TOKEN:
             return True
         got = self.headers.get("X-Context-Token", "").strip()
-        if not got:
-            return False
-        return hmac.compare_digest(got, VIEWER_TOKEN)
+        return bool(got) and hmac.compare_digest(got, VIEWER_TOKEN)
 
-    def _cors_headers(self) -> None:
+    def _add_security_headers(self) -> None:
+        """Emit common security headers on the current response."""
+        for name, value in _SECURITY_HEADERS:
+            self.send_header(name, value)
+
+    def _add_cors_headers(self) -> None:
         """Emit CORS headers that permit only loopback origins."""
         origin = self.headers.get("Origin", "")
-        if origin:
-            self.send_header("Vary", "Origin")
-            if any(lh in origin for lh in ("127.0.0.1", "localhost", "::1")):
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header(
-                    "Access-Control-Allow-Headers",
-                    "Content-Type, X-Context-Token",
-                )
+        if not origin:
+            return
+        self.send_header("Vary", "Origin")
+        if any(lh in origin for lh in ("127.0.0.1", "localhost", "::1")):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Context-Token")
+
+    # ------------------------------------------------------------------
+    # Response writers
+    # ------------------------------------------------------------------
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         """Write a JSON response with the given HTTP *status* code."""
@@ -290,7 +347,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self._cors_headers()
+        self._add_security_headers()
+        self._add_cors_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -300,12 +358,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
-        )
+        self.send_header("Content-Security-Policy", _CSP_HTML)
+        self._add_security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_unauthorized(self) -> None:
+        self._send_json(401, {"ok": False, "error": "unauthorized"})
+
+    def _send_not_found(self, path: str) -> None:
+        self._send_json(404, {"ok": False, "error": "not found", "path": path})
 
     # ------------------------------------------------------------------
     # Route dispatch
@@ -314,44 +376,48 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         """Handle CORS pre-flight requests."""
         self.send_response(204)
-        self._cors_headers()
+        self._add_cors_headers()
         self.end_headers()
 
     def do_GET(self) -> None:
         """Dispatch GET requests to the appropriate handler."""
         parsed = urlparse(self.path)
+        path = parsed.path
 
-        if parsed.path in ("/", "/index.html"):
+        if path in ("/", "/index.html"):
             self._send_html(_VIEWER_HTML)
             return
 
-        if parsed.path.startswith("/api/") and not self._authorized():
-            self._send_json(401, {"ok": False, "error": "unauthorized"})
+        if not self._authorized():
+            self._send_unauthorized()
             return
 
-        if parsed.path == "/api/health":
-            self._handle_health()
-        elif parsed.path == "/api/search":
-            self._handle_search(parsed.query)
-        elif parsed.path == "/api/timeline":
-            self._handle_timeline(parsed.query)
-        elif parsed.path == "/api/events":
-            self._handle_sse()
-        else:
-            self._send_json(404, {"ok": False, "error": "not found", "path": parsed.path})
+        match path:
+            case "/api/health":
+                self._handle_health()
+            case "/api/search":
+                self._handle_search(parsed.query)
+            case "/api/timeline":
+                self._handle_timeline(parsed.query)
+            case "/api/events":
+                self._handle_sse()
+            case _:
+                self._send_not_found(path)
 
     def do_POST(self) -> None:
         """Dispatch POST requests to the appropriate handler."""
         parsed = urlparse(self.path)
+        path = parsed.path
 
-        if parsed.path.startswith("/api/") and not self._authorized():
-            self._send_json(401, {"ok": False, "error": "unauthorized"})
+        if not self._authorized():
+            self._send_unauthorized()
             return
 
-        if parsed.path == "/api/observations/batch":
-            self._handle_batch_fetch()
-        else:
-            self._send_json(404, {"ok": False, "error": "not found", "path": parsed.path})
+        match path:
+            case "/api/observations/batch":
+                self._handle_batch_fetch()
+            case _:
+                self._send_not_found(path)
 
     # ------------------------------------------------------------------
     # Endpoint implementations
@@ -368,7 +434,7 @@ class Handler(BaseHTTPRequestHandler):
                     "ok": False,
                     "error": "health check failed",
                     "detail": str(exc),
-                    "checked_at": datetime.now().isoformat(),
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             return
@@ -376,7 +442,7 @@ class Handler(BaseHTTPRequestHandler):
             200,
             {
                 "ok": True,
-                "checked_at": datetime.now().isoformat(),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
                 "sync": sync,
                 **stats,
             },
@@ -384,10 +450,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_search(self, query_string: str) -> None:
         qs = parse_qs(query_string)
-        query = (qs.get("query", [""])[0] or "").strip()
-        limit = self._parse_int(qs.get("limit", ["20"])[0] or "20", 20, 1, 200)
-        offset = self._parse_int(qs.get("offset", ["0"])[0] or "0", 0, 0, 100_000)
-        source_type = (qs.get("source_type", ["all"])[0] or "all").strip()
+        query = _qs_str(qs, "query")
+        limit = _qs_int(qs, "limit", 20, 1, 200)
+        offset = _qs_int(qs, "offset", 0, 0, 100_000)
+        source_type = _qs_str(qs, "source_type", "all")
         try:
             sync = _maybe_sync_index()
             rows = search_index(query=query, limit=limit, offset=offset, source_type=source_type)
@@ -398,12 +464,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_timeline(self, query_string: str) -> None:
         qs = parse_qs(query_string)
-        anchor = self._parse_int(qs.get("anchor", ["0"])[0] or "0", 0, 0, 10_000_000)
-        before = self._parse_int(qs.get("depth_before", ["3"])[0] or "3", 3, 0, 20)
-        after = self._parse_int(qs.get("depth_after", ["3"])[0] or "3", 3, 0, 20)
+        anchor = _qs_int(qs, "anchor", 0, 0, 10_000_000)
+        before = _qs_int(qs, "depth_before", 3, 0, 20)
+        after = _qs_int(qs, "depth_after", 3, 0, 20)
         try:
             sync = _maybe_sync_index()
-            rows = timeline_index(anchor_id=anchor, depth_before=before, depth_after=after) if anchor > 0 else []
+            rows = (
+                timeline_index(anchor_id=anchor, depth_before=before, depth_after=after)
+                if anchor > 0
+                else []
+            )
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": "timeline failed", "detail": str(exc)})
             return
@@ -413,87 +483,86 @@ class Handler(BaseHTTPRequestHandler):
         """Stream index stats as Server-Sent Events until the client disconnects."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Cache-Control", "no-cache, no-store")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
-        self._cors_headers()
+        self.send_header("retry", "5000")
+        self._add_security_headers()
+        self._add_cors_headers()
         self.end_headers()
 
-        for _ in range(SSE_MAX_TICKS):
+        for _ in range(_SSE_MAX_TICKS):
             try:
-                sync = _maybe_sync_index()
                 data: dict[str, Any] = {
-                    "at": datetime.now().isoformat(),
-                    "sync": sync,
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "sync": _maybe_sync_index(),
                     **index_stats(),
                 }
-                chunk = f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
-                self.wfile.write(chunk)
+                self.wfile.write(
+                    f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
+                )
                 self.wfile.flush()
-                time.sleep(SSE_INTERVAL_SEC)
+                time.sleep(_SSE_INTERVAL_SEC)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 break
 
     def _handle_batch_fetch(self) -> None:
         """Fetch a batch of observations by their IDs."""
+        raw_length = self.headers.get("Content-Length", "0")
         try:
-            raw_length = self.headers.get("Content-Length", "0")
-            try:
-                length = int(raw_length)
-            except ValueError:
-                self._send_json(400, {"ok": False, "error": "invalid Content-Length"})
-                return
+            length = int(raw_length)
+        except ValueError:
+            self._send_json(400, {"ok": False, "error": "invalid Content-Length"})
+            return
 
-            if length <= 0 or length > MAX_POST_BYTES:
-                self._send_json(
-                    413,
-                    {
-                        "ok": False,
-                        "error": "payload too large",
-                        "max_bytes": MAX_POST_BYTES,
-                    },
-                )
-                return
-
-            raw = self.rfile.read(length).decode("utf-8")
-            data: dict[str, Any] = json.loads(raw) if raw.strip() else {}
-            ids = data.get("ids") or []
-
-            if not isinstance(ids, list):
-                self._send_json(400, {"ok": False, "error": "ids must be an array"})
-                return
-
-            if len(ids) > MAX_BATCH_IDS:
-                self._send_json(
-                    400,
-                    {
-                        "ok": False,
-                        "error": "too many ids",
-                        "max": MAX_BATCH_IDS,
-                        "received": len(ids),
-                    },
-                )
-                return
-
-            limit = self._parse_int(str(data.get("limit") or "100"), 100, 1, 300)
-            sync = _maybe_sync_index()
-
-            parsed_ids: list[int] = []
-            for x in ids:
-                try:
-                    parsed_ids.append(int(x))
-                except (ValueError, TypeError):
-                    continue
-
-            rows = get_observations_by_ids(parsed_ids[:MAX_BATCH_IDS], limit=limit)
+        if length <= 0 or length > _MAX_POST_BYTES:
             self._send_json(
-                200,
-                {"ok": True, "sync": sync, "count": len(rows), "observations": rows},
+                413,
+                {"ok": False, "error": "payload too large", "max_bytes": _MAX_POST_BYTES},
             )
-        except json.JSONDecodeError:
+            return
+
+        try:
+            raw = self.rfile.read(length).decode("utf-8")
+            body: dict[str, Any] = json.loads(raw) if raw.strip() else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
             self._send_json(400, {"ok": False, "error": "invalid JSON body"})
+            return
+
+        ids = body.get("ids") or []
+        if not isinstance(ids, list):
+            self._send_json(400, {"ok": False, "error": "ids must be an array"})
+            return
+
+        if len(ids) > _MAX_BATCH_IDS:
+            self._send_json(
+                400,
+                {
+                    "ok": False,
+                    "error": "too many ids",
+                    "max": _MAX_BATCH_IDS,
+                    "received": len(ids),
+                },
+            )
+            return
+
+        parsed_ids: list[int] = []
+        for x in ids:
+            try:
+                parsed_ids.append(int(x))
+            except (ValueError, TypeError):
+                continue
+
+        limit = _clamp_int(str(body.get("limit") or "100"), 100, 1, 300)
+
+        try:
+            sync = _maybe_sync_index()
+            rows = get_observations_by_ids(parsed_ids[:_MAX_BATCH_IDS], limit=limit)
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": "internal error", "detail": str(exc)})
+            return
+
+        self._send_json(200, {"ok": True, "sync": sync, "count": len(rows), "observations": rows})
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +576,10 @@ def main() -> None:
     Raises:
         SystemExit: When a non-loopback bind address is used without a token.
     """
-    if HOST not in LOOPBACK_HOSTS and not VIEWER_TOKEN:
-        raise SystemExit("CONTEXTGO_VIEWER_TOKEN must be set when binding a non-loopback host.")
+    if HOST not in _LOOPBACK_HOSTS and not VIEWER_TOKEN:
+        raise SystemExit(
+            "CONTEXTGO_VIEWER_TOKEN must be set when binding a non-loopback host."
+        )
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"ContextGO Viewer listening on http://{HOST}:{PORT}")
     try:

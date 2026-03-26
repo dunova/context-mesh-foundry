@@ -1,192 +1,175 @@
 # AGENTS.md — AI Agent Onboarding for ContextGO
 # AI 智能体入门指南
 
-> If you are an AI agent (Claude, Codex, Cursor, Windsurf, or any LLM-powered tool),
-> this file tells you everything you need to set up and use ContextGO in under 60 seconds.
+> If you are an AI agent (Claude, Codex, Cursor, Windsurf, or any LLM tool),
+> this file tells you everything you need to install and use ContextGO in under 60 seconds.
 >
-> 如果你是 AI 智能体（Claude、Codex、Cursor、Windsurf 等），本文档可让你在 60 秒内完成 ContextGO 的配置与上手。
+> 如果你是 AI 智能体（Claude、Codex、Cursor、Windsurf 等），
+> 本文档可让你在 60 秒内完成 ContextGO 的安装与上手。
 
 ---
 
-## Quick Setup (AI Auto-Install) / 快速安装
+## Quick Install / 快速安装
 
-**Requirements:** Python 3.10+, Bash, Git.
+**Requirements / 依赖：** Python 3.10+, Bash, Git
 
 ```bash
-git clone https://github.com/dunova/ContextGO.git && cd ContextGO && bash scripts/unified_context_deploy.sh && python3 scripts/context_cli.py smoke --sandbox
+git clone https://github.com/dunova/ContextGO.git \
+  && cd ContextGO \
+  && bash scripts/unified_context_deploy.sh \
+  && python3 scripts/context_cli.py smoke --sandbox
 ```
 
-Works on macOS and Linux. No Docker. No MCP. No external services required.
-
+macOS and Linux. No Docker. No MCP. No external services.
 适用于 macOS 和 Linux。无需 Docker、无需 MCP、无外部服务依赖。
 
-> For full configuration options, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
-> For HTTP API reference, see [docs/API.md](docs/API.md).
+---
+
+## What is ContextGO? / 项目简介
+
+ContextGO is a local-first context and memory runtime. It unifies Codex, Claude, and shell session histories into one searchable SQLite index, giving AI agents persistent cross-session memory and semantic search over past decisions — all via a single CLI.
+
+ContextGO 是本地优先的上下文与记忆运行时，将 Codex、Claude 及 shell 历史统一索引到 SQLite，为 AI 智能体提供跨会话持久记忆和语义检索，无需任何外部基础设施。
+
+Storage root: `~/.contextgo` (override: `CONTEXTGO_STORAGE_ROOT`)
+存储根目录：`~/.contextgo`（可通过 `CONTEXTGO_STORAGE_ROOT` 覆盖）
 
 ---
 
-## What is ContextGO?
-
-ContextGO is a local-first context and memory runtime that unifies Codex, Claude, and shell session histories into one searchable, auditable index stored in local SQLite. It gives AI agents persistent cross-session memory, semantic search over past decisions, and a save/recall loop — all via a single CLI with no external infrastructure.
-
----
-
-## Project Map
-
-| Path | Role |
-|---|---|
-| `scripts/context_cli.py` | **CLI entry point** — all commands go through here |
-| `scripts/context_config.py` | Storage root, env var resolution |
-| `scripts/session_index.py` | SQLite-backed session index and FTS5 search |
-| `scripts/memory_index.py` | Memory and observation index, export/import |
-| `scripts/context_daemon.py` | Session capture and sanitization daemon |
-| `scripts/context_server.py` | Local viewer API server |
-| `scripts/context_core.py` | Core helpers: file scan, memory write, mtime |
-| `scripts/context_native.py` | Rust/Go hot-path orchestration |
-| `scripts/context_smoke.py` | Smoke test suite |
-| `native/session_scan/` | Rust scanner binary |
-| `native/session_scan_go/` | Go parallel scanner binary |
-| `benchmarks/` | Performance harness |
-| `templates/` | systemd/launchd service templates |
-| `artifacts/` | Autoresearch outputs — do not edit |
-| `patches/` | Compatibility notes — do not edit |
-
----
-
-## Key Commands
+## Key Commands / 核心命令
 
 ```bash
-# 1. Health check — verify installation state
+# Health check / 健康检查
 python3 scripts/context_cli.py health
 
-# 2. Smoke gate — confirm full command surface is working (sandboxed, does not touch ~/.contextgo)
+# Smoke gate (sandboxed, does not touch ~/.contextgo) / 冒烟测试（沙箱，不写入真实数据）
 python3 scripts/context_cli.py smoke --sandbox
 
-# 3. Search past sessions by keyword
-python3 scripts/context_cli.py search "auth root cause" --limit 10
-
-# 4. Semantic search across local memories
+# Semantic search over memories and session history / 语义搜索记忆与历史
 python3 scripts/context_cli.py semantic "database design decision" --limit 5
 
-# 5. Save a memory for future retrieval
-python3 scripts/context_cli.py save --title "Fix: JWT expiry" --content "Set exp to 3600 in auth.py line 42" --tags auth,jwt
+# Keyword search (FTS5) / 关键词全文搜索
+python3 scripts/context_cli.py search "auth root cause" --limit 10
+
+# Save a durable memory / 保存持久记忆
+python3 scripts/context_cli.py save \
+  --title "Fix: JWT expiry" \
+  --content "Set exp to 3600 in auth.py line 42" \
+  --tags auth,jwt,fix
+
+# Cross-agent handoff / 跨智能体交接
+python3 scripts/context_cli.py export "" /tmp/snapshot.json --limit 5000
+python3 scripts/context_cli.py import /tmp/snapshot.json
 ```
 
 ---
 
-## Do Not Modify
+## Automatic Behaviors / 自动行为
 
-These paths are managed automatically or are read-only references. Do not edit them directly:
+As an AI agent, execute these behaviors **proactively** — do not wait to be asked.
+作为 AI 智能体，以下行为**主动执行**，无需用户提示。
 
-- `artifacts/` — autoresearch outputs, test sets, QA reports
-- `patches/` — compatibility notes
-- `.github/` — CI/CD workflows
+### Auto-Search / 自动检索
+
+| Trigger / 触发场景 | Action / 行动 |
+|---|---|
+| Session starts with a continuation task / 会话以延续任务开始 | `contextgo semantic "<topic>" --limit 3` |
+| Uncertain about project history / 不确定项目历史 | `contextgo search "<keyword>" --limit 5` |
+| User asks about past work / 用户询问过去工作 | `contextgo semantic "<question>"` |
+| Before an architectural decision / 架构决策前 | `contextgo search "<topic>" --limit 3` |
+
+**Output rule / 输出规则：** Summarize in 2–3 sentences. Never paste raw output. If search returns nothing, proceed silently.
+结果用 2–3 句话总结，禁止粘贴原始输出；无结果时静默继续。
+
+### Auto-Save / 自动保存
+
+| Trigger / 触发场景 | Title Pattern / 标题格式 |
+|---|---|
+| Hard bug root cause found / 发现疑难 bug 根因 | `Bug: <short description>` |
+| Architectural decision made / 架构决策完成 | `Decision: <what and why>` |
+| Session wrap-up ("done", "wrap up") / 会话结束 | `Handoff: <next steps>` |
+
+```bash
+contextgo save \
+  --title "Decision: chose SQLite FTS5 over Elasticsearch" \
+  --content "Rationale, file paths, gotchas, next steps" \
+  --tags "project,topic,decision"
+```
+
+Save only **durable knowledge** (decisions, root causes, warnings). The daemon already captures routine edits.
+只保存**持久知识**（决策、根因、警告），日常编辑由 daemon 自动索引。
 
 ---
 
-## Before Any Commit
+## Project Map / 项目结构
 
-All steps must pass:
+| Path | Role / 说明 |
+|---|---|
+| `scripts/context_cli.py` | CLI entry point / 命令入口 |
+| `scripts/context_config.py` | Storage root, env resolution / 存储配置 |
+| `scripts/session_index.py` | SQLite FTS5 session index / 会话索引 |
+| `scripts/memory_index.py` | Memory index, export/import / 记忆索引 |
+| `scripts/context_daemon.py` | Session capture daemon / 会话捕获守护进程 |
+| `scripts/context_server.py` | Local viewer API / 本地查看器 |
+| `scripts/context_core.py` | Shared helpers / 共享工具函数 |
+| `scripts/context_native.py` | Rust/Go backend orchestration / 原生后端调度 |
+| `scripts/context_smoke.py` | Smoke test suite / 冒烟测试套件 |
+| `native/session_scan/` | Rust hot-path scanner / Rust 扫描器 |
+| `native/session_scan_go/` | Go parallel scanner / Go 并行扫描器 |
+| `artifacts/` | Autoresearch outputs — **do not edit** / 自动研究产物，勿修改 |
+| `patches/` | Compatibility notes — **do not edit** / 兼容性说明，勿修改 |
+
+---
+
+## Before Any Commit / 提交前检查
+
+All steps must pass. / 所有步骤必须通过。
 
 ```bash
-# Syntax checks
+# Syntax checks / 语法检查
 bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py
 
-# Unit and integration tests
-python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py scripts/test_context_native.py scripts/test_context_smoke.py scripts/test_autoresearch_contextgo.py
+# Unit + integration tests / 单元与集成测试
+python3 -m pytest \
+  scripts/test_context_cli.py \
+  scripts/test_context_core.py \
+  scripts/test_session_index.py \
+  scripts/test_context_native.py \
+  scripts/test_context_smoke.py \
+  scripts/test_autoresearch_contextgo.py
 
-# End-to-end quality gate
+# End-to-end quality gate / 端到端质量门控
 python3 scripts/e2e_quality_gate.py
 
-# Smoke tests (sandboxed — does not write to ~/.contextgo)
+# Smoke (sandboxed) / 沙箱冒烟测试
 python3 scripts/context_cli.py smoke --sandbox
 
-# Health check
+# Health check / 健康检查
 bash scripts/context_healthcheck.sh
 ```
 
 ---
 
-## Automatic Context Behaviors
-
-These are not commands you wait for the user to invoke. As an AI agent, you
-should execute these behaviors proactively during your normal workflow.
-
-### Auto-search (do this silently, without being asked)
-
-| Situation | Action |
-|-----------|--------|
-| Session starts with a continuation task | `contextgo semantic "<topic>" --limit 3` |
-| You are unsure about project history | `contextgo search "<keyword>" --limit 5` |
-| User asks about past work | `contextgo semantic "<question>"` |
-| Before an architectural decision | `contextgo search "<topic>" --limit 3` |
-
-**How to present results**: Summarize in 2-3 sentences. Do NOT paste raw output.
-If search returns nothing, proceed silently -- do not mention the search.
-
-### Auto-save (suggest or execute at milestones)
-
-| Situation | Action |
-|-----------|--------|
-| Hard bug root cause found | `contextgo save --title "Bug: ..." --content "..." --tags bug,...` |
-| Architectural decision made | `contextgo save --title "Decision: ..." --content "rationale" --tags decision,...` |
-| Session wrap-up ("done", "wrap up") | `contextgo save --title "Handoff: ..." --content "next steps" --tags handoff,...` |
-
-### Commands
-
-```bash
-# Broad recall (saved memories first, then session history)
-contextgo semantic "natural language question" --limit 3
-
-# Keyword search (direct FTS5)
-contextgo search "specific keyword" --limit 5
-
-# Exact match
-contextgo search "exact phrase" --literal --limit 5
-
-# Save conclusion
-contextgo save --title "Brief title" --content "Full details" --tags "project,topic"
-
-# Cross-tool handoff
-contextgo export "" /tmp/snapshot.json --limit 5000
-contextgo import /tmp/snapshot.json
-```
-
-Storage root: `~/.contextgo` (override: `CONTEXTGO_STORAGE_ROOT`).
-
----
-
-## Skills (optional Claude Code integration)
-
-For Claude Code users, ContextGO ships skills in `skills/` that provide
-additional structure for the GSD workflow:
+## Skills (Claude Code only) / 技能（仅 Claude Code）
 
 ```bash
 bash skills/install.sh
 ```
 
-| Skill | Purpose |
-|-------|---------|
-| `contextgo-gsd` | Full recall-execute-persist workflow reference |
-| `contextgo-recall` | Context search and summarization guide |
-| `contextgo-save` | When and how to persist conclusions |
+| Skill | Purpose / 用途 |
+|---|---|
+| `contextgo-gsd` | Full GSD workflow reference / GSD 工作流完整参考 |
+| `contextgo-recall` | Search strategy and flags / 检索策略与参数 |
+| `contextgo-save` | Save rules, tags, proactive prompts / 保存规则与标签约定 |
 
-These skills complement the auto-behaviors above. The auto-behaviors work
-without skills installed -- they are driven by the instructions in this file
-and `.claude/CLAUDE.md`.
+Skills complement the auto-behaviors above. Auto-behaviors work without skills installed.
+技能是对上述自动行为的补充。不安装技能，自动行为同样生效。
 
-### GSD Loop
+---
 
-1. **Recall** -- At session start, `contextgo semantic` to prime context
-2. **Execute** -- Work normally; daemon captures everything in background
-3. **Persist** -- At milestones, `contextgo save` key decisions
+## References / 参考文档
 
-This replaces MCP with a zero-dependency CLI + Skill pattern. No server, no protocol negotiation, no Docker. The AI agent calls the CLI directly.
-
-### Design Philosophy
-
-- **CLI-first**: Skills wrap CLI commands, not HTTP APIs
-- **Local-only**: All data stays in `~/.contextgo`, zero cloud dependency
-- **Zero-config**: `pip install contextgo && bash skills/install.sh` is the entire setup
-- **Composable**: Each skill is standalone; use one, two, or all three
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — full config options / 完整配置项
+- [docs/API.md](docs/API.md) — HTTP API reference / HTTP API 参考
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design / 系统设计

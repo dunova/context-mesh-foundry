@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use walkdir::WalkDir;
 
 // ── sentinel strings used as lightweight error variants ──────────────────────
@@ -28,7 +28,7 @@ const SKIPPED_QUERY_MISS: &str = "query not matched";
 const SKIPPED_CURRENT_WORKDIR: &str = "skip current workdir session";
 
 // ── noise filter tables ───────────────────────────────────────────────────────
-// Auto-generated from config/noise_markers.json — do not edit manually.
+// Kept in sync with config/noise_markers.json.
 // Run scripts/check_noise_sync.py to verify sync with Python/Go backends.
 
 /// Substrings that mark a text fragment as noise.  Checked case-insensitively.
@@ -107,7 +107,6 @@ const NOISE_MARKERS: &[&str] = &[
 ];
 
 /// Line prefixes that mark a fragment as noise.  Checked case-insensitively.
-// Auto-generated from config/noise_markers.json — do not edit manually.
 const NOISE_PREFIXES: &[&str] = &["##", "```", "> ", "- [", "* ", "http", "https"];
 
 /// Field name used when a match is found in an unparsed raw line.
@@ -156,7 +155,6 @@ struct WorkItem {
 }
 
 /// A text candidate extracted from a parsed JSON record.
-#[derive(Clone, Debug)]
 struct MatchDetail {
     field: &'static str,
     text: String,
@@ -185,9 +183,13 @@ struct SerializableSummary {
     session_id: String,
     lines: usize,
     size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     first_timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     last_timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     match_field: Option<String>,
 }
 
@@ -195,9 +197,13 @@ struct SerializableSummary {
 struct JsonSample {
     session_id: String,
     path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     first_timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     last_timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     match_field: Option<String>,
 }
 
@@ -207,6 +213,7 @@ struct JsonRootAggregate {
     session_count: usize,
     total_lines: usize,
     total_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     sample: Option<JsonSample>,
 }
 
@@ -227,7 +234,7 @@ struct ScannerReport {
     total_files: usize,
     summaries: Vec<SessionSummary>,
     errors: Vec<anyhow::Error>,
-    duration: Duration,
+    duration_ms: u128,
 }
 
 struct SourceRoot {
@@ -341,8 +348,8 @@ impl ScannerReport {
     /// aggregates and a representative sample for each source label.
     fn write_stdout(&self, scanner: &Scanner) {
         println!(
-            "Scan complete: {} files in {:.2?}.",
-            self.total_files, self.duration
+            "Scan complete: {} files in {}ms.",
+            self.total_files, self.duration_ms
         );
         let aggregates = summarize_by_source(&self.summaries);
         for label in scanner.root_labels() {
@@ -415,7 +422,7 @@ impl ScannerReport {
         JsonReport {
             files_scanned: self.total_files,
             query: query.to_string(),
-            duration_ms: self.duration.as_millis(),
+            duration_ms: self.duration_ms,
             aggregates: roots,
             matches: self
                 .summaries
@@ -503,12 +510,12 @@ fn main() -> Result<()> {
         summaries.truncate(args.limit);
     }
 
-    let duration = start.elapsed();
+    let duration_ms = start.elapsed().as_millis();
     let report = ScannerReport {
         total_files,
         summaries,
         errors,
-        duration,
+        duration_ms,
     };
 
     if args.json {
@@ -547,9 +554,10 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
     let query_lower = query.trim().to_lowercase();
     let mut matched = query_lower.is_empty();
     let mut best_match: Option<(i32, String, String)> = None;
+    // Resolve the active workdir once per file, not per line.
     let current_workdir = active_workdir();
 
-    let reader = BufReader::new(file);
+    let reader = BufReader::with_capacity(256 * 1024, file);
     for raw in reader.lines() {
         let line = match raw {
             Ok(l) => l,
@@ -574,9 +582,10 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                 if session_cwd.is_none() {
                     session_cwd = Some(cwd.clone());
                 }
+                // Only check workdir exclusion when a query is active.
                 if !query_lower.is_empty() {
                     if let Some(workdir) = current_workdir.as_deref() {
-                        let norm = std::path::Path::new(&cwd)
+                        let norm = Path::new(&cwd)
                             .canonicalize()
                             .map(|p| p.to_string_lossy().into_owned())
                             .unwrap_or(cwd);
@@ -611,7 +620,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                         let score = candidate_score(detail.field, &detail.text, &query_lower);
                         let replace = best_match
                             .as_ref()
-                            .is_none_or(|(best_score, _, _)| score > *best_score);
+                            .map_or(true, |(best_score, _, _)| score > *best_score);
                         if replace {
                             best_match = Some((score, candidate, detail.field.to_string()));
                         }
@@ -627,7 +636,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                     let score = candidate_score(RAW_LINE_FIELD, &line, &query_lower);
                     let replace = best_match
                         .as_ref()
-                        .is_none_or(|(best_score, _, _)| score > *best_score);
+                        .map_or(true, |(best_score, _, _)| score > *best_score);
                     if replace {
                         best_match = Some((score, candidate, RAW_LINE_FIELD.to_string()));
                     }
@@ -650,7 +659,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
         last_timestamp,
         snippet: best_match.as_ref().map(|(_, snip, _)| snip.clone()),
         match_field: best_match.as_ref().map(|(_, _, field)| field.clone()),
-        match_score: best_match.as_ref().map(|(score, _, _)| *score).unwrap_or(0),
+        match_score: best_match.as_ref().map_or(0, |(score, _, _)| *score),
     })
 }
 
@@ -659,22 +668,22 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
 /// Returns a window of `limit` characters centred on the first match of
 /// `query_lower` inside `text`, or `None` when no match exists.
 ///
-/// Both `text` and `query_lower` are operated on as Unicode scalar values
-/// to ensure correct behaviour with CJK and other multi-byte sequences.
+/// All indexing is performed on Unicode scalar values (chars) to ensure correct
+/// behaviour with CJK and other multi-byte sequences.
 #[inline]
 fn matched_snippet(text: &str, query_lower: &str, limit: usize) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() || query_lower.is_empty() {
         return None;
     }
-    // Lower-case the trimmed text and find the match byte offset *within
-    // `lower`*.  We then convert that byte offset to a char offset so that
-    // `clip_snippet` can safely iterate over Unicode scalar values.
+    // Lower-case the trimmed text and find the match byte offset within `lower`.
+    // We then convert that byte offset to a char offset so that
+    // `clip_snippet_by_chars` can safely iterate over Unicode scalar values.
     let lower = trimmed.to_lowercase();
     let byte_idx = lower.find(query_lower)?;
-    // Convert the byte offset in `lower` to a char (Unicode scalar) offset.
-    // Using `lower` (not `trimmed`) guarantees the byte index is valid even
-    // when `to_lowercase()` changes the byte length of CJK or accented chars.
+    // Count chars preceding `byte_idx` in `lower` (not `trimmed`) so that the
+    // index remains valid even when to_lowercase changes byte length for
+    // CJK/accented characters.
     let char_idx = lower[..byte_idx].chars().count();
     let query_char_len = query_lower.chars().count();
     Some(clip_snippet_by_chars(trimmed, char_idx, query_char_len, limit))
@@ -698,11 +707,17 @@ fn clip_snippet_by_chars(
     }
     let radius = limit / 2;
     let start = char_start.saturating_sub(radius);
-    let end = (char_start + query_char_len + radius).min(total_chars);
-    text.chars()
-        .skip(start)
-        .take(end.saturating_sub(start))
-        .collect()
+    // Ensure the window always covers the full query term plus radius.
+    let raw_end = char_start + query_char_len + radius;
+    let end = raw_end.min(total_chars);
+    // If end - start < limit and there is room before start, extend backwards.
+    let start = if end - start < limit {
+        end.saturating_sub(limit)
+    } else {
+        start
+    };
+    let take = end.saturating_sub(start);
+    text.chars().skip(start).take(take).collect()
 }
 
 // ── noise filtering ───────────────────────────────────────────────────────────
@@ -771,7 +786,7 @@ fn should_skip_meta_text(
     let (Some(workdir), Some(cwd)) = (current_workdir, session_cwd) else {
         return false;
     };
-    let normalized_cwd = std::path::Path::new(cwd)
+    let normalized_cwd = Path::new(cwd)
         .canonicalize()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| cwd.to_string());
@@ -888,7 +903,7 @@ fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
         ("payload.last_agent_message", "last_agent_message"),
     ];
 
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(16);
     collect_text_candidate("message", value.get("message"), &mut out);
     for &(field, key) in ROOT_FIELDS {
         collect_text_candidate(field, value.get(key), &mut out);
@@ -965,7 +980,7 @@ fn active_workdir() -> Option<String> {
     if let Ok(explicit) = std::env::var("CONTEXTGO_ACTIVE_WORKDIR") {
         let trimmed = explicit.trim();
         if !trimmed.is_empty() {
-            return std::path::Path::new(trimmed)
+            return Path::new(trimmed)
                 .canonicalize()
                 .map(|p| p.to_string_lossy().into_owned())
                 .ok()
@@ -992,8 +1007,6 @@ fn nested_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
 
 // ── path filtering ────────────────────────────────────────────────────────────
 
-const VALID_EXTENSIONS: &[&str] = &["json", "jsonl"];
-
 /// Returns `true` when the file has a recognised session extension and does
 /// not belong to a skill directory that should be excluded from scanning.
 #[inline]
@@ -1002,10 +1015,10 @@ fn is_valid_extension(path: &Path) -> bool {
     if should_skip_path(&lower_path) {
         return false;
     }
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| VALID_EXTENSIONS.contains(&ext))
-        .unwrap_or(false)
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("json" | "jsonl")
+    )
 }
 
 /// Returns `true` when `lower_path` (already lower-cased) belongs to a skill
@@ -1203,7 +1216,6 @@ mod tests {
         let result = matched_snippet(text, "关键词", 20);
         assert!(result.is_some(), "expected a match for CJK query");
         let snippet = result.unwrap();
-        // The snippet must be valid UTF-8 (no panics) and contain the query.
         assert!(
             snippet.contains("关键词"),
             "snippet should contain query: {snippet}"
@@ -1215,8 +1227,15 @@ mod tests {
     #[test]
     fn clip_snippet_by_chars_clamps_to_end() {
         let text = "短文本";
-        // Request a window starting at char 1, extending well past the end.
         let result = clip_snippet_by_chars(text, 1, 1, 100);
         assert_eq!(result, text);
+    }
+
+    #[test]
+    fn clip_snippet_by_chars_fills_window_from_start() {
+        // When match is near end, window should extend backwards to fill `limit`.
+        let text: String = "abcdefghij".to_string(); // 10 chars
+        let result = clip_snippet_by_chars(&text, 8, 1, 6);
+        assert_eq!(result.len(), 6, "window should be exactly limit chars");
     }
 }

@@ -48,11 +48,17 @@ _SOURCE_CLAUDE = "claude"
 _SUBAGENT_FRAGMENT = "/subagents/"
 _TERMINAL_STATUSES = frozenset({"done", "failed", "error"})
 
+# Default DB path — derived from CONTEXTGO_STORAGE_ROOT or ~/.contextgo.
+# Individual callers override this via --db when needed (e.g. aline integration).
+_DEFAULT_DB = "~/.contextgo/db/contextgo.db"
+
 # ---------------------------------------------------------------------------
 # SQL statements
 # ---------------------------------------------------------------------------
 
-_SQL_FETCH_EXISTING_PATHS = "SELECT session_file_path FROM sessions WHERE session_file_path IS NOT NULL"
+_SQL_FETCH_EXISTING_PATHS = (
+    "SELECT session_file_path FROM sessions WHERE session_file_path IS NOT NULL"
+)
 
 _SQL_COUNT_STALE = """
     SELECT count(*) FROM jobs
@@ -101,16 +107,6 @@ _SQL_INSERT_JOB = """
 """
 
 # ---------------------------------------------------------------------------
-# Path helpers
-# ---------------------------------------------------------------------------
-
-
-def _expand(path: str) -> Path:
-    """Expand ``~`` and resolve symlinks to an absolute ``Path``."""
-    return Path(path).expanduser().resolve()
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -123,8 +119,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--db",
-        default="~/.aline/db/aline.db",
-        help="Path to aline.db",
+        default=_DEFAULT_DB,
+        help="Path to the ContextGO SQLite database",
     )
     parser.add_argument(
         "--codex-root",
@@ -236,7 +232,9 @@ def print_snapshot(
     processing_sp: int = cur.execute(
         "SELECT count(*) FROM jobs WHERE kind='session_process' AND status='processing'"
     ).fetchone()[0]
-    done_sp: int = cur.execute("SELECT count(*) FROM jobs WHERE kind='session_process' AND status='done'").fetchone()[0]
+    done_sp: int = cur.execute(
+        "SELECT count(*) FROM jobs WHERE kind='session_process' AND status='done'"
+    ).fetchone()[0]
     llm_err_sessions: int = cur.execute(
         "SELECT count(*) FROM sessions WHERE session_title LIKE '\u26a0 LLM API Error%'"
     ).fetchone()[0]
@@ -272,7 +270,9 @@ def repair_queue(
     Returns:
         Number of jobs affected (or that *would* be affected in dry-run mode).
     """
-    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=stale_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (
+        dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=stale_minutes)
+    ).strftime("%Y-%m-%d %H:%M:%S")
 
     if dry_run:
         return cur.execute(_SQL_COUNT_STALE, (cutoff,)).fetchone()[0]
@@ -299,6 +299,7 @@ def enqueue_missing(
         missing: Session items to process, as returned by
             :func:`collect_local_session_files`.
         max_enqueue: Maximum number of sessions to process in this call.
+            Values <= 0 result in no operations.
         dry_run: When ``True``, simulate inserts/updates without mutating the DB.
 
     Returns:
@@ -307,8 +308,9 @@ def enqueue_missing(
     """
     inserted = 0
     revived = 0
+    limit = max(0, max_enqueue)
 
-    for stype, path, sid in missing[: max(0, max_enqueue)]:
+    for stype, path, sid in missing[:limit]:
         dedupe_key = f"session_process:{sid}"
         payload = json.dumps(
             {
@@ -350,13 +352,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
     args = parse_args(argv)
-    db_path = _expand(args.db)
-    codex_root = _expand(args.codex_root)
-    claude_root = _expand(args.claude_root)
-
-    if not db_path.exists():
-        print(f"ERROR: database not found: {db_path}", file=sys.stderr)
-        return 1
+    db_path = Path(args.db).expanduser().resolve()
+    codex_root = Path(args.codex_root).expanduser().resolve()
+    claude_root = Path(args.claude_root).expanduser().resolve()
 
     try:
         conn = sqlite3.connect(str(db_path))
@@ -367,7 +365,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cur = conn.cursor()
 
-        local_items = collect_local_session_files(codex_root, claude_root, args.include_subagents)
+        local_items = collect_local_session_files(
+            codex_root, claude_root, args.include_subagents
+        )
         existing_paths = fetch_existing_session_paths(cur)
 
         missing: list[SessionItem] = []
@@ -389,8 +389,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"repair_queue: released_stale_processing={released}")
 
         if args.enqueue_missing:
-            inserted, revived = enqueue_missing(cur, missing, args.max_enqueue, args.dry_run)
-            print(f"enqueue_missing: inserted={inserted} revived={revived} (max={args.max_enqueue})")
+            inserted, revived = enqueue_missing(
+                cur, missing, args.max_enqueue, args.dry_run
+            )
+            print(
+                f"enqueue_missing: inserted={inserted} revived={revived}"
+                f" (max={args.max_enqueue})"
+            )
 
         if args.dry_run:
             conn.rollback()

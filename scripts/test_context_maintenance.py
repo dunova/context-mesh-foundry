@@ -69,7 +69,7 @@ def _make_db() -> tuple[sqlite3.Connection, sqlite3.Cursor]:
 class TestParseArgs(unittest.TestCase):
     def test_defaults(self) -> None:
         args = parse_args([])
-        self.assertEqual(args.db, "~/.aline/db/aline.db")
+        self.assertEqual(args.db, "~/.contextgo/db/contextgo.db")
         self.assertEqual(args.max_enqueue, 2000)
         self.assertEqual(args.stale_minutes, 15)
         self.assertFalse(args.dry_run)

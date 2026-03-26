@@ -89,12 +89,6 @@ def compact_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_uri_hint(rel_path: str, uri_prefix: str) -> str:
-    """Prepend *uri_prefix* to *rel_path*, or return *rel_path* unchanged when prefix is empty."""
-    prefix = (uri_prefix or "").strip()
-    return f"{prefix}{rel_path}" if prefix else rel_path
-
-
 def local_memory_matches(
     query: str,
     *,
@@ -142,6 +136,7 @@ def local_memory_matches(
     ql = q.lower()
     cap = max(1, int(limit))
     read_cap = max(4096, int(read_bytes))
+    prefix = (uri_prefix or "").strip()
     matches: list[dict[str, Any]] = []
 
     for path in search_files:
@@ -171,7 +166,7 @@ def local_memory_matches(
         if matched_in:
             matches.append(
                 {
-                    "uri_hint": _build_uri_hint(rel_path, uri_prefix),
+                    "uri_hint": f"{prefix}{rel_path}" if prefix else rel_path,
                     "file_path": str(path),
                     "matched_in": matched_in,
                     "mtime": datetime.fromtimestamp(safe_mtime(path)).isoformat(),
@@ -192,25 +187,36 @@ def local_memory_matches(
 def normalize_tags(tags: list[str] | str | None) -> list[str]:
     """Normalise *tags* from a list, a comma-separated string, or a JSON array string.
 
-    Returns a deduplicated list of stripped, non-empty strings in the original
-    order.  ``None`` and empty inputs return an empty list.
+    Returns a deduplicated list of stripped, non-empty strings preserving
+    original order.  ``None`` and empty inputs return an empty list.
     """
     if tags is None:
         return []
+    raw_items: list[str]
     if isinstance(tags, list):
-        return [s for t in tags if (s := str(t).strip())]
-    if isinstance(tags, str):
-        raw = tags.strip()
-        if not raw:
+        raw_items = [str(t).strip() for t in tags]
+    elif isinstance(tags, str):
+        s = tags.strip()
+        if not s:
             return []
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(s)
             if isinstance(parsed, list):
-                return [s for t in parsed if (s := str(t).strip())]
+                raw_items = [str(t).strip() for t in parsed]
+            else:
+                raw_items = [s]
         except (json.JSONDecodeError, ValueError):
-            pass
-        return [part.strip() for part in raw.split(",") if part.strip()]
-    return [s] if (s := str(tags).strip()) else []
+            raw_items = [part.strip() for part in s.split(",")]
+    else:
+        raw_items = [str(tags).strip()]
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in raw_items:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
 
 
 # ---------------------------------------------------------------------------

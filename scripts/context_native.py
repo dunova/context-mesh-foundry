@@ -79,7 +79,9 @@ class NativeRunResult:
     error: str | None = None
 
     # Private parse cache — not part of the public interface.
+    # _payload_parsed distinguishes "not yet parsed" from "parsed but None".
     _payload_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _payload_parsed: bool = field(default=False, init=False, repr=False)
     _payload_error: str | None = field(default=None, init=False, repr=False)
 
     def json_payload(self) -> dict[str, Any] | None:
@@ -90,8 +92,10 @@ class NativeRunResult:
         block is attempted, which handles backends that emit diagnostic lines
         before or after the actual payload.
         """
-        if self._payload_cache is not None:
+        if self._payload_parsed:
             return self._payload_cache
+
+        self._payload_parsed = True
 
         text = (self.stdout or "").strip()
         if not text:
@@ -106,7 +110,9 @@ class NativeRunResult:
                 try:
                     parsed = json.loads(snippet)
                 except json.JSONDecodeError as nested:
-                    self._payload_error = f"{self._payload_error}; fallback parse failed: {nested}"
+                    self._payload_error = (
+                        f"{self._payload_error}; fallback parse failed: {nested}"
+                    )
                     return None
             else:
                 return None

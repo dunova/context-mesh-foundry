@@ -9,31 +9,34 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+
 jobs:
+  # -------------------------------------------------------------------------
+  # 1. Lint — fast gate, runs first; all test jobs depend on it
+  # -------------------------------------------------------------------------
   lint:
-    name: Lint and Syntax Checks
+    name: Lint & Syntax
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Cache pip dependencies
+      - name: Cache pip (lint)
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-lint-${{ hashFiles('**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-lint-
-            ${{ runner.os }}-pip-
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-pip-lint-
 
-      - name: Install ripgrep
-        run: sudo apt-get install -y ripgrep
+      - name: Install ruff
+        run: pip install --quiet "ruff>=0.4"
 
       - name: Check Bash syntax
         run: bash -n scripts/*.sh
@@ -41,92 +44,128 @@ jobs:
       - name: Check Python syntax
         run: python -m py_compile scripts/*.py benchmarks/*.py
 
-      - name: Secret and path scan
-        run: |
-          ! rg -n "AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}" --glob '!artifacts/' --glob '!.github/' --glob '!scripts/test_*.py' .
-          ! rg -n "/Users/\\w+/" --glob '!artifacts/' --glob '!.github/' --glob '!native/session_scan_go/*_test.go' --glob '!CONTRIBUTING.md' .
-
       - name: Ruff lint
-        run: pip install ruff && ruff check scripts/ benchmarks/
+        run: ruff check scripts/ benchmarks/
+
       - name: Ruff format check
         run: ruff format --check scripts/ benchmarks/
 
+      - name: Secret and path scan
+        run: |
+          pip install --quiet ripgrep || sudo apt-get install -y ripgrep
+          # Block common secret patterns (exclude test files and known-safe paths)
+          ! rg -n \
+            "AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}" \
+            --glob '!artifacts/' \
+            --glob '!.github/' \
+            --glob '!scripts/test_*.py' \
+            . || (echo "ERROR: secret pattern detected" && exit 1)
+          # Block hardcoded home paths
+          ! rg -n "/Users/\\w+/" \
+            --glob '!artifacts/' \
+            --glob '!.github/' \
+            --glob '!native/session_scan_go/*_test.go' \
+            --glob '!CONTRIBUTING.md' \
+            . || (echo "ERROR: hardcoded path detected" && exit 1)
+
+  # -------------------------------------------------------------------------
+  # 2. Python tests — matrix across 3.10 / 3.11 / 3.12
+  # -------------------------------------------------------------------------
   python-test:
-    name: Python Tests
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: lint
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache pip dependencies
+      - name: Cache pip (test)
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-test-${{ hashFiles('**/requirements*.txt') }}
+          key: ${{ runner.os }}-pip-test-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements-dev.txt') }}
           restore-keys: |
+            ${{ runner.os }}-pip-test-${{ matrix.python-version }}-
             ${{ runner.os }}-pip-test-
-            ${{ runner.os }}-pip-
 
-      - name: Install Python test dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt
 
-      - name: Run Python unit tests with coverage
+      - name: Run tests with coverage
         run: |
-          python -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_context_native.py scripts/test_context_smoke.py scripts/test_session_index.py scripts/test_autoresearch_contextgo.py --cov=scripts --cov-report=term-missing --cov-report=xml
+          python -m pytest \
+            scripts/test_context_cli.py \
+            scripts/test_context_core.py \
+            scripts/test_context_native.py \
+            scripts/test_context_smoke.py \
+            scripts/test_session_index.py \
+            scripts/test_autoresearch_contextgo.py \
+            --cov=scripts \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -v
 
-      - name: Upload coverage artifact
+      - name: Upload coverage report
         if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: coverage-xml
           path: coverage.xml
           retention-days: 30
 
-      - name: Run benchmark smoke test
-        run: |
-          python -m benchmarks --iterations 1 --warmup 0 --query benchmark
+      - name: Benchmark smoke (sanity)
+        run: python -m benchmarks --iterations 1 --warmup 0 --query benchmark
 
+  # -------------------------------------------------------------------------
+  # 3. Go tests
+  # -------------------------------------------------------------------------
   go-test:
     name: Go Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: lint
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
           cache-dependency-path: native/session_scan_go/go.mod
 
-      - name: Run Go tests
+      - name: go vet
         working-directory: native/session_scan_go
-        run: go test ./...
+        run: go vet ./...
 
+      - name: go test
+        working-directory: native/session_scan_go
+        run: go test -race ./...
+
+  # -------------------------------------------------------------------------
+  # 4. Rust check and test
+  # -------------------------------------------------------------------------
   rust-check:
-    name: Rust Check
+    name: Rust Check & Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: lint
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
-      - name: Cache Cargo registry and build artifacts
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -134,12 +173,21 @@ jobs:
             ~/.cargo/git
             /tmp/contextgo_target
           key: ${{ runner.os }}-cargo-${{ hashFiles('native/session_scan/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Rust test
-        run: cd native/session_scan && CARGO_INCREMENTAL=0 cargo test
+      - name: cargo clippy
+        run: |
+          cd native/session_scan
+          CARGO_TARGET_DIR=/tmp/contextgo_target cargo clippy -- -D warnings
 
+      - name: cargo test
+        run: |
+          cd native/session_scan
+          CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=/tmp/contextgo_target cargo test
+
+  # -------------------------------------------------------------------------
+  # 5. Quality gate — depends on all language tests passing
+  # -------------------------------------------------------------------------
   quality-gate:
     name: Quality Gate
     runs-on: ubuntu-latest
@@ -149,30 +197,26 @@ jobs:
       - go-test
       - rust-check
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Cache pip dependencies
+      - name: Cache pip (quality)
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-quality-${{ hashFiles('**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-quality-
-            ${{ runner.os }}-pip-
+          key: ${{ runner.os }}-pip-quality-${{ hashFiles('pyproject.toml', 'requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-quality-
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt
 
-      - name: Run end-to-end quality gate
+      - name: End-to-end quality gate
         run: python scripts/e2e_quality_gate.py
 
-      - name: Run smoke gate (sandboxed)
+      - name: Smoke gate (sandboxed)
         run: python scripts/context_cli.py smoke --sandbox

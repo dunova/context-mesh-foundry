@@ -104,7 +104,7 @@ func main() {
 		truncated = true
 	}
 
-	payload := ScanOutput{
+	output := ScanOutput{
 		FilesScanned: len(work),
 		Query:        *query,
 		Matches:      results,
@@ -112,7 +112,7 @@ func main() {
 	}
 
 	if *jsonOutput {
-		raw, err := json.MarshalIndent(payload, "", "  ")
+		raw, err := json.MarshalIndent(output, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
 			os.Exit(1)
@@ -124,7 +124,7 @@ func main() {
 	fmt.Printf("Scan complete: %d files, %d matches, elapsed %s.\n",
 		len(work), len(results), time.Since(start).Round(time.Millisecond))
 
-	aggs := payload.Aggregates()
+	aggs := output.Aggregates()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "source\tmatches\ttotal_lines\ttotal_bytes")
 	for _, agg := range aggs {
@@ -211,10 +211,13 @@ func scan(items []WorkItem, threads int, query string, limit int, scanner *Sessi
 		close(resultCh)
 	}()
 
-	results := make([]SessionSummary, 0, min(len(items), limit*2))
+	cap := min(len(items), limit*2)
+	if cap < 16 {
+		cap = 16
+	}
+	results := make([]SessionSummary, 0, cap)
 	for result := range resultCh {
 		results = append(results, result)
 	}
 	return results, false
 }
-

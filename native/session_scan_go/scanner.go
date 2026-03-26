@@ -8,12 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 // DefaultNoiseMarkers is the set of substrings that identify a text fragment
 // as noise.  Each entry is compared case-insensitively against the candidate.
-// Auto-generated from config/noise_markers.json — do not edit manually.
+// Kept in sync with config/noise_markers.json.
 // Run scripts/check_noise_sync.py to verify sync with Python/Rust backends.
 var DefaultNoiseMarkers = []string{
 	"# agents.md instructions",
@@ -91,7 +90,7 @@ var DefaultNoiseMarkers = []string{
 
 // DefaultNoisePrefixes contains line prefixes that identify a fragment as
 // noise.  Each entry is compared case-insensitively against the candidate.
-// Auto-generated from config/noise_markers.json — do not edit manually.
+// Kept in sync with config/noise_markers.json.
 var DefaultNoisePrefixes = []string{
 	"##",
 	"```",
@@ -156,7 +155,8 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 		SizeBytes: stat.Size(),
 	}
 
-	matcher := NewSnippetMatcher(query, s.noiseFilter, s.snippetLimit)
+	queryLower := strings.ToLower(strings.TrimSpace(query))
+	matcher := NewSnippetMatcher(queryLower, s.noiseFilter, s.snippetLimit)
 	matchFound := matcher.QueryEmpty()
 	currentWorkdir := normalizedCurrentWorkdir()
 	sessionCwd := ""
@@ -195,7 +195,7 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 			if !matcher.QueryEmpty() {
 				for _, candidate := range extractTextCandidates(payload) {
 					if snippet, ok := matcher.Match(candidate.Text); ok {
-						score := candidateScore(candidate.Field, candidate.Text, matcher.queryLower)
+						score := candidateScore(candidate.Field, candidate.Text, queryLower)
 						if score > summary.MatchScore {
 							summary.Snippet = snippet
 							summary.MatchField = candidate.Field
@@ -207,7 +207,7 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 			}
 		} else if !matcher.QueryEmpty() {
 			if snippet, ok := matcher.Match(line); ok {
-				score := candidateScore("raw_line", line, matcher.queryLower)
+				score := candidateScore("raw_line", line, queryLower)
 				if score > summary.MatchScore {
 					summary.Snippet = snippet
 					summary.MatchField = "raw_line"
@@ -276,12 +276,15 @@ func NewNoiseFilter(markers []string) *NoiseFilter {
 	return &NoiseFilter{markers: normalized, prefixes: prefixes}
 }
 
-// IsNoise reports whether line (already lower-cased) matches any noise pattern.
-func (f *NoiseFilter) IsNoise(line string) bool {
+// IsNoiseLower reports whether line (already lower-cased and trimmed) matches
+// any noise pattern.  The caller is responsible for lowercasing before calling.
+func (f *NoiseFilter) IsNoiseLower(line string) bool {
 	if f == nil {
 		return false
 	}
-	line = strings.ToLower(strings.TrimSpace(line))
+	if line == "" {
+		return true
+	}
 	for _, p := range f.prefixes {
 		if p != "" && strings.HasPrefix(line, p) {
 			return true
@@ -329,17 +332,25 @@ func (f *NoiseFilter) IsNoise(line string) bool {
 	return false
 }
 
+// IsNoise is a convenience wrapper that lower-cases and trims line before
+// delegating to IsNoiseLower.
+func (f *NoiseFilter) IsNoise(line string) bool {
+	return f.IsNoiseLower(strings.ToLower(strings.TrimSpace(line)))
+}
+
 // SnippetMatcher extracts and validates query-matching snippets from text.
 type SnippetMatcher struct {
+	// queryLower is already lower-cased and trimmed.
 	queryLower   string
 	filter       *NoiseFilter
 	snippetLimit int
 }
 
 // NewSnippetMatcher creates a SnippetMatcher for the given query string.
-func NewSnippetMatcher(query string, filter *NoiseFilter, limit int) *SnippetMatcher {
+// queryLower must already be lower-cased and trimmed by the caller.
+func NewSnippetMatcher(queryLower string, filter *NoiseFilter, limit int) *SnippetMatcher {
 	return &SnippetMatcher{
-		queryLower:   strings.ToLower(strings.TrimSpace(query)),
+		queryLower:   queryLower,
 		filter:       filter,
 		snippetLimit: limit,
 	}
@@ -369,7 +380,9 @@ func (m *SnippetMatcher) Match(text string) (string, bool) {
 	if m.snippetLimit > 0 {
 		snippet = clipSnippet(trimmed, idx, len(m.queryLower), m.snippetLimit)
 	}
-	if m.filter != nil && m.filter.IsNoise(strings.ToLower(snippet)) {
+	// Re-use the already-lowercased snippet for the noise check.
+	snippetLower := strings.ToLower(snippet)
+	if m.filter != nil && m.filter.IsNoiseLower(snippetLower) {
 		return "", false
 	}
 	return snippet, true
@@ -397,7 +410,7 @@ func fieldPriority(field string) int {
 }
 
 // candidateScore computes a match quality score combining field priority and
-// hit frequency.
+// hit frequency.  queryLower must be pre-lowercased.
 func candidateScore(field, text, queryLower string) int {
 	hits := 0
 	if queryLower != "" {
@@ -412,9 +425,8 @@ func candidateScore(field, text, queryLower string) int {
 // CJK codepoints) are never split.
 //
 // index is the byte offset of the query match within text (as returned by
-// strings.Index).  queryLen is the byte length of the query term (used only to
-// keep the result non-negative; pass 0 if unknown).  limit is the maximum
-// number of runes in the returned string.
+// strings.Index).  queryLen is the byte length of the query term.
+// limit is the maximum number of runes in the returned string.
 func clipSnippet(text string, index, queryLen, limit int) string {
 	if limit <= 0 {
 		return text
@@ -428,10 +440,8 @@ func clipSnippet(text string, index, queryLen, limit int) string {
 		queryLen = 0
 	}
 
-	// Convert the byte offset 'index' to a rune index.  We iterate over rune
-	// start positions (as produced by range-over-string) and count how many
-	// runes precede byte offset 'index'.  This is O(n) but avoids allocating
-	// a second string just for index arithmetic.
+	// Convert the byte offset 'index' to a rune index by counting rune start
+	// positions that precede byte offset 'index'.
 	runeIdx := 0
 	for bytePos := range text {
 		if bytePos >= index {
@@ -449,6 +459,7 @@ func clipSnippet(text string, index, queryLen, limit int) string {
 	end := start + limit
 	if end > total {
 		end = total
+		// Extend backwards to fill the full window if possible.
 		start = end - limit
 		if start < 0 {
 			start = 0
@@ -460,7 +471,7 @@ func clipSnippet(text string, index, queryLen, limit int) string {
 // extractTextCandidates returns all non-empty text fields from a parsed JSON
 // record, labelled with their field path.
 func extractTextCandidates(payload map[string]any) []TextCandidate {
-	out := make([]TextCandidate, 0, 8)
+	out := make([]TextCandidate, 0, 16)
 	appendStr := func(field string, value any) {
 		if text, ok := value.(string); ok {
 			if text = strings.TrimSpace(text); text != "" {
@@ -623,4 +634,3 @@ func summarize(results []SessionSummary) []Aggregate {
 	})
 	return out
 }
-

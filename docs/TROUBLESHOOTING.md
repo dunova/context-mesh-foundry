@@ -1,79 +1,84 @@
 # Troubleshooting / 故障排查
 
-> Related: [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [API.md](API.md)
+> [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [API.md](API.md)
 
-This guide covers common issues with ContextGO, organized by symptom. Run the health check first for any issue.
+Start here for any issue — run the health check first.
 
-本指南按症状组织，涵盖 ContextGO 的常见问题。遇到任何问题，请先运行健康检查：
+遇到任何问题，请先运行健康检查：
 
 ```bash
 python3 scripts/context_cli.py health
 bash scripts/context_healthcheck.sh
 ```
 
+---
+
 ## Contents / 目录
 
-- [Slow initial indexing / 首次索引慢](#slow-initial-indexing)
-- [Viewer not reachable / Viewer 无法访问](#viewer-not-reachable)
-- [Search returns no results / 搜索无结果](#search-returns-no-results)
-- [Permission or path errors / 权限或路径错误](#permission-or-path-errors)
-- [Daemon not capturing sessions / Daemon 未采集会话](#daemon-not-capturing-sessions)
-- [Native binary not found / 找不到 native 二进制](#native-binary-not-found)
-- [Smoke test failures / Smoke 测试失败](#smoke-test-failures)
-- [Installed runtime issues / 已安装运行时问题](#installed-runtime-issues)
-- [Pre-release validation / 发布前验证](#pre-release-validation)
+- [Slow initial indexing](#slow-initial-indexing)
+- [Viewer not reachable](#viewer-not-reachable)
+- [Search returns no results](#search-returns-no-results)
+- [Permission or path errors](#permission-or-path-errors)
+- [Daemon not capturing sessions](#daemon-not-capturing-sessions)
+- [Native binary not found](#native-binary-not-found)
+- [Smoke test failures](#smoke-test-failures)
+- [Installed runtime issues](#installed-runtime-issues)
+- [Pre-release validation checklist](#pre-release-validation-checklist)
 
 ---
 
-## Slow initial indexing / 首次索引慢
+## Slow initial indexing
 
-**Symptom:** `python3 scripts/context_cli.py health` or `search` takes noticeably long on first run.
+**首次索引慢**
 
-**Cause:** `session_index.py` needs to scan all available session history and build the SQLite index from scratch. This is a one-time cost.
+**Symptom / 症状:** `health` or `search` takes noticeably long on first run.
 
-**Resolution:**
+**Cause / 原因:** `session_index.py` scans all available session history and builds the SQLite index from scratch. This is a one-time cost.
 
-1. Run `health` once to completion before issuing search queries. The index builds incrementally afterward.
+**Resolution / 解决方法:**
 
-2. Confirm the index files exist:
+1. Run `health` once to completion before issuing search queries; the index builds incrementally afterward.
+
+2. Confirm index files exist:
    ```bash
    ls ~/.contextgo/index/
    # Expected: session_index.db  memory_index.db
    ```
 
-3. If you have overridden the storage root, confirm the actual path:
+3. Verify the resolved storage root if you have overridden it:
    ```bash
    python3 -c "from scripts.context_config import storage_root; print(storage_root())"
    ```
 
-4. To measure actual IO or CPU bottleneck:
+4. Measure the actual bottleneck:
    ```bash
    python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
    ```
 
 ---
 
-## Viewer not reachable / Viewer 无法访问
+## Viewer not reachable
 
-**Symptom:** After running `python3 scripts/context_cli.py serve`, `http://127.0.0.1:37677/api/health` returns a connection error.
+**Viewer 无法访问**
 
-**Cause:** Port conflict, stale process, health check not yet ready, or server bound to a non-loopback address.
+**Symptom / 症状:** After running `context_cli serve`, `http://127.0.0.1:37677/api/health` returns a connection error.
 
-**Resolution:**
+**Cause / 原因:** Port conflict, stale process, or server bound to a non-loopback address without a token.
+
+**Resolution / 解决方法:**
 
 1. Verify the CLI is healthy before starting the viewer:
    ```bash
    python3 scripts/context_cli.py health
    ```
 
-2. Check for port conflicts and kill stale processes:
+2. Check for port conflicts and kill any stale process:
    ```bash
    lsof -iTCP:37677
-   # If a process is listed, kill it:
-   kill <PID>
+   kill <PID>  # if a process is listed
    ```
 
-3. Start the viewer and wait a moment before querying:
+3. Start the viewer and probe it:
    ```bash
    python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677
    curl http://127.0.0.1:37677/api/health
@@ -86,13 +91,15 @@ bash scripts/context_healthcheck.sh
 
 ---
 
-## Search returns no results / 搜索无结果
+## Search returns no results
 
-**Symptom:** `python3 scripts/context_cli.py search "..."` returns empty results for sessions you expect to find.
+**搜索无结果**
 
-**Cause:** The daemon has not yet written recent sessions, the source directories are not being watched, or the index has not been refreshed.
+**Symptom / 症状:** `context_cli search "..."` returns empty results for sessions you expect to find.
 
-**Resolution:**
+**Cause / 原因:** The daemon has not written recent sessions yet, source directories are not being watched, or the index has not been refreshed.
+
+**Resolution / 解决方法:**
 
 1. Confirm data is present in the storage root:
    ```bash
@@ -100,77 +107,73 @@ bash scripts/context_healthcheck.sh
    ls ~/.contextgo/index/
    ```
 
-2. Verify that common source paths are present on disk (the daemon reads these):
+2. Verify that common source paths exist on disk:
    - `~/.codex/sessions/`
    - `~/.claude/projects/`
    - `~/.zsh_history`
    - `~/.bash_history`
 
-3. Force an index refresh via health:
+3. Force an index refresh:
    ```bash
    python3 scripts/context_cli.py health
    ```
 
-4. Run the full smoke and quality gate:
-   ```bash
-   python3 scripts/context_smoke.py
-   python3 scripts/e2e_quality_gate.py
-   ```
-
-5. If using a custom storage root, confirm it is correctly set:
+4. If using a custom storage root, confirm it is correctly set:
    ```bash
    echo $CONTEXTGO_STORAGE_ROOT
    python3 -c "from scripts.context_config import storage_root; print(storage_root())"
    ```
 
+5. Run the quality gate for a full diagnostic:
+   ```bash
+   python3 scripts/e2e_quality_gate.py
+   ```
+
 ---
 
-## Permission or path errors / 权限或路径错误
+## Permission or path errors
 
-**Symptom:** Errors like `PermissionError`, `FileNotFoundError`, or `OSError` when reading or writing index files.
+**权限或路径错误**
 
-**Resolution:**
+**Symptom / 症状:** `PermissionError`, `FileNotFoundError`, or `OSError` when reading or writing index files.
+
+**Resolution / 解决方法:**
 
 1. Check that the storage root is owned by the current user:
    ```bash
-   ls -ld ~/.contextgo
-   ls -ld ~/.contextgo/index
-   ls -ld ~/.contextgo/raw
+   ls -ld ~/.contextgo ~/.contextgo/index ~/.contextgo/raw
+   stat ~/.contextgo; whoami
    ```
 
-2. Confirm current user matches directory owner:
-   ```bash
-   stat ~/.contextgo
-   whoami
-   ```
-
-3. Run the deep health check to diagnose missing directories or permission issues:
+2. Run the deep health check:
    ```bash
    bash scripts/context_healthcheck.sh --deep
    ```
 
-4. If the storage root was moved or deleted, recreate it and re-run smoke:
+3. If the storage root was moved or deleted, recreate it:
    ```bash
    mkdir -p ~/.contextgo/index ~/.contextgo/raw
    python3 scripts/context_smoke.py
    ```
 
-5. If using `CONTEXTGO_STORAGE_ROOT` to point to a custom path, confirm the target is writable:
+4. If using a custom path, confirm it is writable:
    ```bash
    test -w "$CONTEXTGO_STORAGE_ROOT" && echo "writable" || echo "not writable"
    ```
 
 ---
 
-## Daemon not capturing sessions / Daemon 未采集会话
+## Daemon not capturing sessions
 
-**Symptom:** New terminal or agent sessions are not appearing in search results even after running `health`.
+**Daemon 未采集会话**
 
-**Cause:** The daemon process is not running, or the source paths it watches are not in the expected locations.
+**Symptom / 症状:** New terminal or agent sessions do not appear in search results even after running `health`.
 
-**Resolution:**
+**Cause / 原因:** The daemon process is not running, or source paths are not in the expected locations.
 
-1. Check if the daemon is running:
+**Resolution / 解决方法:**
+
+1. Check whether the daemon is running:
    ```bash
    ps aux | grep context_daemon
    ```
@@ -186,23 +189,26 @@ bash scripts/context_healthcheck.sh
    ls ~/.contextgo/raw/
    ```
 
-4. For persistent background operation, use the provided service template:
+4. For persistent background operation, install via the provided service template:
    ```bash
    ls templates/
    # launchd template for macOS, systemd-user template for Linux
+   bash scripts/unified_context_deploy.sh
    ```
 
 ---
 
-## Native binary not found / 找不到 native 二进制
+## Native binary not found
 
-**Symptom:** `python3 scripts/context_cli.py health` or `native-scan` reports the native backend is unavailable, or `context_native.py` logs a warning that no binary was found.
+**找不到 native 二进制**
 
-**Cause:** The Rust or Go native binary has not been built, was removed, or is not in the expected path.
+**Symptom / 症状:** `health` or `native-scan` reports the native backend is unavailable, or `context_native.py` logs a warning that no binary was found.
 
-**Resolution:**
+**Cause / 原因:** The Rust or Go binary has not been built, was removed, or is not in the expected path.
 
-1. Check native backend health from the CLI:
+**Resolution / 解决方法:**
+
+1. Check native backend status:
    ```bash
    python3 scripts/context_cli.py health
    python3 scripts/context_cli.py native-scan --backend auto --query test
@@ -217,47 +223,51 @@ bash scripts/context_healthcheck.sh
 3. Build the Rust binary:
    ```bash
    cd native/session_scan
-   CARGO_TARGET_DIR="${CONTEXTGO_NATIVE_TARGET_DIR:-$HOME/.cache/contextgo/target}" cargo build --release
+   CARGO_TARGET_DIR="${CONTEXTGO_NATIVE_TARGET_DIR:-$HOME/.cache/contextgo/target}" \
+     cargo build --release
    ```
 
-4. Verify the built binary is discoverable:
+4. Verify the binary is discoverable:
    ```bash
    python3 scripts/context_native.py
    ```
 
-5. The health probe result is cached (default TTL 30 s). After rebuilding, wait for the cache to expire or restart the process. Override the TTL with `CONTEXTGO_NATIVE_HEALTH_CACHE_TTL_SEC=0` to disable caching during development.
+5. The health probe result is cached (default TTL 30 s). To disable caching during development:
+   ```bash
+   export CONTEXTGO_NATIVE_HEALTH_CACHE_TTL_SEC=0
+   ```
 
 ---
 
-## Smoke test failures / Smoke 测试失败
+## Smoke test failures
 
-**Symptom:** `python3 scripts/context_cli.py smoke --sandbox` exits with a non-zero code or reports failures.
+**Smoke 测试失败**
 
-**Resolution:**
+**Symptom / 症状:** `context_cli smoke --sandbox` exits with a non-zero code.
 
-1. Check what specific step failed in the smoke output. The smoke test runs these in order:
-   - `context_cli health`
-   - e2e quality gate
-   - write / read / export / import
-   - semantic pipeline
-   - viewer serve
+The smoke test runs these steps in order:
 
-2. Run only the health step to isolate:
+Smoke 测试按以下顺序执行：
+
+1. `context_cli health`
+2. e2e quality gate
+3. write / read / export / import
+4. semantic pipeline
+5. viewer serve
+
+**Resolution / 解决方法:**
+
+1. Isolate with just the health step:
    ```bash
    python3 scripts/context_cli.py health
    ```
 
-3. Confirm the storage root is writable and the index files exist:
-   ```bash
-   ls -la ~/.contextgo/index/
-   ```
-
-4. Check for syntax or import errors in any recently changed scripts:
+2. Check for syntax errors in recently changed scripts:
    ```bash
    python3 -m py_compile scripts/*.py
    ```
 
-5. Run individual tests to narrow down the failure:
+3. Run individual test files to narrow down the failure:
    ```bash
    python3 -m pytest scripts/test_context_cli.py -v
    python3 -m pytest scripts/test_context_core.py -v
@@ -266,17 +276,24 @@ bash scripts/context_healthcheck.sh
    python3 -m pytest scripts/test_context_smoke.py -v
    ```
 
+4. Confirm the storage root is writable and index files exist:
+   ```bash
+   ls -la ~/.contextgo/index/
+   ```
+
 ---
 
-## Installed runtime issues / 已安装运行时问题
+## Installed runtime issues
 
-**Symptom:** `python3 scripts/smoke_installed_runtime.py` fails, or scripts are missing from the installed location.
+**已安装运行时问题**
 
-**Default installed path:** `~/.local/share/contextgo/scripts`
+**Symptom / 症状:** `smoke_installed_runtime.py` fails, or scripts are missing from the installed location.
 
-**Resolution:**
+**Default installed path / 默认安装路径:** `~/.local/share/contextgo/scripts`
 
-1. Check that required files exist at the installed path:
+**Resolution / 解决方法:**
+
+1. Verify required files exist at the installed path:
    ```bash
    ls ~/.local/share/contextgo/scripts/context_cli.py
    ls ~/.local/share/contextgo/scripts/e2e_quality_gate.py
@@ -292,41 +309,49 @@ bash scripts/context_healthcheck.sh
    bash scripts/unified_context_deploy.sh
    ```
 
-4. After restoring, re-run the installed smoke:
+4. Re-run the installed smoke:
    ```bash
    python3 scripts/smoke_installed_runtime.py
    ```
 
 ---
 
-## Pre-release validation / 发布前验证
+## Pre-release validation checklist
 
-Run this full sequence before tagging a release:
+**发布前验证清单**
+
+Run this full sequence before tagging a release. All commands assume the current user has read/write access to `~/.contextgo` (or `$CONTEXTGO_STORAGE_ROOT` if overridden).
+
+发布打 tag 前运行以下完整序列。所有命令要求当前用户对 `~/.contextgo`（或 `$CONTEXTGO_STORAGE_ROOT`）有读写权限。
 
 ```bash
-# Syntax checks
+# 1. Syntax checks / 语法检查
 bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py
 
-# Unit and integration tests
-python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py
+# 2. Unit and integration tests / 单元与集成测试
+python3 -m pytest \
+  scripts/test_context_cli.py \
+  scripts/test_context_core.py \
+  scripts/test_session_index.py \
+  scripts/test_context_native.py \
+  scripts/test_context_smoke.py \
+  scripts/test_autoresearch_contextgo.py
 
-# End-to-end quality gate
+# 3. End-to-end quality gate / 端到端质量门控
 python3 scripts/e2e_quality_gate.py
 
-# Performance baseline
+# 4. Performance baseline / 性能基线
 python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
 
-# Smoke tests (sandboxed working copy and installed runtime)
+# 5. Smoke tests / Smoke 测试
 python3 scripts/context_cli.py smoke --sandbox
 python3 scripts/smoke_installed_runtime.py
 
-# Health check
+# 6. Health check / 健康检查
 bash scripts/context_healthcheck.sh
 
-# Native tests
+# 7. Native tests / native 测试
 cd native/session_scan_go && go test ./...
 cd native/session_scan && CARGO_INCREMENTAL=0 cargo test
 ```
-
-All commands depend on `storage_root()` defaulting to `~/.contextgo`. Confirm the current user has read/write access before running. If `CONTEXTGO_STORAGE_ROOT` is set, all paths follow that override instead.

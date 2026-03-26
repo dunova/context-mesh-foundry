@@ -30,3 +30,5 @@ panic = "abort"
 opt-level = 3
 # Strip debug symbols from the release binary to minimise binary size.
 strip = "symbols"
+# Disable overflow checks in release for tighter inner-loop codegen.
+overflow-checks = false

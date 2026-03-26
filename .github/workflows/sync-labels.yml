@@ -2,8 +2,7 @@ name: Sync Labels
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - .github/labels.yml
 
@@ -11,13 +10,13 @@ jobs:
   sync-labels:
     name: Sync GitHub Labels
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       issues: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Sync labels
+      - name: Sync labels from labels.yml
         uses: EndBug/label-sync@v2
         with:
           config-file: .github/labels.yml

@@ -3,29 +3,74 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]*"
 
 permissions:
   contents: write
 
+# ---------------------------------------------------------------------------
+# Release pipeline
+#
+# Trigger: push a semver tag (e.g. v0.9.0).
+# Steps:
+#   1. Validate tag matches VERSION file.
+#   2. Create GitHub Release (body from CHANGELOG or auto-generated).
+#   3. Build and publish to PyPI via OIDC trusted publishing.
+# ---------------------------------------------------------------------------
+
 jobs:
-  release:
+  # -------------------------------------------------------------------------
+  # 1. Pre-release validation
+  # -------------------------------------------------------------------------
+  validate:
+    name: Validate Release Tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse tag version
+        id: tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Confirm VERSION file matches tag
+        run: |
+          FILE_VERSION="$(cat VERSION | tr -d '[:space:]')"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: VERSION file ($FILE_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "OK: VERSION=$FILE_VERSION"
+
+  # -------------------------------------------------------------------------
+  # 2. Create GitHub Release
+  # -------------------------------------------------------------------------
+  github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: validate
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Extract release notes
+      - name: Locate release notes
         id: notes
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION="${{ needs.validate.outputs.version }}"
           NOTES_FILE="docs/RELEASE_NOTES_${VERSION}.md"
           if [ -f "$NOTES_FILE" ]; then
-            echo "body_path=$NOTES_FILE" >> $GITHUB_OUTPUT
+            echo "body_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "Using $NOTES_FILE as release body"
+          else
+            echo "No dedicated release notes file found; using auto-generated notes"
           fi
 
       - name: Create GitHub release
@@ -35,31 +80,36 @@ jobs:
           generate_release_notes: ${{ steps.notes.outputs.body_path == '' }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: "true"
 
+  # -------------------------------------------------------------------------
+  # 3. Publish to PyPI (OIDC trusted publishing — no API key required)
+  # -------------------------------------------------------------------------
   publish-pypi:
     name: Publish to PyPI
-    needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: github-release
     permissions:
       id-token: write
     environment:
       name: pypi
       url: https://pypi.org/p/contextgo
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install build
-        run: pip install build
+      - name: Install build tools
+        run: pip install --quiet build twine
 
       - name: Build sdist and wheel
-        run: python3 -m build
+        run: python -m build
+
+      - name: Validate distribution artifacts
+        run: twine check dist/*
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

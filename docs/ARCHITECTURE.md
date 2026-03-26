@@ -1,145 +1,154 @@
-# ContextGO 架构 / ContextGO Architecture
+# Architecture / 架构
 
-> Related: [CONFIGURATION.md](CONFIGURATION.md) · [API.md](API.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [../CONTRIBUTING.md](../CONTRIBUTING.md)
+> [CONFIGURATION.md](CONFIGURATION.md) · [API.md](API.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [../CONTRIBUTING.md](../CONTRIBUTING.md)
 
-## 中文版
+## Overview / 概览
 
-### 架构图
+ContextGO is a local-first context and memory runtime for multi-agent AI coding teams. All data stays on disk; no external services are required.
 
-```mermaid
-flowchart LR
-    A["Codex / Claude / Shell<br/>会话与历史源"] --> B["ContextGO Daemon<br/>采集与脱敏"]
-    B --> C["Session Index + Memory Index<br/>本地 SQLite / Files"]
-    C --> D["ContextGO CLI<br/>Search / Semantic / Save / Export / Import"]
-    D --> E["Viewer API<br/>本地可视化与查询"]
-    D --> F["Health / Smoke / Benchmark<br/>交付验证链"]
-    C --> G["Rust / Go Hot Paths<br/>渐进式提速"]
-```
+ContextGO 是面向多智能体 AI 编码团队的本地优先上下文与记忆运行时。所有数据驻留本地，无需任何外部服务。
 
-### 架构树
+---
 
-```text
-ContextGO/
-├── docs/                      # 架构、发布、故障排查、商业交付文档
-├── scripts/                   # 单体主链：CLI / daemon / server / smoke / health / deploy
-│   ├── context_cli.py         # 搜索、语义、记忆、viewer、smoke 的唯一入口
-│   ├── context_daemon.py      # 会话采集与脱敏写盘
-│   ├── session_index.py       # 会话索引与检索排序
-│   ├── memory_index.py        # 记忆 / observation 索引
-│   ├── context_server.py      # viewer 服务入口
-│   ├── context_maintenance.py # 清理、修复、维护
-│   ├── context_smoke.py       # 工作副本 smoke
-│   ├── context_healthcheck.sh # 健康检查
-│   └── unified_context_deploy.sh
-├── native/
-│   ├── session_scan/          # Rust 热路径
-│   └── session_scan_go/       # Go 热路径
-├── benchmarks/                # Python / native-wrapper 基准
-├── config/                    # 运行时配置文件（noise_markers.json）
-├── integrations/gsd/          # GSD / gstack 对接
-├── artifacts/                 # autoresearch 结果、测试集、QA 报告
-├── templates/                 # launchd / systemd-user 模板
-├── examples/                  # 配置模板
-└── patches/                   # 兼容补丁说明
-```
-
-### 组件概览
-
-1. **采集层**  
-   `scripts/context_daemon.py` 负责收集终端会话、shell 历史并在写入前完成 `<private>` 过滤。
-
-2. **索引层**  
-   `scripts/session_index.py` 与 `scripts/memory_index.py` 负责本地 SQLite / 文件索引。
-
-3. **检索与服务层**  
-   `scripts/context_cli.py` 是唯一 canonical CLI，承载 `health / search / semantic / save / export / import / serve / maintain`。
-
-4. **运维验证层**  
-   `scripts/context_healthcheck.sh`、`scripts/context_smoke.py`、`scripts/smoke_installed_runtime.py` 与 `benchmarks/run.py` 组成统一验证链。
-
-### 数据流
-
-1. 终端与 agent 历史由 `context_daemon` 采集并脱敏。  
-2. 数据写入本地 storage root（默认 `~/.contextgo`）。  
-3. `session_index` 与 `memory_index` 构建索引。  
-4. `context_cli` 统一执行检索、导入导出、health、smoke 与 native 调用。  
-5. `context_server` 提供本地 viewer API。  
-
-### 设计原则
-
-- **本地优先**：默认无外部桥接、无 Docker、无远程 recall 依赖  
-- **统一入口**：用户始终只面对一套 CLI  
-- **默认单体**：复杂度尽量收在内部，而不是拆散到多服务  
-- **验证前置**：任何变更都要过 `health / smoke / benchmark`  
-- **渐进提速**：Python 保稳，Rust / Go 替换热点  
-
-## English Version
-
-### Architecture Diagram
+## System Diagram / 系统架构图
 
 ```mermaid
 flowchart LR
-    A["Codex / Claude / Shell<br/>session and history sources"] --> B["ContextGO Daemon<br/>capture and sanitization"]
-    B --> C["Session Index + Memory Index<br/>local SQLite / files"]
-    C --> D["ContextGO CLI<br/>Search / Semantic / Save / Export / Import"]
-    D --> E["Viewer API<br/>local visualization and query"]
-    D --> F["Health / Smoke / Benchmark<br/>delivery validation chain"]
-    C --> G["Rust / Go Hot Paths<br/>incremental acceleration"]
+    subgraph Sources
+        S1["Shell history<br/>~/.zsh_history / ~/.bash_history"]
+        S2["Codex sessions<br/>~/.codex/"]
+        S3["Claude transcripts<br/>~/.claude/"]
+        S4["Antigravity brain<br/>~/.gemini/antigravity/"]
+    end
+
+    subgraph Core
+        D["context_daemon<br/>capture · sanitize · write"]
+        SI["session_index<br/>SQLite FTS5"]
+        MI["memory_index<br/>SQLite FTS5"]
+    end
+
+    subgraph Interface
+        CLI["context_cli<br/>search · semantic · save · export · import · serve · maintain"]
+        SRV["context_server<br/>local viewer HTTP API"]
+    end
+
+    subgraph Acceleration
+        RS["Rust hot path<br/>native/session_scan"]
+        GO["Go hot path<br/>native/session_scan_go"]
+    end
+
+    Sources --> D
+    D --> SI
+    D --> MI
+    SI --> CLI
+    MI --> CLI
+    CLI --> SRV
+    CLI -.-> RS
+    CLI -.-> GO
 ```
 
-### Architecture Tree
+Dashed arrows indicate optional native acceleration; the Python path is always available as a fallback.
+
+虚线箭头表示可选的 native 加速；Python 路径始终作为后备可用。
+
+---
+
+## Repository Layout / 代码结构
 
 ```text
 ContextGO/
-├── docs/                      # architecture, release, troubleshooting, and commercial delivery docs
-├── scripts/                   # unified monolith mainline: CLI / daemon / server / smoke / health / deploy
-│   ├── context_cli.py         # single canonical entry point for search, semantic, memory, viewer, smoke
-│   ├── context_daemon.py      # session capture and sanitized write-through
-│   ├── session_index.py       # session index and ranked retrieval
-│   ├── memory_index.py        # memory / observation index
-│   ├── context_server.py      # viewer service entry point
-│   ├── context_maintenance.py # cleanup, repair, and maintenance operations
-│   ├── context_smoke.py       # working-copy smoke tests
-│   ├── context_healthcheck.sh # shell health check
-│   └── unified_context_deploy.sh
+├── scripts/                   # Python core
+│   ├── context_cli.py         # Single canonical entry point
+│   ├── context_daemon.py      # Session capture and sanitization
+│   ├── context_config.py      # Env var resolution and storage root
+│   ├── session_index.py       # SQLite FTS5 session index
+│   ├── memory_index.py        # Memory / observation index
+│   ├── context_core.py        # Shared helpers
+│   ├── context_native.py      # Rust / Go backend orchestration
+│   ├── context_server.py      # Viewer server entry point
+│   ├── memory_viewer.py       # HTTP handler implementation
+│   ├── context_maintenance.py # Index cleanup and repair
+│   └── context_smoke.py       # Smoke test suite
 ├── native/
-│   ├── session_scan/          # Rust hot path
-│   └── session_scan_go/       # Go hot path
-├── benchmarks/                # Python / native-wrapper performance baselines
-├── config/                    # runtime configuration files (noise_markers.json)
-├── integrations/gsd/          # GSD / gstack workflow integration
-├── artifacts/                 # autoresearch outputs, test sets, QA reports
+│   ├── session_scan/          # Rust hot-path binary
+│   └── session_scan_go/       # Go hot-path binary
+├── benchmarks/                # Python vs. native performance harness
+├── config/                    # Runtime config files (noise_markers.json)
 ├── templates/                 # launchd / systemd-user service templates
-├── examples/                  # configuration templates
-└── patches/                   # compatibility patch notes
+├── examples/                  # Configuration templates
+├── docs/                      # Documentation
+└── integrations/gsd/          # GSD / gstack workflow integration
 ```
 
-### Component Overview
+---
 
-1. **Capture layer**
-   `scripts/context_daemon.py` collects terminal sessions and shell history, applying `<private>` redaction before writing to disk.
+## Component Layers / 组件层次
 
-2. **Index layer**
-   `scripts/session_index.py` and `scripts/memory_index.py` maintain local SQLite and file-based indexes used for all retrieval operations.
+### 1. Capture layer / 采集层
 
-3. **Retrieval and service layer**
-   `scripts/context_cli.py` is the single canonical CLI, exposing `health`, `search`, `semantic`, `save`, `export`, `import`, `serve`, and `maintain` subcommands.
+`context_daemon.py` monitors shell history files, Codex sessions, Claude transcripts, and Antigravity brain directories. Before writing to disk, it applies `<private>` redaction to strip sensitive content.
 
-4. **Operational validation layer**
-   `scripts/context_healthcheck.sh`, `scripts/context_smoke.py`, `scripts/smoke_installed_runtime.py`, and `benchmarks/run.py` form the unified delivery validation chain.
+`context_daemon.py` 监控 shell 历史、Codex 会话、Claude 转录文件与 Antigravity brain 目录。写入前执行 `<private>` 脱敏。
 
-### Data Flow
+### 2. Index layer / 索引层
 
-1. Terminal and agent histories are captured and sanitized by `context_daemon`.
-2. Data is written to the local storage root (default: `~/.contextgo`).
-3. `session_index` and `memory_index` build indexes on top of SQLite and local files.
-4. `context_cli` handles retrieval, import/export, health checks, smoke tests, and native backend invocations.
-5. `context_server` exposes the local viewer API for interactive inspection.
+`session_index.py` and `memory_index.py` maintain two independent SQLite FTS5 databases under the storage root (`~/.contextgo/index/`). Session entries and memory observations are indexed separately to keep query paths clean.
 
-### Design Principles
+`session_index.py` 与 `memory_index.py` 在存储根目录下分别维护两个独立的 SQLite FTS5 数据库。会话条目与记忆观测分库存储，保持查询路径清晰。
 
-- **Local-first**: no external bridges, no Docker, no remote recall dependency by default.
-- **Single entry point**: operators always interact with one CLI surface.
-- **Monolith by default**: complexity is contained internally rather than split across multiple services.
-- **Validation-gated changes**: every change must pass `health`, `smoke`, and `benchmark` before merging.
-- **Gradual native acceleration**: Python provides stability; Rust and Go replace hot paths incrementally without modifying the CLI contract.
+### 3. Interface layer / 接口层
+
+`context_cli.py` is the single operator entry point. It exposes eight subcommands:
+
+`context_cli.py` 是唯一的操作入口，提供以下子命令：
+
+| Subcommand | Purpose / 用途 |
+|---|---|
+| `health` | Index status and sync / 索引状态与同步 |
+| `search` | FTS5 keyword search / 关键词全文搜索 |
+| `semantic` | Semantic / embedding-backed search / 语义搜索 |
+| `save` | Write a memory observation / 写入记忆观测 |
+| `export` | Export observations to JSON / 导出观测为 JSON |
+| `import` | Import observations from JSON / 从 JSON 导入观测 |
+| `serve` | Start the local viewer server / 启动本地 viewer 服务 |
+| `maintain` | Index cleanup and repair / 索引清理与修复 |
+
+`context_server.py` and `memory_viewer.py` implement the local HTTP viewer API (see [API.md](API.md)).
+
+### 4. Native acceleration layer / native 加速层
+
+`context_native.py` orchestrates optional Rust and Go binaries for hot-path file scanning. Both are transparent drop-in replacements for the Python scanner; the CLI contract does not change.
+
+`context_native.py` 调度可选的 Rust / Go 二进制文件加速热点文件扫描，对 CLI 接口完全透明。
+
+---
+
+## Data Flow / 数据流
+
+```mermaid
+sequenceDiagram
+    participant Src as Source files
+    participant D as context_daemon
+    participant Disk as ~/.contextgo
+    participant Idx as session_index / memory_index
+    participant CLI as context_cli
+
+    Src->>D: file change detected
+    D->>D: sanitize (<private> redaction)
+    D->>Disk: write raw session data
+    D->>Idx: incremental index sync
+    CLI->>Idx: search / semantic / save
+    CLI->>Disk: export / import
+```
+
+---
+
+## Design Principles / 设计原则
+
+| Principle | Description / 说明 |
+|---|---|
+| **Local-first** | No external bridges, no Docker, no remote recall dependency by default / 默认无外部依赖 |
+| **Single entry point** | One CLI surface for all operations / 所有操作统一入口 |
+| **Monolith by default** | Complexity contained internally, not split across services / 复杂度内聚而非外散 |
+| **Validation-gated** | Every change passes `health → smoke → benchmark` before merge / 变更必须过验证链 |
+| **Gradual acceleration** | Python provides stability; Rust/Go replace hot paths without changing the CLI contract / 渐进提速，不改接口 |

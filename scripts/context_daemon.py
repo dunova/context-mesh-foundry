@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import glob
 import hashlib
 import json
 import logging
@@ -133,7 +132,7 @@ logger.setLevel(logging.INFO)
 
 # Rotating file handler — 5 MB x 3 backups
 _rfh = logging.handlers.RotatingFileHandler(
-    str(LOG_DIR / _DAEMON_LOG_NAME),
+    LOG_DIR / _DAEMON_LOG_NAME,
     maxBytes=5 * 1024 * 1024,
     backupCount=3,
     encoding="utf-8",
@@ -240,7 +239,6 @@ ENABLE_ANTIGRAVITY_MONITOR: bool = _cfg_bool("ENABLE_ANTIGRAVITY_MONITOR", defau
 # Antigravity (Gemini) configuration
 # ---------------------------------------------------------------------------
 
-# Path to Gemini/Antigravity brain directory.
 ANTIGRAVITY_BRAIN: Path = Path.home() / ".gemini" / "antigravity" / "brain"
 
 # "final_only": wait for the document to be quiet before exporting.
@@ -294,57 +292,59 @@ MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL: int = max(
 # JSONL and shell source definitions
 # ---------------------------------------------------------------------------
 
-# Each entry maps a logical source name to one or more candidate paths.
+# Each entry maps a logical source name to one or more candidate Path objects.
 # The first existing path wins; sources are re-evaluated every 120 seconds.
+_HOME = Path.home()
+
 JSONL_SOURCES: dict[str, list[dict[str, Any]]] = {
     "claude_code": [
         {
-            "path": str(Path.home() / ".claude" / "history.jsonl"),
+            "path": _HOME / ".claude" / "history.jsonl",
             "sid_keys": ["sessionId", "session_id"],
             "text_keys": ["display", "text", "input", "prompt"],
         },
     ],
     "codex_history": [
         {
-            "path": str(Path.home() / ".codex" / "history.jsonl"),
+            "path": _HOME / ".codex" / "history.jsonl",
             "sid_keys": ["session_id", "sessionId", "id"],
             "text_keys": ["text", "input", "prompt"],
         },
     ],
     "opencode": [
         {
-            "path": str(Path.home() / ".local" / "state" / "opencode" / "prompt-history.jsonl"),
+            "path": _HOME / ".local" / "state" / "opencode" / "prompt-history.jsonl",
             "sid_keys": ["session_id", "sessionId", "id"],
             "text_keys": ["input", "prompt", "text"],
         },
         {
-            "path": str(Path.home() / ".config" / "opencode" / "prompt-history.jsonl"),
+            "path": _HOME / ".config" / "opencode" / "prompt-history.jsonl",
             "sid_keys": ["session_id", "sessionId", "id"],
             "text_keys": ["input", "prompt", "text"],
         },
         {
-            "path": str(Path.home() / ".opencode" / "prompt-history.jsonl"),
+            "path": _HOME / ".opencode" / "prompt-history.jsonl",
             "sid_keys": ["session_id", "sessionId", "id"],
             "text_keys": ["input", "prompt", "text"],
         },
     ],
     "kilo": [
         {
-            "path": str(Path.home() / ".local" / "state" / "kilo" / "prompt-history.jsonl"),
+            "path": _HOME / ".local" / "state" / "kilo" / "prompt-history.jsonl",
             "sid_keys": ["session_id", "sessionId", "id"],
             "text_keys": ["input", "prompt", "text"],
         },
         {
-            "path": str(Path.home() / ".config" / "kilo" / "prompt-history.jsonl"),
+            "path": _HOME / ".config" / "kilo" / "prompt-history.jsonl",
             "sid_keys": ["session_id", "sessionId", "id"],
             "text_keys": ["input", "prompt", "text"],
         },
     ],
 }
 
-SHELL_SOURCES: dict[str, list[str]] = {
-    "shell_zsh": [str(Path.home() / ".zsh_history")],
-    "shell_bash": [str(Path.home() / ".bash_history")],
+SHELL_SOURCES: dict[str, list[Path]] = {
+    "shell_zsh": [_HOME / ".zsh_history"],
+    "shell_bash": [_HOME / ".bash_history"],
 }
 
 # Maps each JSONL source name to its enable flag so refresh_sources() can skip
@@ -361,7 +361,7 @@ SOURCE_MONITOR_FLAGS: dict[str, bool] = {
 # ---------------------------------------------------------------------------
 
 # zsh extended_history format: ": <timestamp>:<elapsed>;<command>"
-_SHELL_LINE_RE = re.compile(r"^:\s*(\d+):\d+;(.*)$")
+_SHELL_LINE_RE: re.Pattern[str] = re.compile(r"^:\s*(\d+):\d+;(.*)$")
 
 # Commands that are noisy and carry no context value.
 _IGNORE_SHELL_CMD_PREFIXES = ("history", "fc ")
@@ -433,8 +433,7 @@ def _release_single_instance_lock() -> None:
     except OSError:
         pass
     with contextlib.suppress(OSError):
-        if LOCK_FILE.exists():
-            LOCK_FILE.unlink()
+        LOCK_FILE.unlink(missing_ok=True)
 
 
 def _acquire_single_instance_lock() -> bool:
@@ -449,13 +448,12 @@ def _acquire_single_instance_lock() -> bool:
 
     for _ in range(2):
         try:
-            _LOCK_FD = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            _LOCK_FD = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             os.write(_LOCK_FD, str(os.getpid()).encode("utf-8"))
             os.fsync(_LOCK_FD)
             atexit.register(_release_single_instance_lock)
             return True
         except FileExistsError:
-            # Check whether the existing lock belongs to a live process.
             try:
                 raw = LOCK_FILE.read_text(encoding="utf-8").strip()
                 pid = int(raw) if raw else 0
@@ -468,7 +466,7 @@ def _acquire_single_instance_lock() -> bool:
 
             # Stale lock — remove and retry.
             with contextlib.suppress(OSError):
-                LOCK_FILE.unlink()
+                LOCK_FILE.unlink(missing_ok=True)
         except OSError as exc:
             logger.error("Failed to acquire daemon lock: %s", exc)
             return False
@@ -503,6 +501,46 @@ def _count_antigravity_language_servers() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Glob cache helpers
+# ---------------------------------------------------------------------------
+
+
+def _refresh_glob_cache(
+    pattern: str,
+    max_results: int,
+    last_refresh: float,
+    interval_sec: int,
+    cached: list[Path],
+    error_context: str,
+    error_count_ref: list[int],
+) -> tuple[list[Path], float]:
+    """Refresh a glob result list if the interval has elapsed.
+
+    Returns (file_list, new_last_refresh).  On OSError the previous cache is
+    preserved and the error counter is incremented.
+    """
+    now = time.time()
+    if cached and now - last_refresh < interval_sec:
+        return cached, last_refresh
+
+    try:
+        from pathlib import Path as _Path
+        root_path = _Path(pattern.split("*")[0].rstrip("/"))
+        # Use glob on the literal pattern via subprocess-free Path.glob
+        import glob as _glob
+        results = [Path(p) for p in _glob.glob(pattern, recursive=True)]
+        if len(results) > max_results:
+            results.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
+            results = results[:max_results]
+        logger.debug("%s cache refreshed: %d entries.", error_context, len(results))
+        return results, now
+    except OSError as exc:
+        error_count_ref[0] += 1
+        logger.error("glob %s: %s", error_context, exc)
+        return cached, last_refresh
+
+
+# ---------------------------------------------------------------------------
 # SessionTracker
 # ---------------------------------------------------------------------------
 
@@ -524,7 +562,7 @@ class SessionTracker:
 
         # Active source descriptors discovered on disk
         self.active_jsonl: dict[str, dict[str, Any]] = {}
-        self.active_shell: dict[str, str] = {}
+        self.active_shell: dict[str, Path] = {}
 
         # Internal timers and counters
         self._last_heartbeat: float = time.time()
@@ -542,9 +580,9 @@ class SessionTracker:
         self._index_dirty: bool = False
 
         # Cached glob results (refreshed on interval to amortise filesystem cost)
-        self._cached_codex_session_files: list[str] = []
-        self._cached_claude_transcript_files: list[str] = []
-        self._cached_antigravity_dirs: list[str] = []
+        self._cached_codex_session_files: list[Path] = []
+        self._cached_claude_transcript_files: list[Path] = []
+        self._cached_antigravity_dirs: list[Path] = []
 
         # Optional HTTP client for remote sync
         self._http_client: Any = None
@@ -589,7 +627,7 @@ class SessionTracker:
 
             picked: dict[str, Any] | None = None
             for candidate in candidates:
-                if os.path.exists(candidate["path"]):
+                if candidate["path"].exists():
                     picked = candidate
                     break
 
@@ -598,7 +636,7 @@ class SessionTracker:
                 self.active_jsonl[source_name] = picked
                 if not prev or prev["path"] != picked["path"]:
                     cursor_key = self._cursor_key("jsonl", source_name, picked["path"])
-                    self._set_cursor(cursor_key, picked["path"], os.path.getsize(picked["path"]))
+                    self._set_cursor(cursor_key, picked["path"], picked["path"].stat().st_size)
                     logger.info("Source active: %s -> %s", source_name, picked["path"])
             elif source_name in self.active_jsonl:
                 logger.info("Source offline: %s", source_name)
@@ -607,14 +645,14 @@ class SessionTracker:
         # Shell sources
         if ENABLE_SHELL_MONITOR:
             for source_name, paths in SHELL_SOURCES.items():
-                picked_path = next((p for p in paths if os.path.exists(p)), "")
-                prev = self.active_shell.get(source_name, "")
+                picked_path: Path | None = next((p for p in paths if p.exists()), None)
+                prev_path = self.active_shell.get(source_name)
 
-                if picked_path:
+                if picked_path is not None:
                     self.active_shell[source_name] = picked_path
-                    if prev != picked_path:
+                    if prev_path != picked_path:
                         cursor_key = self._cursor_key("shell", source_name, picked_path)
-                        self._set_cursor(cursor_key, picked_path, os.path.getsize(picked_path))
+                        self._set_cursor(cursor_key, picked_path, picked_path.stat().st_size)
                         logger.info("Source active: %s -> %s", source_name, picked_path)
                 elif source_name in self.active_shell:
                     logger.info("Source offline: %s", source_name)
@@ -624,11 +662,11 @@ class SessionTracker:
     # Cursor management
     # ------------------------------------------------------------------
 
-    def _cursor_key(self, kind: str, source_name: str, path: str) -> str:
-        digest = hashlib.sha256(path.encode("utf-8")).hexdigest()[:10]
+    def _cursor_key(self, kind: str, source_name: str, path: Path | str) -> str:
+        digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:10]
         return f"{kind}:{source_name}:{digest}"
 
-    def _get_cursor(self, cursor_key: str, path: str) -> int:
+    def _get_cursor(self, cursor_key: str, path: Path) -> int:
         """Return the current read offset for *path*.
 
         Returns 0 when the file has been rotated (inode changed) or truncated.
@@ -636,7 +674,7 @@ class SessionTracker:
         new content appended after the daemon started.
         """
         try:
-            st = os.stat(path)
+            st = path.stat()
         except OSError:
             return 0
 
@@ -646,32 +684,29 @@ class SessionTracker:
             return st.st_size
 
         prev_inode, prev_offset = prev
-        if st.st_ino != prev_inode:
-            # File was rotated/replaced — restart from beginning.
-            return 0
-        if st.st_size < prev_offset:
-            # File was truncated — restart from beginning.
+        if st.st_ino != prev_inode or st.st_size < prev_offset:
+            # File was rotated/replaced or truncated — restart from beginning.
             return 0
         return prev_offset
 
-    def _set_cursor(self, cursor_key: str, path: str, offset: int) -> None:
+    def _set_cursor(self, cursor_key: str, path: Path | str, offset: int) -> None:
         try:
-            inode = os.stat(path).st_ino
+            inode = Path(path).stat().st_ino
         except OSError:
             return
         self.file_cursors[cursor_key] = (inode, offset)
 
     @staticmethod
-    def _is_safe_source(path: str) -> bool:
+    def _is_safe_source(path: Path) -> bool:
         """Return True only if *path* is a regular file owned by the current user.
 
         Symlinked or foreign-owned files are skipped and a warning is logged.
         """
         try:
-            st = os.lstat(path)
+            st = path.lstat()
         except OSError:
             return False
-        if os.path.islink(path):
+        if path.is_symlink():
             logger.warning("Skipping symlinked source: %s", path)
             return False
         if st.st_uid != os.getuid():
@@ -690,14 +725,14 @@ class SessionTracker:
         """Read new lines from all active JSONL history files."""
         now = time.time()
         for source_name, source in self.active_jsonl.items():
-            path = source["path"]
+            path: Path = source["path"]
             cursor_key = self._cursor_key("jsonl", source_name, path)
             self._poll_jsonl_file(source_name, path, source, cursor_key, now)
 
     def _poll_jsonl_file(
         self,
         source_name: str,
-        path: str,
+        path: Path,
         source: dict[str, Any],
         cursor_key: str,
         now: float,
@@ -705,7 +740,7 @@ class SessionTracker:
         if not self._is_safe_source(path):
             return
         try:
-            cur_size = os.path.getsize(path)
+            cur_size = path.stat().st_size
         except OSError:
             return
 
@@ -715,7 +750,7 @@ class SessionTracker:
             return
 
         try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
+            with path.open(encoding="utf-8", errors="replace") as fh:
                 fh.seek(last)
                 for line in fh:
                     line = line.strip()
@@ -727,8 +762,7 @@ class SessionTracker:
                         continue
 
                     sid = self._extract_sid(data, source.get("sid_keys", []), source_name)
-                    text = self._extract_text(data, source.get("text_keys", []))
-                    text = self._sanitize_text(text)
+                    text = self._sanitize_text(self._extract_text(data, source.get("text_keys", [])))
                     if text:
                         self._upsert_session(sid, source_name, text, now)
 
@@ -752,7 +786,7 @@ class SessionTracker:
                 continue
             cursor_key = self._cursor_key("shell", source_name, path)
             try:
-                cur_size = os.path.getsize(path)
+                cur_size = path.stat().st_size
             except OSError:
                 continue
 
@@ -762,7 +796,7 @@ class SessionTracker:
                 continue
 
             try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
+                with path.open(encoding="utf-8", errors="replace") as fh:
                     fh.seek(last)
                     for line in fh:
                         parsed = self._parse_shell_line(source_name, line)
@@ -780,38 +814,27 @@ class SessionTracker:
 
     def poll_codex_sessions(self) -> None:
         """Tail Codex session JSONL files under ~/.codex/sessions/."""
-        if not ENABLE_CODEX_SESSION_MONITOR:
-            return
-        if not CODEX_SESSIONS.is_dir():
+        if not ENABLE_CODEX_SESSION_MONITOR or not CODEX_SESSIONS.is_dir():
             return
 
         now = time.time()
+        error_ref = [self._error_count]
+        self._cached_codex_session_files, self._last_codex_scan = _refresh_glob_cache(
+            pattern=str(CODEX_SESSIONS / "**" / "*.jsonl"),
+            max_results=MAX_CODEX_SESSION_FILES_PER_SCAN,
+            last_refresh=self._last_codex_scan,
+            interval_sec=CODEX_SESSION_SCAN_INTERVAL_SEC,
+            cached=self._cached_codex_session_files,
+            error_context="codex_sessions",
+            error_count_ref=error_ref,
+        )
+        self._error_count = error_ref[0]
 
-        # Refresh the glob cache on interval to amortise filesystem cost.
-        if now - self._last_codex_scan >= CODEX_SESSION_SCAN_INTERVAL_SEC or not self._cached_codex_session_files:
-            try:
-                session_files = glob.glob(str(CODEX_SESSIONS / "**" / "*.jsonl"), recursive=True)
-                if len(session_files) > MAX_CODEX_SESSION_FILES_PER_SCAN:
-                    session_files = sorted(
-                        session_files,
-                        key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0.0,
-                        reverse=True,
-                    )[:MAX_CODEX_SESSION_FILES_PER_SCAN]
-                self._cached_codex_session_files = session_files
-                self._last_codex_scan = now
-                logger.debug("Codex session cache refreshed: %d files.", len(session_files))
-            except OSError as exc:
-                self._error_count += 1
-                logger.error("glob codex sessions: %s", exc)
-                session_files = self._cached_codex_session_files
-        else:
-            session_files = self._cached_codex_session_files
-
-        for path in session_files:
+        for path in self._cached_codex_session_files:
             if not self._is_safe_source(path):
                 continue
             try:
-                mtime = os.path.getmtime(path)
+                mtime = path.stat().st_mtime
             except OSError:
                 continue
             # Skip files that have not been touched in the last hour.
@@ -820,7 +843,7 @@ class SessionTracker:
 
             cursor_key = self._cursor_key("codex_session", "codex_session", path)
             try:
-                cur_size = os.path.getsize(path)
+                cur_size = path.stat().st_size
             except OSError:
                 continue
 
@@ -830,7 +853,7 @@ class SessionTracker:
                 continue
 
             try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
+                with path.open(encoding="utf-8", errors="replace") as fh:
                     fh.seek(last)
                     for line in fh:
                         line = line.strip()
@@ -849,7 +872,9 @@ class SessionTracker:
                         text = ""
                         if ptype == "message":
                             texts = [
-                                c.get("text", "") for c in payload.get("content", []) if c.get("type") == "output_text"
+                                c.get("text", "")
+                                for c in payload.get("content", [])
+                                if c.get("type") == "output_text"
                             ]
                             text = "\n".join(t for t in texts if t)
                         elif ptype == "reasoning":
@@ -857,8 +882,7 @@ class SessionTracker:
 
                         text = self._sanitize_text(text)
                         if text:
-                            sid = os.path.basename(path)
-                            self._upsert_session(sid, "codex_session", text, now)
+                            self._upsert_session(path.name, "codex_session", text, now)
 
                 self._set_cursor(cursor_key, path, cur_size)
             except (OSError, UnicodeDecodeError) as exc:
@@ -878,45 +902,29 @@ class SessionTracker:
         On first startup, files older than CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS are
         baselined at end-of-file to prevent a historical replay storm.
         """
-        if not ENABLE_CLAUDE_TRANSCRIPTS_MONITOR:
-            return
-        if not CLAUDE_TRANSCRIPTS_DIR.is_dir():
+        if not ENABLE_CLAUDE_TRANSCRIPTS_MONITOR or not CLAUDE_TRANSCRIPTS_DIR.is_dir():
             return
 
         now = time.time()
         lookback_cutoff = now - CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS * 86400
 
-        # Refresh glob cache on interval.
-        if (
-            now - self._last_claude_transcript_scan >= CLAUDE_TRANSCRIPT_SCAN_INTERVAL_SEC
-            or not self._cached_claude_transcript_files
-        ):
-            try:
-                session_files = glob.glob(
-                    str(CLAUDE_TRANSCRIPTS_DIR / "**" / "ses_*.jsonl"),
-                    recursive=True,
-                )
-                if len(session_files) > MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL:
-                    session_files = sorted(
-                        session_files,
-                        key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0.0,
-                        reverse=True,
-                    )[:MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL]
-                self._cached_claude_transcript_files = session_files
-                self._last_claude_transcript_scan = now
-                logger.debug("Claude transcript cache refreshed: %d files.", len(session_files))
-            except OSError as exc:
-                self._error_count += 1
-                logger.error("glob claude_transcripts: %s", exc)
-                session_files = self._cached_claude_transcript_files
-        else:
-            session_files = self._cached_claude_transcript_files
+        error_ref = [self._error_count]
+        self._cached_claude_transcript_files, self._last_claude_transcript_scan = _refresh_glob_cache(
+            pattern=str(CLAUDE_TRANSCRIPTS_DIR / "**" / "ses_*.jsonl"),
+            max_results=MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL,
+            last_refresh=self._last_claude_transcript_scan,
+            interval_sec=CLAUDE_TRANSCRIPT_SCAN_INTERVAL_SEC,
+            cached=self._cached_claude_transcript_files,
+            error_context="claude_transcripts",
+            error_count_ref=error_ref,
+        )
+        self._error_count = error_ref[0]
 
-        for path in session_files:
+        for path in self._cached_claude_transcript_files:
             if not self._is_safe_source(path):
                 continue
             try:
-                mtime = os.path.getmtime(path)
+                mtime = path.stat().st_mtime
             except OSError:
                 continue
 
@@ -925,7 +933,7 @@ class SessionTracker:
             # First encounter: apply lookback window to avoid replaying old history.
             if cursor_key not in self.file_cursors:
                 try:
-                    fsize = os.path.getsize(path)
+                    fsize = path.stat().st_size
                 except OSError:
                     fsize = 0
                 if mtime < lookback_cutoff:
@@ -934,12 +942,12 @@ class SessionTracker:
                     continue
                 # File is within the lookback window — read from the beginning.
                 try:
-                    self.file_cursors[cursor_key] = (os.stat(path).st_ino, 0)
+                    self.file_cursors[cursor_key] = (path.stat().st_ino, 0)
                 except OSError:
                     continue
 
             try:
-                cur_size = os.path.getsize(path)
+                cur_size = path.stat().st_size
             except OSError:
                 continue
 
@@ -950,7 +958,7 @@ class SessionTracker:
 
             messages_added = 0
             try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
+                with path.open(encoding="utf-8", errors="replace") as fh:
                     fh.seek(last)
                     for raw in fh:
                         raw = raw.strip()
@@ -962,11 +970,9 @@ class SessionTracker:
                             continue
 
                         msg_type = data.get("type", "")
-                        # Only index human and AI text; skip tool-use / tool-result noise.
                         if msg_type not in ("user", "assistant", "human"):
                             continue
 
-                        # Extract text — handles plain string or content-block lists.
                         content = data.get("content", "")
                         if isinstance(content, str):
                             text = content.strip()
@@ -993,11 +999,7 @@ class SessionTracker:
 
                 self._set_cursor(cursor_key, path, cur_size)
                 if messages_added:
-                    logger.debug(
-                        "claude_transcripts: +%d msgs from %s",
-                        messages_added,
-                        os.path.basename(path),
-                    )
+                    logger.debug("claude_transcripts: +%d msgs from %s", messages_added, path.name)
             except (OSError, UnicodeDecodeError) as exc:
                 self._error_count += 1
                 logger.error("poll_claude_transcripts(%s): %s", path, exc)
@@ -1023,7 +1025,6 @@ class SessionTracker:
             ls_count = _count_antigravity_language_servers()
             if ls_count >= ANTIGRAVITY_BUSY_LS_THRESHOLD:
                 now = time.time()
-                # Rate-limit the "busy" log to avoid filling the log file.
                 if now - self._last_antigravity_busy_log >= 180:
                     logger.info(
                         "poll_antigravity skipped: language_server_macos_arm=%s threshold=%s",
@@ -1037,47 +1038,35 @@ class SessionTracker:
             return
 
         now = time.time()
-
-        # Refresh the directory glob on interval.
-        if now - self._last_antigravity_scan >= ANTIGRAVITY_SCAN_INTERVAL_SEC or not self._cached_antigravity_dirs:
-            try:
-                dirs = glob.glob(str(ANTIGRAVITY_BRAIN / "*-*-*-*-*"))
-                if len(dirs) > MAX_ANTIGRAVITY_DIRS_PER_SCAN:
-                    dirs = sorted(
-                        dirs,
-                        key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0.0,
-                        reverse=True,
-                    )[:MAX_ANTIGRAVITY_DIRS_PER_SCAN]
-                self._cached_antigravity_dirs = dirs
-                self._last_antigravity_scan = now
-                logger.debug("Antigravity dirs cache refreshed: %d dirs.", len(dirs))
-            except OSError as exc:
-                self._error_count += 1
-                logger.error("glob antigravity dirs: %s", exc)
-                dirs = self._cached_antigravity_dirs
-        else:
-            dirs = self._cached_antigravity_dirs
+        error_ref = [self._error_count]
+        self._cached_antigravity_dirs, self._last_antigravity_scan = _refresh_glob_cache(
+            pattern=str(ANTIGRAVITY_BRAIN / "*-*-*-*-*"),
+            max_results=MAX_ANTIGRAVITY_DIRS_PER_SCAN,
+            last_refresh=self._last_antigravity_scan,
+            interval_sec=ANTIGRAVITY_SCAN_INTERVAL_SEC,
+            cached=self._cached_antigravity_dirs,
+            error_context="antigravity_dirs",
+            error_count_ref=error_ref,
+        )
+        self._error_count = error_ref[0]
 
         # Document types to consider, ordered by preference.
-        if ANTIGRAVITY_INGEST_MODE == "final_only":
-            brain_docs = ["walkthrough.md", "task.md", "implementation_plan.md"]
-        else:
-            brain_docs = ["walkthrough.md", "implementation_plan.md"]
+        brain_docs = ["walkthrough.md", "task.md", "implementation_plan.md"] if ANTIGRAVITY_INGEST_MODE == "final_only" else ["walkthrough.md", "implementation_plan.md"]
 
         seen_sids: set[str] = set()
 
-        for sdir in dirs:
-            sid = os.path.basename(sdir)
+        for sdir in self._cached_antigravity_dirs:
+            sid = sdir.name
             seen_sids.add(sid)
 
             # Pick the most recently modified document in this session directory.
-            wt: str | None = None
+            wt: Path | None = None
             latest_mtime = 0.0
             for doc in brain_docs:
-                candidate = os.path.join(sdir, doc)
-                if os.path.exists(candidate):
+                candidate = sdir / doc
+                if candidate.exists():
                     try:
-                        m = os.path.getmtime(candidate)
+                        m = candidate.stat().st_mtime
                     except OSError:
                         m = 0.0
                     if m > latest_mtime:
@@ -1087,13 +1076,11 @@ class SessionTracker:
                 continue
 
             try:
-                mtime = os.path.getmtime(wt)
+                mtime = wt.stat().st_mtime
             except OSError:
                 continue
 
             if sid not in self.antigravity_sessions:
-                # First sighting — record baseline and skip export to avoid
-                # replaying pre-existing documents on daemon startup.
                 self.antigravity_sessions[sid] = {
                     "mtime": mtime,
                     "path": wt,
@@ -1107,17 +1094,12 @@ class SessionTracker:
             path_changed = wt != meta.get("path")
 
             if path_changed or mtime > prev_mtime:
-                # Document has changed — update tracking state.
                 meta["mtime"] = mtime
                 meta["path"] = wt
                 meta["last_change"] = now
                 if ANTIGRAVITY_INGEST_MODE == "final_only":
-                    # Wait for the document to become quiet before exporting.
                     continue
-                # "live" mode falls through to the export block below.
 
-            # In final_only mode only export when the document has been stable
-            # for ANTIGRAVITY_QUIET_SEC and has not been exported at this mtime.
             if ANTIGRAVITY_INGEST_MODE == "final_only":
                 exported_mtime = float(meta.get("exported_mtime", 0.0))
                 if mtime <= exported_mtime:
@@ -1126,15 +1108,13 @@ class SessionTracker:
                 if now - last_change < ANTIGRAVITY_QUIET_SEC:
                     continue
                 try:
-                    if os.path.getsize(wt) < ANTIGRAVITY_MIN_DOC_BYTES:
+                    if wt.stat().st_size < ANTIGRAVITY_MIN_DOC_BYTES:
                         continue
                 except OSError:
                     continue
 
             try:
-                with open(wt, encoding="utf-8", errors="replace") as fh:
-                    content = fh.read(50_000)
-                content = self._sanitize_text(content)
+                content = self._sanitize_text(wt.read_text(encoding="utf-8", errors="replace")[:50_000])
                 if content:
                     export_data: dict[str, Any] = {
                         "source": "antigravity",
@@ -1212,9 +1192,7 @@ class SessionTracker:
             ts = int(match.group(1))
             cmd = match.group(2).strip()
 
-        if not cmd:
-            return None
-        if cmd.lower().startswith(_IGNORE_SHELL_CMD_PREFIXES):
+        if not cmd or cmd.lower().startswith(_IGNORE_SHELL_CMD_PREFIXES):
             return None
 
         cmd = self._sanitize_text(cmd)
@@ -1222,8 +1200,7 @@ class SessionTracker:
             return None
 
         day = datetime.fromtimestamp(ts).strftime("%Y%m%d")
-        sid = f"{source_name}_{day}"
-        return sid, cmd
+        return f"{source_name}_{day}", cmd
 
     def _sanitize_text(self, text: str) -> str:
         """Strip private blocks and redact secrets; truncate to 4000 characters."""
@@ -1236,16 +1213,15 @@ class SessionTracker:
 
     @staticmethod
     def _sanitize_filename_part(raw: str, default: str = "session") -> str:
-        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (raw or "").strip())
-        safe = safe.strip("._-")
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (raw or "").strip()).strip("._-")
         return safe[:64] if safe else default
 
-    def _build_transcript_sid(self, path: str) -> str:
+    def _build_transcript_sid(self, path: Path) -> str:
         try:
-            rel = os.path.relpath(path, str(CLAUDE_TRANSCRIPTS_DIR))
+            rel = path.relative_to(CLAUDE_TRANSCRIPTS_DIR).as_posix()
         except ValueError:
-            rel = os.path.basename(path)
-        base = self._sanitize_filename_part(os.path.basename(path).replace(".jsonl", ""))
+            rel = path.name
+        base = self._sanitize_filename_part(path.stem.replace(".jsonl", ""))
         digest = hashlib.sha256(rel.encode("utf-8", errors="ignore")).hexdigest()[:10]
         return f"{base}_{digest}"
 
@@ -1269,7 +1245,6 @@ class SessionTracker:
         sess = self.sessions[sid]
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
         if digest == sess.get("last_hash"):
-            # Exact duplicate — skip without updating timestamps.
             return
 
         sess["messages"].append(text)
@@ -1277,20 +1252,16 @@ class SessionTracker:
         sess["last_seen"] = now
         self._last_activity_ts = now
 
-        # Keep only the tail of very long sessions to bound memory usage.
         if len(sess["messages"]) > MAX_MESSAGES_PER_SESSION:
             sess["messages"] = sess["messages"][-200:]
 
     def _evict_oldest(self) -> None:
         """Remove the oldest session from the tracking map to make room."""
-        # Prefer evicting already-exported sessions first.
         exported = [(k, v) for k, v in self.sessions.items() if v["exported"]]
         if exported:
-            oldest_k = min(exported, key=lambda x: x[1]["last_seen"])[0]
-            del self.sessions[oldest_k]
+            del self.sessions[min(exported, key=lambda x: x[1]["last_seen"])[0]]
             return
-        oldest_k = min(self.sessions, key=lambda k: self.sessions[k]["last_seen"])
-        del self.sessions[oldest_k]
+        del self.sessions[min(self.sessions, key=lambda k: self.sessions[k]["last_seen"])]
 
     def check_and_export_idle(self) -> None:
         """Export sessions that have been idle for at least IDLE_TIMEOUT_SEC.
@@ -1312,13 +1283,11 @@ class SessionTracker:
                 continue
 
             source = data["source"]
-            # Shell sessions are noisier; require more messages before exporting.
             min_messages = 4 if source.startswith("shell_") else 2
             if len(data["messages"]) >= min_messages:
                 self._export(sid, data)
                 data["exported"] = True
             elif now - data.get("created", 0) > SESSION_TTL_SEC:
-                # Too few messages even after TTL — discard silently.
                 data["exported"] = True
 
         for sid in to_remove:
@@ -1393,12 +1362,10 @@ class SessionTracker:
             logger.error("Failed to write local export %s: %s", file_path, exc)
             return False
 
-        # Remote sync is optional; skip entirely when not configured.
         if not self._http_client:
             if not ENABLE_REMOTE_SYNC:
                 self._export_count += 1
                 return True
-            # Remote sync is enabled but the client failed to initialise.
             self._queue_pending(file_path, formatted)
             return False
 
@@ -1458,7 +1425,7 @@ class SessionTracker:
         if not self._http_client:
             return
 
-        pending: list[Path] = sorted(
+        pending = sorted(
             (p for p in PENDING_DIR.glob("*.md") if p.is_file()),
             key=self._pending_mtime,
         )
@@ -1483,7 +1450,6 @@ class SessionTracker:
                     pf.unlink(missing_ok=True)
                     logger.info("Pending retry succeeded: %s", pf.name)
                 else:
-                    # Non-2xx response — stop retrying this cycle.
                     logger.warning(
                         "Pending retry got HTTP %d for %s — stopping batch.",
                         resp.status_code,
@@ -1548,7 +1514,6 @@ class SessionTracker:
         start_h = NIGHT_POLL_START_HOUR % 24
         end_h = NIGHT_POLL_END_HOUR % 24
 
-        # Night window may wrap midnight (e.g., 23:00 - 07:00).
         if start_h > end_h:
             is_night = current_hour >= start_h or current_hour < end_h
         else:
@@ -1560,24 +1525,18 @@ class SessionTracker:
         except OSError:
             has_pending_files = False
 
-        # Night mode — only throttle when there is nothing urgent to do.
         if is_night and not has_pending_sessions and not has_pending_files:
             return max(1, NIGHT_POLL_INTERVAL_SEC)
 
-        # No active work — slow down to reduce idle CPU usage.
         if not has_pending_sessions and not has_pending_files:
             return min(POLL_INTERVAL_SEC * 3, IDLE_SLEEP_CAP_SEC)
 
         sleep_s = max(1, POLL_INTERVAL_SEC)
 
-        # Pending files are waiting for a remote retry — poll faster.
         if has_pending_files:
             sleep_s = min(sleep_s, FAST_POLL_INTERVAL_SEC)
 
         now = time.time()
-
-        # Look for the session closest to its export deadline and adjust the
-        # sleep interval so we don't overshoot it significantly.
         nearest_due: float | None = None
         for data in self.sessions.values():
             if data.get("exported"):
@@ -1592,7 +1551,6 @@ class SessionTracker:
             elif nearest_due < sleep_s:
                 sleep_s = min(sleep_s, max(1, int(nearest_due)))
 
-        # Recent activity — keep polling fast to catch rapid bursts.
         recent_activity_window = max(15, FAST_POLL_INTERVAL_SEC * 4)
         if self._last_activity_ts is not None and (now - self._last_activity_ts) < recent_activity_window:
             sleep_s = min(sleep_s, FAST_POLL_INTERVAL_SEC)
@@ -1611,15 +1569,14 @@ class SessionTracker:
         self._last_heartbeat = now
 
         mem_mb = -1.0
-        try:
-            if _resource_mod is not None:
+        if _resource_mod is not None:
+            try:
                 rss = _resource_mod.getrusage(_resource_mod.RUSAGE_SELF).ru_maxrss
-                # macOS reports bytes; Linux reports kilobytes.
                 mem_mb = rss / (1024 * 1024) if sys.platform == "darwin" else rss / 1024
-        except (OSError, ValueError):
-            pass
+            except (OSError, ValueError):
+                pass
 
-        pending_count = len(list(PENDING_DIR.glob("*.md"))) if PENDING_DIR.exists() else 0
+        pending_count = sum(1 for _ in PENDING_DIR.glob("*.md")) if PENDING_DIR.exists() else 0
         active_sources = list(self.active_jsonl.keys()) + list(self.active_shell.keys())
 
         logger.info(
@@ -1646,10 +1603,13 @@ def main() -> None:
     if not _acquire_single_instance_lock():
         raise SystemExit(1)
 
+    def _on_off(flag: bool) -> str:
+        return "on" if flag else "off"
+
     logger.info("ContextGO daemon starting.")
     logger.info(
         "config remote_sync=%s remote_url=%s",
-        "on" if ENABLE_REMOTE_SYNC else "off",
+        _on_off(ENABLE_REMOTE_SYNC),
         REMOTE_SYNC_URL,
     )
     logger.info(
@@ -1667,21 +1627,21 @@ def main() -> None:
     logger.info(
         "config monitors shell=%s claude_history=%s codex_history=%s"
         " opencode=%s kilo=%s codex_session=%s claude_transcripts=%s antigravity=%s",
-        "on" if ENABLE_SHELL_MONITOR else "off",
-        "on" if ENABLE_CLAUDE_HISTORY_MONITOR else "off",
-        "on" if ENABLE_CODEX_HISTORY_MONITOR else "off",
-        "on" if ENABLE_OPENCODE_MONITOR else "off",
-        "on" if ENABLE_KILO_MONITOR else "off",
-        "on" if ENABLE_CODEX_SESSION_MONITOR else "off",
-        "on" if ENABLE_CLAUDE_TRANSCRIPTS_MONITOR else "off",
-        "on" if ENABLE_ANTIGRAVITY_MONITOR else "off",
+        _on_off(ENABLE_SHELL_MONITOR),
+        _on_off(ENABLE_CLAUDE_HISTORY_MONITOR),
+        _on_off(ENABLE_CODEX_HISTORY_MONITOR),
+        _on_off(ENABLE_OPENCODE_MONITOR),
+        _on_off(ENABLE_KILO_MONITOR),
+        _on_off(ENABLE_CODEX_SESSION_MONITOR),
+        _on_off(ENABLE_CLAUDE_TRANSCRIPTS_MONITOR),
+        _on_off(ENABLE_ANTIGRAVITY_MONITOR),
     )
     logger.info(
         "config antigravity ingest_mode=%s quiet=%ds min_doc=%dB suspend_busy=%s busy_threshold=%d scan_interval=%ds",
         ANTIGRAVITY_INGEST_MODE,
         ANTIGRAVITY_QUIET_SEC,
         ANTIGRAVITY_MIN_DOC_BYTES,
-        "on" if SUSPEND_ANTIGRAVITY_WHEN_BUSY else "off",
+        _on_off(SUSPEND_ANTIGRAVITY_WHEN_BUSY),
         ANTIGRAVITY_BUSY_LS_THRESHOLD,
         ANTIGRAVITY_SCAN_INTERVAL_SEC,
     )
@@ -1721,7 +1681,6 @@ def main() -> None:
 
             cycle += 1
 
-            # Every 60 cycles run lower-frequency maintenance tasks.
             if cycle % 60 == 0:
                 tracker.cleanup_cursors()
                 tracker.maybe_sync_index(force=True)
@@ -1734,20 +1693,13 @@ def main() -> None:
         # ------------------------------------------------------------------
         # Adaptive sleep with exponential back-off on repeated errors
         # ------------------------------------------------------------------
-        if had_error:
-            consecutive_errors += 1
-        else:
-            consecutive_errors = 0
+        consecutive_errors = consecutive_errors + 1 if had_error else 0
 
-        # Base sleep determined by current work state.
         sleep_s = float(tracker.next_sleep_interval())
 
-        # Exponential back-off: 2^n seconds (capped) when errors persist.
         if consecutive_errors > 0:
-            backoff = min(float(ERROR_BACKOFF_MAX_SEC), float(2 ** min(consecutive_errors, 6)))
-            sleep_s += backoff
+            sleep_s += min(float(ERROR_BACKOFF_MAX_SEC), float(2 ** min(consecutive_errors, 6)))
 
-        # Small random jitter to desynchronise co-located daemons.
         if LOOP_JITTER_SEC > 0:
             sleep_s += random.uniform(0.0, LOOP_JITTER_SEC)
 
