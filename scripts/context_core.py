@@ -201,10 +201,7 @@ def normalize_tags(tags: list[str] | str | None) -> list[str]:
             return []
         try:
             parsed = json.loads(s)
-            if isinstance(parsed, list):
-                raw_items = [str(t).strip() for t in parsed]
-            else:
-                raw_items = [s]
+            raw_items = [str(t).strip() for t in parsed] if isinstance(parsed, list) else [s]
         except (json.JSONDecodeError, ValueError):
             raw_items = [part.strip() for part in s.split(",")]
     else:

@@ -94,6 +94,7 @@ class TestAvailableNativeBackends(unittest.TestCase):
         finally:
             # restore from module
             import importlib
+
             import context_smoke as _cs  # noqa: F401
             importlib.reload(context_smoke)
 

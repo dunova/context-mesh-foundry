@@ -69,8 +69,7 @@ _IGNORE_SHELL_CMD_PREFIXES = context_daemon._IGNORE_SHELL_CMD_PREFIXES
 def _make_tracker() -> SessionTracker:
     """Create a SessionTracker with refresh_sources disabled."""
     with patch.object(SessionTracker, "refresh_sources"):
-        tracker = SessionTracker()
-    return tracker
+        return SessionTracker()
 
 
 # ---------------------------------------------------------------------------

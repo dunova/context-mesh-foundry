@@ -66,8 +66,7 @@ def _extract_string_array(source: str, start_pattern: str) -> list[str]:
                 block = source[block_start : pos + 1]
                 # Match all double-quoted string literals, including escape sequences.
                 # We use a simple pattern that handles \" inside strings.
-                matches = re.findall(r'"((?:[^"\\]|\\.)*)"', block)
-                return matches
+                return re.findall(r'"((?:[^"\\]|\\.)*)"', block)
         pos += 1
     return []
 

@@ -22,12 +22,12 @@ import os
 import re
 import sqlite3
 import time
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 try:
     import context_native

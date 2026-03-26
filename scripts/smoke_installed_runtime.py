@@ -16,8 +16,7 @@ def resolve_install_root() -> Path:
         base = Path(explicit).expanduser()
         return base if base.name == "scripts" else base / "scripts"
 
-    primary_root = Path.home() / ".local" / "share" / "contextgo" / "scripts"
-    return primary_root
+    return Path.home() / ".local" / "share" / "contextgo" / "scripts"
 
 
 INSTALL_ROOT = resolve_install_root()

@@ -26,11 +26,12 @@ import json
 import os
 import re
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 try:
     from context_config import storage_root
@@ -643,7 +644,7 @@ def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
     clean_tags = [cleaned for tag in raw_tags if (cleaned := _sanitize_text(str(tag))[:80])]
 
     raw_path = _sanitize_text(str(raw.get("file_path") or "import://json"))[:300]
-    if raw_path.startswith("/") or raw_path.startswith("~"):
+    if raw_path.startswith(("/", "~")):
         raw_path = "import://local-path-redacted"
 
     title = _sanitize_text(str(raw.get("title") or "imported memory"))[:240]

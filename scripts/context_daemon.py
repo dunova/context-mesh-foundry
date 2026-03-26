@@ -525,7 +525,7 @@ def _refresh_glob_cache(
 
     try:
         from pathlib import Path as _Path
-        root_path = _Path(pattern.split("*")[0].rstrip("/"))
+        _Path(pattern.split("*")[0].rstrip("/"))
         # Use glob on the literal pattern via subprocess-free Path.glob
         import glob as _glob
         results = [Path(p) for p in _glob.glob(pattern, recursive=True)]
