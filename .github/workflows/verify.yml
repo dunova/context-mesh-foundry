@@ -46,19 +46,24 @@ jobs:
           ! rg -n "AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}" --glob '!artifacts/' --glob '!.github/' .
           ! rg -n "/Users/\\w+/" --glob '!artifacts/' --glob '!.github/' .
 
+      - name: Ruff lint
+        run: pip install ruff && ruff check scripts/ benchmarks/
+      - name: Ruff format check
+        run: ruff format --check scripts/ benchmarks/
+
   python-test:
     name: Python Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Cache pip dependencies
         uses: actions/cache@v4
@@ -124,8 +129,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run Cargo check on Rust native prototype
-        run: CARGO_TARGET_DIR=/tmp/contextgo_target cargo check --manifest-path native/session_scan/Cargo.toml
+      - name: Rust test
+        run: cd native/session_scan && CARGO_INCREMENTAL=0 cargo test
 
   quality-gate:
     name: Quality Gate

@@ -19,9 +19,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create GitHub release with auto-generated notes
+      - name: Extract release notes
+        id: notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          NOTES_FILE="docs/RELEASE_NOTES_${VERSION}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "body_path=$NOTES_FILE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.body_path }}
+          generate_release_notes: ${{ steps.notes.outputs.body_path == '' }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
