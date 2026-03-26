@@ -13,3 +13,5 @@ R011	2026-03-26T10:16:40	100	100	95	99.0	KEEP	pre-snippet-120-pass
 R012	2026-03-26T10:17:49	100	100	95	99.0	KEEP	snippet-120-compaction
 R013	2026-03-26T10:19:43	100	100	95	99.0	KEEP	pre-health-compaction
 R014	2026-03-26T10:21:14	100	100	95	99.0	KEEP	compact-health-default-output
+R015	2026-03-26T10:23:27	100	100	95	99.0	KEEP	pre-native-text-compaction
+R016	2026-03-26T10:25:05	100	100	95	99.0	KEEP	score-health-bytes

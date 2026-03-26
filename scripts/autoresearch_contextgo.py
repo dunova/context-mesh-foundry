@@ -111,8 +111,11 @@ def evaluate(query: str) -> dict:
     if go["ok"]:
         recall += 30
 
+    health_bytes = len((health_out or health_err).encode("utf-8"))
     native_bytes = rust["bytes"] + go["bytes"]
     token_efficiency = 100
+    if health_bytes > 600:
+        token_efficiency -= min(20, (health_bytes - 600) // 50)
     if smoke_bytes > 2000:
         token_efficiency -= min(40, (smoke_bytes - 2000) // 100)
     if native_bytes > 3500:
@@ -131,6 +134,7 @@ def evaluate(query: str) -> dict:
         "total_score": total_score,
         "signals": {
             "health_ok": health_rc == 0 and bool(health_payload.get("all_ok")),
+            "health_bytes": health_bytes,
             "smoke_ok": smoke_rc == 0 and (smoke_payload.get("summary") or {}).get("status") == "pass",
             "search_ok": search_rc == 0,
             "search_bytes": len((search_out or search_err).encode("utf-8")),
