@@ -49,6 +49,8 @@ class AutoResearchTests(unittest.TestCase):
             payload = {
                 "round": 12,
                 "timestamp": "2026-03-26T10:17:49",
+                "git_commit": "abc1234",
+                "note": "metrics",
                 "dimensions": {"stability": 100, "recall": 100, "token_efficiency": 95},
                 "total_score": 99.0,
                 "signals": {
@@ -67,8 +69,41 @@ class AutoResearchTests(unittest.TestCase):
             metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual(metrics[0]["round"], 12)
             self.assertEqual(metrics[0]["health_bytes"], 386)
+            self.assertEqual(metrics[0]["git_commit"], "abc1234")
             best = json.loads(best_path.read_text(encoding="utf-8"))
             self.assertEqual(best["round"], 12)
+            self.assertEqual(best["note"], "metrics")
+
+    def test_append_log_keeps_recent_metric_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "log.tsv"
+            state_path = Path(tmpdir) / "latest.json"
+            metrics_path = Path(tmpdir) / "metrics.json"
+            best_path = Path(tmpdir) / "best.json"
+            with mock.patch.object(ar, "LOG_PATH", log_path):
+                with mock.patch.object(ar, "STATE_PATH", state_path):
+                    with mock.patch.object(ar, "METRICS_PATH", metrics_path):
+                        with mock.patch.object(ar, "BEST_PATH", best_path):
+                            with mock.patch.object(ar, "MAX_METRIC_HISTORY", 3):
+                                for round_no in range(1, 6):
+                                    payload = {
+                                        "round": round_no,
+                                        "timestamp": f"2026-03-26T10:0{round_no}:00",
+                                        "git_commit": f"c{round_no}",
+                                        "note": f"n{round_no}",
+                                        "dimensions": {"stability": 100, "recall": 100, "token_efficiency": 95},
+                                        "total_score": 99.0,
+                                        "signals": {
+                                            "health_bytes": 386,
+                                            "search_bytes": 1417,
+                                            "smoke_bytes": 346,
+                                            "native_total_bytes": 4382,
+                                            "native_text_bytes": 579,
+                                        },
+                                    }
+                                    ar.append_log(round_no, payload, "KEEP", f"n{round_no}")
+            metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+            self.assertEqual([item["round"] for item in metrics], [3, 4, 5])
 
 
 if __name__ == "__main__":

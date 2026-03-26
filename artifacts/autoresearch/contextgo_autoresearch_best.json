@@ -1,6 +1,8 @@
 {
-  "round": 18,
-  "timestamp": "2026-03-26T10:44:12",
+  "round": 20,
+  "timestamp": "2026-03-26T10:50:01",
+  "git_commit": "feb69d0",
+  "note": "prefer-latest-best-metadata",
   "total_score": 99.0,
   "stability": 100,
   "recall": 100,

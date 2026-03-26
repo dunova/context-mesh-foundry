@@ -19,6 +19,7 @@ METRICS_PATH = ARTIFACT_ROOT / "contextgo_autoresearch_metrics.json"
 BEST_PATH = ARTIFACT_ROOT / "contextgo_autoresearch_best.json"
 DEFAULT_MAX_ROUNDS = 100
 DEFAULT_QUERY = "NotebookLM"
+MAX_METRIC_HISTORY = 20
 
 
 def run_cmd(args: list[str], timeout: int = 180) -> tuple[int, str, str]:
@@ -30,6 +31,11 @@ def run_cmd(args: list[str], timeout: int = 180) -> tuple[int, str, str]:
         timeout=timeout,
     )
     return proc.returncode, proc.stdout or "", proc.stderr or ""
+
+
+def current_git_commit() -> str:
+    rc, out, _ = run_cmd(["git", "rev-parse", "--short", "HEAD"], timeout=30)
+    return out.strip() if rc == 0 and out.strip() else ""
 
 
 def _json_from_text(text: str) -> dict:
@@ -219,6 +225,8 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
             {
                 "round": payload.get("round", round_no),
                 "timestamp": payload["timestamp"],
+                "git_commit": payload.get("git_commit", ""),
+                "note": payload.get("note", note),
                 "total_score": payload["total_score"],
                 "stability": payload["dimensions"]["stability"],
                 "recall": payload["dimensions"]["recall"],
@@ -244,6 +252,8 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
     ]
     existing_metrics.extend(metrics)
     existing_metrics.sort(key=lambda item: item.get("round", 0))
+    if len(existing_metrics) > MAX_METRIC_HISTORY:
+        existing_metrics = existing_metrics[-MAX_METRIC_HISTORY:]
     METRICS_PATH.write_text(json.dumps(existing_metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     if existing_metrics:
         def _metric_value(item: dict, key: str, default: int) -> int:
@@ -255,6 +265,7 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
             key=lambda item: (
                 item.get("total_score", 0),
                 item.get("token_efficiency", 0),
+                item.get("round", 0),
                 -_metric_value(item, "health_bytes", 10**9),
                 -_metric_value(item, "search_bytes", 10**9),
                 -_metric_value(item, "smoke_bytes", 10**9),
@@ -281,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     payload["target_score"] = 95
     payload["max_rounds"] = args.max_rounds
     payload["round"] = args.round
+    payload["note"] = args.note
+    payload["git_commit"] = current_git_commit()
     decision = "KEEP" if payload["total_score"] >= 80 else "ITERATE"
     append_log(args.round, payload, decision, args.note)
     print(json.dumps(payload, ensure_ascii=False, indent=2))

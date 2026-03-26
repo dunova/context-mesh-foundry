@@ -17,3 +17,5 @@ R015	2026-03-26T10:23:27	100	100	95	99.0	KEEP	pre-native-text-compaction
 R016	2026-03-26T10:25:05	100	100	95	99.0	KEEP	score-health-bytes
 R017	2026-03-26T10:29:20	100	100	95	99.0	KEEP	track-native-text-bytes
 R018	2026-03-26T10:44:12	100	100	95	99.0	KEEP	normalize-metrics-and-best-final
+R019	2026-03-26T10:48:25	100	100	95	99.0	KEEP	retain-recent-metrics-and-commit
+R020	2026-03-26T10:50:01	100	100	95	99.0	KEEP	prefer-latest-best-metadata

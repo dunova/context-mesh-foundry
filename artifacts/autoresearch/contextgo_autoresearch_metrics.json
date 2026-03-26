@@ -11,5 +11,35 @@
     "smoke_bytes": 346,
     "native_total_bytes": 4382,
     "native_text_bytes": 579
+  },
+  {
+    "round": 19,
+    "timestamp": "2026-03-26T10:48:25",
+    "git_commit": "feb69d0",
+    "note": "retain-recent-metrics-and-commit",
+    "total_score": 99.0,
+    "stability": 100,
+    "recall": 100,
+    "token_efficiency": 95,
+    "health_bytes": 386,
+    "search_bytes": 1417,
+    "smoke_bytes": 346,
+    "native_total_bytes": 4382,
+    "native_text_bytes": 579
+  },
+  {
+    "round": 20,
+    "timestamp": "2026-03-26T10:50:01",
+    "git_commit": "feb69d0",
+    "note": "prefer-latest-best-metadata",
+    "total_score": 99.0,
+    "stability": 100,
+    "recall": 100,
+    "token_efficiency": 95,
+    "health_bytes": 386,
+    "search_bytes": 1417,
+    "smoke_bytes": 346,
+    "native_total_bytes": 4382,
+    "native_text_bytes": 579
   }
 ]
