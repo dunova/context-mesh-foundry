@@ -55,14 +55,16 @@ class SessionIndexTests(unittest.TestCase):
                 encoding="utf-8",
             )
             db_path = root / "session_index.db"
-            with mock.patch.object(session_index, "_home", return_value=root):
-                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                    payload = session_index.health_payload()
-                    self.assertTrue(payload["session_index_db_exists"])
-                    self.assertGreaterEqual(payload["total_sessions"], 1)
-                    text = session_index.format_search_results("NotebookLM", limit=5)
-                    self.assertIn("sample-session", text)
-                    self.assertIn("NotebookLM", text)
+            with (
+                mock.patch.object(session_index, "_home", return_value=root),
+                mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
+            ):
+                payload = session_index.health_payload()
+                self.assertTrue(payload["session_index_db_exists"])
+                self.assertGreaterEqual(payload["total_sessions"], 1)
+                text = session_index.format_search_results("NotebookLM", limit=5)
+                self.assertIn("sample-session", text)
+                self.assertIn("NotebookLM", text)
 
     def test_sync_and_search_archived_codex_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -107,12 +109,14 @@ class SessionIndexTests(unittest.TestCase):
                 encoding="utf-8",
             )
             db_path = root / "session_index.db"
-            with mock.patch.object(session_index, "_home", return_value=root):
-                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                    session_index.sync_session_index(force=True)
-                    text = session_index.format_search_results("NotebookLM", limit=5)
-                    self.assertIn("archived-session", text)
-                    self.assertIn("NotebookLM", text)
+            with (
+                mock.patch.object(session_index, "_home", return_value=root),
+                mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
+            ):
+                session_index.sync_session_index(force=True)
+                text = session_index.format_search_results("NotebookLM", limit=5)
+                self.assertIn("archived-session", text)
+                self.assertIn("NotebookLM", text)
 
     def test_recent_sync_skips_rescan(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -133,45 +137,51 @@ class SessionIndexTests(unittest.TestCase):
                 encoding="utf-8",
             )
             db_path = root / "session_index.db"
-            with mock.patch.object(session_index, "_home", return_value=root):
-                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                    first = session_index.sync_session_index(force=True)
-                    second = session_index.sync_session_index(force=False)
-                    self.assertGreaterEqual(first["scanned"], 1)
-                    self.assertEqual(second["skipped_recent"], 1)
+            with (
+                mock.patch.object(session_index, "_home", return_value=root),
+                mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
+            ):
+                first = session_index.sync_session_index(force=True)
+                second = session_index.sync_session_index(force=False)
+                self.assertGreaterEqual(first["scanned"], 1)
+                self.assertEqual(second["skipped_recent"], 1)
 
     def test_sync_handles_missing_cached_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             db_path = root / "session_index.db"
             missing_path = root / "missing.jsonl"
-            with mock.patch.object(session_index, "_home", return_value=root):
-                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                    with mock.patch.object(
-                        session_index, "_iter_sources", return_value=[("codex_session", missing_path)]
-                    ):
-                        stats = session_index.sync_session_index(force=True)
-                        self.assertGreaterEqual(stats["scanned"], 1)
-                        self.assertEqual(stats["added"], 0)
+            with (
+                mock.patch.object(session_index, "_home", return_value=root),
+                mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
+                mock.patch.object(session_index, "_iter_sources", return_value=[("codex_session", missing_path)]),
+            ):
+                stats = session_index.sync_session_index(force=True)
+                self.assertGreaterEqual(stats["scanned"], 1)
+                self.assertEqual(stats["added"], 0)
 
     def test_native_search_rows_when_enabled(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 0
-        with mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"), mock.patch.object(
-            session_index.context_native,
-            "run_native_scan",
-            return_value=mock_result,
-        ) as mock_run, mock.patch.object(
-            session_index.context_native,
-            "extract_matches",
-            return_value=[
-                {
-                    "source": "codex_session",
-                    "session_id": "abc",
-                    "path": "/tmp/a.jsonl",
-                    "snippet": "NotebookLM match",
-                }
-            ],
+        with (
+            mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
+            mock.patch.object(
+                session_index.context_native,
+                "run_native_scan",
+                return_value=mock_result,
+            ) as mock_run,
+            mock.patch.object(
+                session_index.context_native,
+                "extract_matches",
+                return_value=[
+                    {
+                        "source": "codex_session",
+                        "session_id": "abc",
+                        "path": "/tmp/a.jsonl",
+                        "snippet": "NotebookLM match",
+                    }
+                ],
+            ),
         ):
             rows = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual(len(rows), 1)
@@ -181,38 +191,42 @@ class SessionIndexTests(unittest.TestCase):
     def test_native_search_rows_filters_agents_noise(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 0
-        with mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"):
-            with mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result):
-                with mock.patch.object(
-                    session_index.context_native,
-                    "extract_matches",
-                    return_value=[
-                        {
-                            "source": "codex_session",
-                            "session_id": "noise",
-                            "path": "/tmp/noise.jsonl",
-                            "snippet": "# AGENTS.md instructions for /tmp NotebookLM",
-                        },
-                        {
-                            "source": "codex_session",
-                            "session_id": "clean",
-                            "path": "/tmp/clean.jsonl",
-                            "snippet": "NotebookLM integration decision",
-                        },
-                    ],
-                ):
-                    rows = session_index._native_search_rows("NotebookLM", limit=5)
+        with (
+            mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
+            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
+            mock.patch.object(
+                session_index.context_native,
+                "extract_matches",
+                return_value=[
+                    {
+                        "source": "codex_session",
+                        "session_id": "noise",
+                        "path": "/tmp/noise.jsonl",
+                        "snippet": "# AGENTS.md instructions for /tmp NotebookLM",
+                    },
+                    {
+                        "source": "codex_session",
+                        "session_id": "clean",
+                        "path": "/tmp/clean.jsonl",
+                        "snippet": "NotebookLM integration decision",
+                    },
+                ],
+            ),
+        ):
+            rows = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual([row["session_id"] for row in rows], ["clean"])
 
     def test_iter_sources_can_use_native_inventory(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 0
-        with mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"), mock.patch.object(
-            session_index.context_native, "run_native_scan", return_value=mock_result
-        ) as mock_run, mock.patch.object(
-            session_index.context_native,
-            "inventory_items",
-            return_value=[("codex_session", Path("/tmp/native.jsonl"))],
+        with (
+            mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"),
+            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result) as mock_run,
+            mock.patch.object(
+                session_index.context_native,
+                "inventory_items",
+                return_value=[("codex_session", Path("/tmp/native.jsonl"))],
+            ),
         ):
             items = session_index._iter_sources()
         self.assertEqual(items, [("codex_session", Path("/tmp/native.jsonl"))])
@@ -467,10 +481,12 @@ class SessionIndexTests(unittest.TestCase):
             )
             db_path = root / "session_index.db"
             query = "继续搜索 GitHub 和 X 研究 notebookLM 的终端调用方案"
-            with mock.patch.object(session_index, "_home", return_value=root):
-                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                    session_index.sync_session_index(force=True)
-                    rows = session_index._search_rows(query, limit=5, literal=True)
+            with (
+                mock.patch.object(session_index, "_home", return_value=root),
+                mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
+            ):
+                session_index.sync_session_index(force=True)
+                rows = session_index._search_rows(query, limit=5, literal=True)
             self.assertEqual(rows[0]["session_id"], "long-query-session")
 
     def test_literal_long_query_fallback_skips_current_repo_noise(self) -> None:
@@ -534,11 +550,13 @@ class SessionIndexTests(unittest.TestCase):
             )
             db_path = root / "session_index.db"
             query = "继续搜索 GitHub 和 X 研究 notebookLM 的终端调用方案"
-            with mock.patch.object(session_index, "_home", return_value=root):
-                with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                    with mock.patch("pathlib.Path.cwd", return_value=Path("/workspace/ContextGO")):
-                        session_index.sync_session_index(force=True)
-                        rows = session_index._search_rows(query, limit=5, literal=True)
+            with (
+                mock.patch.object(session_index, "_home", return_value=root),
+                mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
+                mock.patch("pathlib.Path.cwd", return_value=Path("/workspace/ContextGO")),
+            ):
+                session_index.sync_session_index(force=True)
+                rows = session_index._search_rows(query, limit=5, literal=True)
             self.assertEqual(rows[0]["session_id"], "archived-session")
 
 

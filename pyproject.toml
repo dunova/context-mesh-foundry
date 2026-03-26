@@ -57,3 +57,12 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["scripts"]
 python_files = ["test_*.py"]
+addopts = "--cov=scripts --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["scripts"]
+omit = ["scripts/test_*.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

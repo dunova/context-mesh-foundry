@@ -16,7 +16,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import context_cli
+import context_cli  # noqa: E402
 
 
 class ContextCliTests(unittest.TestCase):
@@ -24,26 +24,32 @@ class ContextCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "resources" / "shared"
             conv = root / "conversations"
-            with mock.patch.object(context_cli, "LOCAL_STORAGE_ROOT", Path(tmpdir)):
-                with mock.patch.object(context_cli, "LOCAL_SHARED_ROOT", root):
-                    with mock.patch.object(context_cli, "LOCAL_CONVERSATIONS_ROOT", conv):
-                        msg = context_cli._save_local_memory(
-                            "unit-test-memory",
-                            "unique_token_context_cli_unit",
-                            ["unit", "memory"],
-                        )
-                        self.assertIn("Saved locally:", msg)
-                        matches = context_cli._local_memory_matches("unique_token_context_cli_unit", limit=3)
-                        self.assertEqual(len(matches), 1)
-                        self.assertEqual(matches[0]["matched_in"], "content")
+            with (
+                mock.patch.object(context_cli, "LOCAL_STORAGE_ROOT", Path(tmpdir)),
+                mock.patch.object(context_cli, "LOCAL_SHARED_ROOT", root),
+                mock.patch.object(context_cli, "LOCAL_CONVERSATIONS_ROOT", conv),
+            ):
+                msg = context_cli._save_local_memory(
+                    "unit-test-memory",
+                    "unique_token_context_cli_unit",
+                    ["unit", "memory"],
+                )
+                self.assertIn("Saved locally:", msg)
+                matches = context_cli._local_memory_matches("unique_token_context_cli_unit", limit=3)
+                self.assertEqual(len(matches), 1)
+                self.assertEqual(matches[0]["matched_in"], "content")
 
     def test_semantic_falls_back_to_session_index(self) -> None:
         args = context_cli.build_parser().parse_args(["semantic", "foo", "--limit", "2"])
-        with mock.patch.object(context_cli, "_local_memory_matches", return_value=[]), mock.patch.object(
-            context_cli.session_index,
-            "format_search_results",
-            return_value="Found 1 sessions\nSession: abc",
-        ), mock.patch("builtins.print") as mock_print:
+        with (
+            mock.patch.object(context_cli, "_local_memory_matches", return_value=[]),
+            mock.patch.object(
+                context_cli.session_index,
+                "format_search_results",
+                return_value="Found 1 sessions\nSession: abc",
+            ),
+            mock.patch("builtins.print") as mock_print,
+        ):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
@@ -58,28 +64,28 @@ class ContextCliTests(unittest.TestCase):
             old_env = os.environ.get(env_key)
             os.environ[env_key] = str(tmp_root)
             try:
-                with mock.patch.object(context_cli, "LOCAL_STORAGE_ROOT", tmp_root):
-                    with mock.patch.object(context_cli, "LOCAL_SHARED_ROOT", tmp_root / "resources" / "shared"):
-                        with mock.patch.object(
-                            context_cli,
-                            "LOCAL_CONVERSATIONS_ROOT",
-                            tmp_root / "resources" / "shared" / "conversations",
-                        ):
-                            msg = context_cli._save_local_memory("roundtrip", "roundtrip_token_cli", ["rt"])
-                            self.assertIn("Saved locally:", msg)
-                            export_args = context_cli.build_parser().parse_args(
-                                ["export", "roundtrip_token_cli", str(output_path)]
-                            )
-                            self.assertEqual(context_cli.run(export_args), 0)
-                            payload = json.loads(output_path.read_text(encoding="utf-8"))
-                            self.assertEqual(payload["total_observations"], 1)
-                            import_args = context_cli.build_parser().parse_args(["import", str(output_path)])
-                            with mock.patch("builtins.print") as mock_print:
-                                self.assertEqual(context_cli.run(import_args), 0)
-                            printed = "\n".join(
-                                " ".join(str(x) for x in call.args) for call in mock_print.call_args_list
-                            )
-                            self.assertIn("inserted=0", printed)
+                with (
+                    mock.patch.object(context_cli, "LOCAL_STORAGE_ROOT", tmp_root),
+                    mock.patch.object(context_cli, "LOCAL_SHARED_ROOT", tmp_root / "resources" / "shared"),
+                    mock.patch.object(
+                        context_cli,
+                        "LOCAL_CONVERSATIONS_ROOT",
+                        tmp_root / "resources" / "shared" / "conversations",
+                    ),
+                ):
+                    msg = context_cli._save_local_memory("roundtrip", "roundtrip_token_cli", ["rt"])
+                    self.assertIn("Saved locally:", msg)
+                    export_args = context_cli.build_parser().parse_args(
+                        ["export", "roundtrip_token_cli", str(output_path)]
+                    )
+                    self.assertEqual(context_cli.run(export_args), 0)
+                    payload = json.loads(output_path.read_text(encoding="utf-8"))
+                    self.assertEqual(payload["total_observations"], 1)
+                    import_args = context_cli.build_parser().parse_args(["import", str(output_path)])
+                    with mock.patch("builtins.print") as mock_print:
+                        self.assertEqual(context_cli.run(import_args), 0)
+                    printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
+                    self.assertIn("inserted=0", printed)
             finally:
                 if old_env is None:
                     os.environ.pop(env_key, None)
@@ -91,7 +97,7 @@ class ContextCliTests(unittest.TestCase):
         viewer = mock.Mock()
         viewer.main.return_value = None
         viewer.apply_runtime_config = mock.Mock()
-        with mock.patch.object(context_cli, "_load_memory_viewer", return_value=viewer):
+        with mock.patch.object(context_cli, "_load_module", return_value=viewer):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         viewer.apply_runtime_config.assert_called_once()
@@ -101,7 +107,7 @@ class ContextCliTests(unittest.TestCase):
         args = context_cli.build_parser().parse_args(["maintain", "--repair-queue", "--enqueue-missing", "--dry-run"])
         maintenance = mock.Mock()
         maintenance.main.return_value = 0
-        with mock.patch.object(context_cli, "_load_context_maintenance", return_value=maintenance):
+        with mock.patch.object(context_cli, "_load_module", return_value=maintenance):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         forwarded = maintenance.main.call_args.args[0]
@@ -117,9 +123,11 @@ class ContextCliTests(unittest.TestCase):
         result.returncode = 0
         result.stdout = "native ok\n"
         result.stderr = ""
-        with mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result) as mock_run:
-            with mock.patch("builtins.print") as mock_print:
-                rc = context_cli.run(args)
+        with (
+            mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result) as mock_run,
+            mock.patch("builtins.print") as mock_print,
+        ):
+            rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         mock_run.assert_called_once_with(
             backend="go",
@@ -143,10 +151,12 @@ class ContextCliTests(unittest.TestCase):
         result.stdout = 'Compiling...\n{"matches":[{"session_id":"abc"}],"errors":[]}\n'
         result.stderr = "build noise\n"
         result.json_payload.return_value = {"matches": [{"session_id": "abc"}], "errors": []}
-        with mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result):
-            with mock.patch("builtins.print") as mock_print:
-                with mock.patch("sys.stderr") as mock_stderr:
-                    rc = context_cli.run(args)
+        with (
+            mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result),
+            mock.patch("builtins.print") as mock_print,
+            mock.patch("sys.stderr") as mock_stderr,
+        ):
+            rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
         self.assertIn('"session_id":"abc"', printed)
@@ -159,9 +169,11 @@ class ContextCliTests(unittest.TestCase):
             "summary": {"status": "pass"},
             "results": [{"name": "health", "ok": True, "rc": 0, "detail": {"x": 1}}],
         }
-        with mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload) as mock_run:
-            with mock.patch("builtins.print") as mock_print:
-                rc = context_cli.run(args)
+        with (
+            mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload) as mock_run,
+            mock.patch("builtins.print") as mock_print,
+        ):
+            rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         mock_run.assert_called_once()
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
@@ -174,27 +186,34 @@ class ContextCliTests(unittest.TestCase):
             "summary": {"status": "pass"},
             "results": [{"name": "health", "ok": True, "rc": 0, "detail": {"x": 1}}],
         }
-        with mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload):
-            with mock.patch("builtins.print") as mock_print:
-                rc = context_cli.run(args)
+        with (
+            mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload),
+            mock.patch("builtins.print") as mock_print,
+        ):
+            rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
         self.assertIn('"x": 1', printed)
 
     def test_health_subcommand_compacts_payload_by_default(self) -> None:
         args = context_cli.build_parser().parse_args(["health"])
-        with mock.patch.object(
-            context_cli.session_index,
-            "health_payload",
-            return_value={
-                "session_index_db_exists": True,
-                "total_sessions": 7,
-                "session_index_db": "/tmp/session.db",
-                "sync": {"scanned": 1},
-            },
-        ), mock.patch.object(context_cli, "_source_freshness", return_value={"x": 1}), mock.patch.object(
-            context_cli.context_native, "health_payload", return_value={"available_backends": ["go"]}
-        ), mock.patch("builtins.print") as mock_print:
+        with (
+            mock.patch.object(
+                context_cli.session_index,
+                "health_payload",
+                return_value={
+                    "session_index_db_exists": True,
+                    "total_sessions": 7,
+                    "session_index_db": "/tmp/session.db",
+                    "sync": {"scanned": 1},
+                },
+            ),
+            mock.patch.object(context_cli, "_source_freshness", return_value={"x": 1}),
+            mock.patch.object(
+                context_cli.context_native, "health_payload", return_value={"available_backends": ["go"]}
+            ),
+            mock.patch("builtins.print") as mock_print,
+        ):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
@@ -203,18 +222,23 @@ class ContextCliTests(unittest.TestCase):
 
     def test_health_subcommand_verbose_prints_full_payload(self) -> None:
         args = context_cli.build_parser().parse_args(["health", "--verbose"])
-        with mock.patch.object(
-            context_cli.session_index,
-            "health_payload",
-            return_value={
-                "session_index_db_exists": True,
-                "total_sessions": 7,
-                "session_index_db": "/tmp/session.db",
-                "sync": {"scanned": 1},
-            },
-        ), mock.patch.object(context_cli, "_source_freshness", return_value={"x": 1}), mock.patch.object(
-            context_cli.context_native, "health_payload", return_value={"available_backends": ["go"]}
-        ), mock.patch("builtins.print") as mock_print:
+        with (
+            mock.patch.object(
+                context_cli.session_index,
+                "health_payload",
+                return_value={
+                    "session_index_db_exists": True,
+                    "total_sessions": 7,
+                    "session_index_db": "/tmp/session.db",
+                    "sync": {"scanned": 1},
+                },
+            ),
+            mock.patch.object(context_cli, "_source_freshness", return_value={"x": 1}),
+            mock.patch.object(
+                context_cli.context_native, "health_payload", return_value={"available_backends": ["go"]}
+            ),
+            mock.patch("builtins.print") as mock_print,
+        ):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)

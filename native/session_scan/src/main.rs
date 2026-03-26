@@ -240,6 +240,8 @@ struct Scanner {
 }
 
 impl Scanner {
+    /// Constructs a `Scanner` from parsed CLI arguments, expanding tilde paths
+    /// for Codex active sessions, Codex archived sessions, and Claude projects.
     fn from_args(args: &Args) -> Self {
         let expand = |raw: &str| -> PathBuf { PathBuf::from(tilde(raw).as_ref()) };
         let roots = vec![
@@ -259,6 +261,9 @@ impl Scanner {
         Self { roots }
     }
 
+    /// Recursively walks every configured root directory and collects all
+    /// `.json` and `.jsonl` files that pass path-based exclusion rules.
+    /// Roots that do not exist on disk are skipped with a diagnostic message.
     fn collect_work_items(&self) -> Vec<WorkItem> {
         self.roots
             .iter()
@@ -305,6 +310,9 @@ impl Scanner {
         labels
     }
 
+    /// Processes all `work_items` in parallel using Rayon, applying noise
+    /// filtering and query matching.  Returns the accepted summaries and any
+    /// unexpected errors separately so callers can surface them.
     fn scan(
         &self,
         work_items: &[WorkItem],
@@ -329,6 +337,8 @@ impl Scanner {
 }
 
 impl ScannerReport {
+    /// Writes a human-readable scan summary to stdout, including per-source
+    /// aggregates and a representative sample for each source label.
     fn write_stdout(&self, scanner: &Scanner) {
         println!(
             "Scan complete: {} files in {:.2?}.",
@@ -367,6 +377,9 @@ impl ScannerReport {
         }
     }
 
+    /// Builds the `JsonReport` payload that is serialised to stdout when
+    /// `--json` is passed.  Per-source aggregates are included even for
+    /// sources with zero matches so that callers can detect missing roots.
     fn json_payload(&self, scanner: &Scanner, query: &str) -> JsonReport {
         let aggregates = summarize_by_source(&self.summaries);
         let roots = scanner
@@ -434,6 +447,8 @@ struct SourceAggregate<'a> {
     sample: Option<&'a SessionSummary>,
 }
 
+/// Groups session summaries by source label and computes per-source aggregate
+/// statistics (session count, total lines, total bytes, representative sample).
 fn summarize_by_source<'a>(
     summaries: &'a [SessionSummary],
 ) -> HashMap<&'static str, SourceAggregate<'a>> {
@@ -460,6 +475,9 @@ fn summarize_by_source<'a>(
 
 // ── entry point ───────────────────────────────────────────────────────────────
 
+/// Parses CLI arguments, configures the Rayon thread pool, runs the parallel
+/// scan, sorts and truncates results, then emits either a JSON report or a
+/// human-readable summary to stdout.
 fn main() -> Result<()> {
     let args = Args::parse();
     rayon::ThreadPoolBuilder::new()
@@ -504,18 +522,16 @@ fn main() -> Result<()> {
 
 // ── file processing ───────────────────────────────────────────────────────────
 
+/// Reads a single session file, applies noise filtering and query matching,
+/// and returns a `SessionSummary` on success.  Returns an error using the
+/// sentinel strings `SKIPPED_QUERY_MISS` or `SKIPPED_CURRENT_WORKDIR` when
+/// the file should be silently excluded from results.
 fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
     let file = File::open(&item.path)
         .with_context(|| format!("Cannot open session file {}", item.path.display()))?;
     let metadata = file
         .metadata()
         .with_context(|| format!("Cannot read metadata for {}", item.path.display()))?;
-    let modified_epoch = metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
 
     let mut session_id = item
         .path
@@ -595,7 +611,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                         let score = candidate_score(detail.field, &detail.text, &query_lower);
                         let replace = best_match
                             .as_ref()
-                            .map_or(true, |(best_score, _, _)| score > *best_score);
+                            .is_none_or(|(best_score, _, _)| score > *best_score);
                         if replace {
                             best_match = Some((score, candidate, detail.field.to_string()));
                         }
@@ -611,7 +627,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                     let score = candidate_score(RAW_LINE_FIELD, &line, &query_lower);
                     let replace = best_match
                         .as_ref()
-                        .map_or(true, |(best_score, _, _)| score > *best_score);
+                        .is_none_or(|(best_score, _, _)| score > *best_score);
                     if replace {
                         best_match = Some((score, candidate, RAW_LINE_FIELD.to_string()));
                     }
@@ -642,30 +658,47 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
 
 /// Returns a window of `limit` characters centred on the first match of
 /// `query_lower` inside `text`, or `None` when no match exists.
+///
+/// Both `text` and `query_lower` are operated on as Unicode scalar values
+/// to ensure correct behaviour with CJK and other multi-byte sequences.
+#[inline]
 fn matched_snippet(text: &str, query_lower: &str, limit: usize) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() || query_lower.is_empty() {
         return None;
     }
+    // Lower-case the trimmed text and find the match byte offset *within
+    // `lower`*.  We then convert that byte offset to a char offset so that
+    // `clip_snippet` can safely iterate over Unicode scalar values.
     let lower = trimmed.to_lowercase();
-    let idx = lower.find(query_lower)?;
-    Some(clip_snippet(trimmed, idx, query_lower.len(), limit))
+    let byte_idx = lower.find(query_lower)?;
+    // Convert the byte offset in `lower` to a char (Unicode scalar) offset.
+    // Using `lower` (not `trimmed`) guarantees the byte index is valid even
+    // when `to_lowercase()` changes the byte length of CJK or accented chars.
+    let char_idx = lower[..byte_idx].chars().count();
+    let query_char_len = query_lower.chars().count();
+    Some(clip_snippet_by_chars(trimmed, char_idx, query_char_len, limit))
 }
 
-/// Clips `text` to at most `limit` characters, keeping the matched region
-/// centred in the window.  Operates on Unicode scalar values (chars), not
-/// bytes, to avoid splitting multi-byte sequences.
+/// Clips `text` to at most `limit` Unicode scalar values, centring the window
+/// on the matched region described by `char_start` and `query_char_len`.
+///
+/// All indexing is performed on chars, never on raw bytes, so multi-byte CJK
+/// sequences and emoji are always kept intact.
 #[inline]
-fn clip_snippet(text: &str, index: usize, query_len: usize, limit: usize) -> String {
+fn clip_snippet_by_chars(
+    text: &str,
+    char_start: usize,
+    query_char_len: usize,
+    limit: usize,
+) -> String {
     let total_chars = text.chars().count();
     if limit == 0 || total_chars <= limit {
         return text.to_string();
     }
-    let start_chars = text[..index].chars().count();
-    let query_chars = text[index..index + query_len].chars().count();
     let radius = limit / 2;
-    let start = start_chars.saturating_sub(radius);
-    let end = (start_chars + query_chars + radius).min(total_chars);
+    let start = char_start.saturating_sub(radius);
+    let end = (char_start + query_char_len + radius).min(total_chars);
     text.chars()
         .skip(start)
         .take(end.saturating_sub(start))
@@ -726,6 +759,9 @@ fn is_noise_line(line: &str) -> bool {
 
 /// Returns `true` when the text is project-internal meta commentary that
 /// should not surface as a search result even if it contains the query.
+///
+/// The check is scoped to the current working directory: meta commentary from
+/// *other* projects is allowed through so cross-project searches still work.
 #[inline]
 fn should_skip_meta_text(
     current_workdir: Option<&str>,
@@ -738,7 +774,7 @@ fn should_skip_meta_text(
     let normalized_cwd = std::path::Path::new(cwd)
         .canonicalize()
         .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| cwd.to_string());
+        .unwrap_or_else(|_| cwd.to_string());
     let trimmed = text.trim();
     let looks_like_meta = (trimmed.starts_with('我')
         || trimmed.starts_with("我继续")
@@ -756,6 +792,7 @@ fn should_skip_meta_text(
 
 /// Returns `true` when a snippet candidate is project-internal meta
 /// commentary that should be excluded regardless of workdir matching.
+#[inline]
 fn should_skip_meta_candidate(text: &str) -> bool {
     let trimmed = text.trim();
     (trimmed.starts_with('我')
@@ -773,6 +810,7 @@ fn should_skip_meta_candidate(text: &str) -> bool {
 
 /// Returns `true` for record types that contain no useful user-visible text,
 /// such as tool call outputs, token counts, and reasoning traces.
+#[inline]
 fn should_skip_record_type(value: &Value) -> bool {
     let top_level = value.get("type").and_then(Value::as_str).unwrap_or("");
     if matches!(top_level, "turn_context" | "custom_tool_call") {
@@ -804,6 +842,7 @@ fn should_skip_record_type(value: &Value) -> bool {
 
 /// Returns a base priority score for a JSON field path.  Higher values indicate
 /// fields that carry primary user-visible content.
+#[inline]
 fn field_priority(field: &str) -> i32 {
     match field {
         "message.content.text" | "payload.content.text" => 120,
@@ -821,6 +860,7 @@ fn field_priority(field: &str) -> i32 {
 
 /// Computes a match quality score combining field priority and query hit
 /// frequency.  Used to select the best snippet when multiple candidates match.
+#[inline]
 fn candidate_score(field: &str, text: &str, query_lower: &str) -> i32 {
     let hits = text.to_lowercase().matches(query_lower).count() as i32;
     field_priority(field) + hits * 25
@@ -875,6 +915,7 @@ fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
 }
 
 /// Appends a `MatchDetail` to `out` when `value` is a non-empty JSON string.
+#[inline]
 fn collect_text_candidate(field: &'static str, value: Option<&Value>, out: &mut Vec<MatchDetail>) {
     if let Some(text) = value.and_then(Value::as_str) {
         let trimmed = text.trim();
@@ -891,6 +932,7 @@ fn collect_text_candidate(field: &'static str, value: Option<&Value>, out: &mut 
 
 /// Extracts the session identifier from a parsed JSON record, checking
 /// `payload.id`, `sessionId`, and `session_id` in priority order.
+#[inline]
 fn extract_session_id(value: &Value) -> Option<String> {
     nested_str(value, &["payload", "id"])
         .or_else(|| nested_str(value, &["sessionId"]))
@@ -900,6 +942,7 @@ fn extract_session_id(value: &Value) -> Option<String> {
 
 /// Extracts the most relevant timestamp from a parsed JSON record, preferring
 /// `payload.timestamp` over root-level date keys.
+#[inline]
 fn extract_timestamp(value: &Value) -> Option<String> {
     nested_str(value, &["payload", "timestamp"])
         .or_else(|| nested_str(value, &["createdAt"]))
@@ -909,6 +952,7 @@ fn extract_timestamp(value: &Value) -> Option<String> {
 }
 
 /// Extracts the working directory recorded in a parsed JSON record.
+#[inline]
 fn extract_cwd(value: &Value) -> Option<String> {
     nested_str(value, &["payload", "cwd"])
         .or_else(|| nested_str(value, &["cwd"]))
@@ -937,6 +981,7 @@ fn active_workdir() -> Option<String> {
 /// Navigates a chain of `keys` through nested JSON objects and returns the
 /// final value as a string slice, or `None` if any key is absent or the
 /// final value is not a string.
+#[inline]
 fn nested_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     let mut current = value;
     for key in keys {
@@ -951,6 +996,7 @@ const VALID_EXTENSIONS: &[&str] = &["json", "jsonl"];
 
 /// Returns `true` when the file has a recognised session extension and does
 /// not belong to a skill directory that should be excluded from scanning.
+#[inline]
 fn is_valid_extension(path: &Path) -> bool {
     let lower_path = path.to_string_lossy().to_lowercase();
     if should_skip_path(&lower_path) {
@@ -964,6 +1010,7 @@ fn is_valid_extension(path: &Path) -> bool {
 
 /// Returns `true` when `lower_path` (already lower-cased) belongs to a skill
 /// directory that should be excluded from session scanning.
+#[inline]
 fn should_skip_path(lower_path: &str) -> bool {
     lower_path.contains("/skills/") || lower_path.contains("skills-repo")
 }
@@ -971,6 +1018,7 @@ fn should_skip_path(lower_path: &str) -> bool {
 /// Returns `true` when an error should be surfaced to the caller.  Expected
 /// skip sentinels (`SKIPPED_QUERY_MISS`, `SKIPPED_CURRENT_WORKDIR`) are
 /// suppressed to keep stderr clean during normal operation.
+#[inline]
 fn should_report_error(err: &anyhow::Error) -> bool {
     let text = err.to_string();
     text != SKIPPED_QUERY_MISS && text != SKIPPED_CURRENT_WORKDIR
@@ -1145,5 +1193,30 @@ mod tests {
             SKIPPED_CURRENT_WORKDIR
         )));
         assert!(should_report_error(&anyhow::anyhow!("real parse failure")));
+    }
+
+    /// Verifies that `matched_snippet` correctly centres a window around a CJK
+    /// query term without corrupting multi-byte scalar boundaries.
+    #[test]
+    fn matched_snippet_handles_cjk_query() {
+        let text = "这是一段包含关键词测试内容的中文句子，用于验证多字节边界安全性。";
+        let result = matched_snippet(text, "关键词", 20);
+        assert!(result.is_some(), "expected a match for CJK query");
+        let snippet = result.unwrap();
+        // The snippet must be valid UTF-8 (no panics) and contain the query.
+        assert!(
+            snippet.contains("关键词"),
+            "snippet should contain query: {snippet}"
+        );
+    }
+
+    /// Verifies that `clip_snippet_by_chars` never panics when the window
+    /// extends past the end of a string containing multi-byte characters.
+    #[test]
+    fn clip_snippet_by_chars_clamps_to_end() {
+        let text = "短文本";
+        // Request a window starting at char 1, extending well past the end.
+        let result = clip_snippet_by_chars(text, 1, 1, 100);
+        assert_eq!(result, text);
     }
 }

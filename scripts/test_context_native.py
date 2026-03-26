@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import context_native
+import context_native  # noqa: E402
 
 
 class ContextNativeTests(unittest.TestCase):
@@ -45,17 +45,21 @@ class ContextNativeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "native_health_cache.json"
             payload = {"available_backends": ["go"], "go": {"ok": True}}
-            with mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_PATH", cache_path):
-                with mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_TTL_SEC", 30):
-                    context_native._store_health_cache(payload)
-                    cached = context_native._load_health_cache()
+            with (
+                mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_PATH", cache_path),
+                mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_TTL_SEC", 30),
+            ):
+                context_native._store_health_cache(payload)
+                cached = context_native._load_health_cache()
             self.assertEqual(cached, payload)
 
     def test_health_payload_uses_cache(self) -> None:
         cached = {"available_backends": ["go"], "go": {"ok": True}}
-        with mock.patch.object(context_native, "_load_health_cache", return_value=cached):
-            with mock.patch.object(context_native, "run_native_scan") as mock_run:
-                payload = context_native.health_payload(probe=True)
+        with (
+            mock.patch.object(context_native, "_load_health_cache", return_value=cached),
+            mock.patch.object(context_native, "run_native_scan") as mock_run,
+        ):
+            payload = context_native.health_payload(probe=True)
         self.assertEqual(payload, cached)
         mock_run.assert_not_called()
 

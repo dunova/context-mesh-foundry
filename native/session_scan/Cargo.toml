@@ -3,8 +3,12 @@ name = "session_scan"
 version = "0.2.0"
 edition = "2021"
 description = "High-performance scanner for Codex/Claude session files with structured JSON output."
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/contextgo/contextgo"
+license = "AGPL-3.0"
+repository = "https://github.com/dunova/ContextGO"
+homepage = "https://github.com/dunova/ContextGO"
+keywords = ["cli", "session", "search", "ai", "codex"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
 
 [dependencies]
 anyhow = "1"
@@ -14,3 +18,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 shellexpand = "2"
 walkdir = "2"
+
+[profile.release]
+# Enable link-time optimisation for maximum inlining across crate boundaries.
+lto = true
+# Single codegen unit gives the optimiser full visibility over the whole program.
+codegen-units = 1
+# Abort on panic rather than unwinding; slightly smaller binary and faster panics.
+panic = "abort"
+# Maximum optimisation level.
+opt-level = 3
+# Strip debug symbols from the release binary to minimise binary size.
+strip = "symbols"

@@ -1,51 +1,79 @@
 #!/usr/bin/env python3
-"""Smoke-test helpers for ContextGO runtimes."""
+"""Smoke-test suite for ContextGO runtimes.
+
+Each ``test_*`` function returns a result dict with the shape::
+
+    {
+        "name":   str,   # test identifier
+        "rc":     int,   # synthesised return code (0 = pass)
+        "ok":     bool,  # overall pass/fail
+        "detail": ...,   # test-specific diagnostic payload
+    }
+
+``run_smoke`` orchestrates all tests and returns an aggregated report.
+``main`` serialises the report to stdout as JSON and exits non-zero on failure.
+"""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import uuid
+from datetime import date
 from pathlib import Path
+from typing import Any
+
+# ---------------------------------------------------------------------------
+# Low-level subprocess helper
+# ---------------------------------------------------------------------------
 
 
 def run_cmd(args: list[str], timeout: int = 60) -> tuple[int, str, str]:
-    proc = subprocess.run(args, capture_output=True, text=False, timeout=timeout)
+    """Run *args* as a subprocess and return ``(returncode, stdout, stderr)``.
+
+    Both output streams are decoded from UTF-8 with replacement so callers
+    always receive ``str`` regardless of the child process encoding.
+    """
+    proc = subprocess.run(args, capture_output=True, timeout=timeout)
     stdout = (proc.stdout or b"").decode("utf-8", errors="replace")
     stderr = (proc.stderr or b"").decode("utf-8", errors="replace")
     return proc.returncode, stdout, stderr
 
 
-def test_health(cli_path: Path) -> dict:
+# ---------------------------------------------------------------------------
+# Individual smoke tests
+# ---------------------------------------------------------------------------
+
+
+def test_health(cli_path: Path) -> dict[str, Any]:
+    """Verify that ``context_cli.py health`` returns valid JSON with ``all_ok``."""
     rc, out, err = run_cmd([sys.executable, str(cli_path), "health"])
-    text = (out or err).strip()
-    detail = {}
+    raw = (out or err).strip()
     try:
-        payload = json.loads(text)
-        detail = payload
+        payload: dict[str, Any] = json.loads(raw)
         ok = bool(payload.get("all_ok"))
-        error = None
+        detail: dict[str, Any] = payload
     except json.JSONDecodeError as exc:
-        payload = None
         ok = False
-        error = str(exc)
-    if error:
-        detail["error"] = error
-        detail["raw"] = text
+        detail = {"error": f"JSON decode failed: {exc}", "raw": raw}
     return {"name": "health", "rc": rc, "ok": ok, "detail": detail}
 
 
-def test_quality_gate(quality_gate_path: Path) -> dict:
+def test_quality_gate(quality_gate_path: Path) -> dict[str, Any]:
+    """Run the e2e quality-gate script and assert it exits cleanly."""
     rc, out, err = run_cmd([sys.executable, str(quality_gate_path)], timeout=120)
     text = (out or err).strip()
     return {"name": "quality_gate", "rc": rc, "ok": rc == 0, "detail": text}
 
 
-def test_healthcheck(healthcheck_path: Path) -> dict:
+def test_healthcheck(healthcheck_path: Path) -> dict[str, Any]:
+    """Execute the shell healthcheck script in quiet mode."""
     rc, out, err = run_cmd(["bash", str(healthcheck_path), "--quiet"])
     text = (out or err).strip()
     return {
@@ -60,46 +88,77 @@ def test_healthcheck(healthcheck_path: Path) -> dict:
     }
 
 
-def test_rw_cycle(cli_path: Path) -> dict:
-    with tempfile.TemporaryDirectory(prefix="cmf-smoke-") as tmpdir:
-        tmpdir = Path(tmpdir)
-        export_path = tmpdir / "export.json"
+def test_rw_cycle(cli_path: Path) -> dict[str, Any]:
+    """Exercise the full save → semantic-search → export → import cycle."""
+    with tempfile.TemporaryDirectory(prefix="cmf-smoke-") as _tmpdir:
+        tmp = Path(_tmpdir)
+        export_path = tmp / "export.json"
         marker = f"smoke-{uuid.uuid4().hex[:12]}"
-        r1 = run_cmd(
-            [sys.executable, str(cli_path), "save", "--title", "smoke", "--content", marker, "--tags", "smoke"]
+
+        r_save = run_cmd(
+            [
+                sys.executable,
+                str(cli_path),
+                "save",
+                "--title",
+                "smoke",
+                "--content",
+                marker,
+                "--tags",
+                "smoke",
+            ]
         )
-        r2 = run_cmd([sys.executable, str(cli_path), "semantic", marker, "--limit", "3"])
-        r3 = run_cmd([sys.executable, str(cli_path), "export", marker, str(export_path), "--limit", "10"])
-        export_payload = json.loads(export_path.read_text()) if export_path.exists() else {}
-        r4 = (
-            run_cmd([sys.executable, str(cli_path), "import", str(export_path), "--no-sync"])
-            if export_path.exists()
-            else (1, "", "no export")
+        r_semantic = run_cmd([sys.executable, str(cli_path), "semantic", marker, "--limit", "3"])
+        r_export = run_cmd(
+            [
+                sys.executable,
+                str(cli_path),
+                "export",
+                marker,
+                str(export_path),
+                "--limit",
+                "10",
+            ]
         )
+
+        export_payload: dict[str, Any] = {}
+        if export_path.exists():
+            with contextlib.suppress(json.JSONDecodeError):
+                export_payload = json.loads(export_path.read_text(encoding="utf-8"))
+
+        if export_path.exists():
+            r_import = run_cmd([sys.executable, str(cli_path), "import", str(export_path), "--no-sync"])
+        else:
+            r_import = (1, "", "export file not produced")
+
+        semantic_found = marker in r_semantic[1]
+        export_count = export_payload.get("total_observations")
+
         ok = (
-            r1[0] == 0
-            and r2[0] == 0
-            and marker in r2[1]
-            and r3[0] == 0
-            and export_payload.get("total_observations") == 1
-            and r4[0] == 0
+            r_save[0] == 0
+            and r_semantic[0] == 0
+            and semantic_found
+            and r_export[0] == 0
+            and export_count == 1
+            and r_import[0] == 0
         )
         return {
             "name": "rw_cycle",
             "rc": 0 if ok else 1,
             "ok": ok,
             "detail": {
-                "save_rc": r1[0],
-                "semantic_rc": r2[0],
-                "semantic_found": marker in r2[1],
-                "export_rc": r3[0],
-                "export_count": export_payload.get("total_observations"),
-                "import_rc": r4[0],
+                "save_rc": r_save[0],
+                "semantic_rc": r_semantic[0],
+                "semantic_found": semantic_found,
+                "export_rc": r_export[0],
+                "export_count": export_count,
+                "import_rc": r_import[0],
             },
         }
 
 
-def test_maintain(cli_path: Path) -> dict:
+def test_maintain(cli_path: Path) -> dict[str, Any]:
+    """Run maintenance in dry-run mode and confirm a snapshot is reported."""
     rc, out, err = run_cmd([sys.executable, str(cli_path), "maintain", "--dry-run"])
     text = out or err
     return {
@@ -110,7 +169,8 @@ def test_maintain(cli_path: Path) -> dict:
     }
 
 
-def test_viewer(cli_path: Path) -> dict:
+def test_viewer(cli_path: Path) -> dict[str, Any]:
+    """Start the local viewer server and confirm the health endpoint responds."""
     port = 38880
     proc = subprocess.Popen(
         [sys.executable, str(cli_path), "serve", "--host", "127.0.0.1", "--port", str(port)],
@@ -129,7 +189,7 @@ def test_viewer(cli_path: Path) -> dict:
                     body = resp.read().decode("utf-8")
                     ok = resp.status == 200
                     break
-            except Exception as exc:
+            except (OSError, urllib.error.URLError) as exc:
                 last_err = str(exc)
                 time.sleep(0.2)
         return {
@@ -146,41 +206,60 @@ def test_viewer(cli_path: Path) -> dict:
             proc.kill()
 
 
+# ---------------------------------------------------------------------------
+# Native-backend helpers
+# ---------------------------------------------------------------------------
+
+
 def _available_native_backends(cli_path: Path) -> list[str]:
+    """Return the list of available native backends reported by ``health``.
+
+    Returns an empty list when the health command fails or the response is not
+    valid JSON — the native-scan test is simply skipped in those cases.
+    """
     rc, out, err = run_cmd([sys.executable, str(cli_path), "health"])
-    text = (out or err).strip()
-    if rc != 0 or not text:
+    raw = (out or err).strip()
+    if rc != 0 or not raw:
         return []
     try:
-        payload = json.loads(text)
+        payload: dict[str, Any] = json.loads(raw)
     except json.JSONDecodeError:
         return []
     native = payload.get("native_backends") or {}
     backends = native.get("available_backends") or []
-    return [str(item) for item in backends if str(item) in {"rust", "go"}]
+    return [str(b) for b in backends if str(b) in {"rust", "go"}]
 
 
 def _write_native_fixture(root: Path, marker: str) -> tuple[Path, Path]:
+    """Write a minimal JSONL session fixture under *root* for native-scan tests.
+
+    The fixture uses today's date for the directory structure so that native
+    scanners configured to scan recent sessions will always discover it.
+
+    Returns ``(codex_root, claude_root)``.
+    """
+    today = date.today()
     codex_root = root / "codex"
     claude_root = root / "claude"
-    target = codex_root / "2026" / "03" / "26"
+    target = codex_root / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
     target.mkdir(parents=True, exist_ok=True)
     claude_root.mkdir(parents=True, exist_ok=True)
+
     session_file = target / "native-fixture.jsonl"
     lines = [
         {
             "type": "session_meta",
             "payload": {
                 "id": "native-fixture-session",
-                "cwd": "/tmp/contextgo-native-fixture",
-                "timestamp": "2026-03-26T00:00:00Z",
+                "cwd": str(root),
+                "timestamp": f"{today.isoformat()}T00:00:00Z",
             },
         },
         {
             "type": "response_item",
             "payload": {
                 "type": "function_call_output",
-                "output": f"# AGENTS.md instructions for /tmp {marker}",
+                "output": f"# AGENTS.md instructions for {root} {marker}",
             },
         },
         {
@@ -191,17 +270,24 @@ def _write_native_fixture(root: Path, marker: str) -> tuple[Path, Path]:
                 "content": [
                     {
                         "type": "output_text",
-                        "text": f"最终交付：ContextGO native smoke marker {marker} 已验证。",
+                        "text": (
+                            f"Final delivery: ContextGO native smoke marker {marker} verified. "
+                            f"最终交付：ContextGO native smoke marker {marker} 已验证。"
+                        ),
                     }
                 ],
             },
         },
     ]
-    session_file.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in lines), encoding="utf-8")
+    session_file.write_text(
+        "\n".join(json.dumps(item, ensure_ascii=False) for item in lines),
+        encoding="utf-8",
+    )
     return codex_root, claude_root
 
 
-def test_native_scan_contract(cli_path: Path) -> dict:
+def test_native_scan_contract(cli_path: Path) -> dict[str, Any]:
+    """Verify that every available native backend can locate a known fixture."""
     backends = _available_native_backends(cli_path)
     if not backends:
         return {
@@ -212,9 +298,11 @@ def test_native_scan_contract(cli_path: Path) -> dict:
         }
 
     marker = f"smoke-native-{int(time.time())}"
-    backend_results: list[dict] = []
-    with tempfile.TemporaryDirectory(prefix="contextgo-native-smoke-") as tmpdir:
-        codex_root, claude_root = _write_native_fixture(Path(tmpdir), marker)
+    backend_results: list[dict[str, Any]] = []
+
+    with tempfile.TemporaryDirectory(prefix="contextgo-native-smoke-") as _tmpdir:
+        codex_root, claude_root = _write_native_fixture(Path(_tmpdir), marker)
+
         for backend in backends:
             args = [
                 sys.executable,
@@ -233,27 +321,31 @@ def test_native_scan_contract(cli_path: Path) -> dict:
                 "--json",
             ]
             rc, out, err = run_cmd(args, timeout=120)
-            transient = "resource temporarily unavailable"
-            if rc != 0 and transient in ((out or "") + "\n" + (err or "")).lower():
+
+            # Retry once on transient resource-lock errors (e.g. file-system busy).
+            if rc != 0 and "resource temporarily unavailable" in ((out or "") + "\n" + (err or "")).lower():
                 time.sleep(0.5)
                 rc, out, err = run_cmd(args, timeout=120)
-            text = (out or err).strip()
+
+            raw = (out or err).strip()
             try:
-                payload = json.loads(text)
+                payload: dict[str, Any] = json.loads(raw)
             except json.JSONDecodeError as exc:
                 backend_results.append(
                     {
                         "backend": backend,
                         "rc": rc,
                         "ok": False,
-                        "error": f"invalid json: {exc}",
-                        "raw": text[:400],
+                        "error": f"invalid JSON response: {exc}",
+                        "raw": raw[:400],
                     }
                 )
                 continue
-            matches = payload.get("matches") or []
+
+            matches: list[dict[str, Any]] = payload.get("matches") or []
             first = matches[0] if matches else {}
             snippet = str(first.get("snippet") or "")
+
             ok = (
                 rc == 0
                 and bool(matches)
@@ -271,16 +363,34 @@ def test_native_scan_contract(cli_path: Path) -> dict:
                     "snippet_head": snippet[:160],
                 }
             )
-    ok = all(item.get("ok") for item in backend_results)
+
+    all_ok = all(item.get("ok") for item in backend_results)
     return {
         "name": "native_scan",
-        "rc": 0 if ok else 1,
-        "ok": ok,
+        "rc": 0 if all_ok else 1,
+        "ok": all_ok,
         "detail": {"backends": backend_results},
     }
 
 
-def run_smoke(cli_path: Path, quality_gate_path: Path) -> dict:
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
+
+
+def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Produce a pass/fail summary over a list of test result dicts."""
+    failed = [item for item in results if not item.get("ok")]
+    return {
+        "status": "pass" if not failed else "fail",
+        "total": len(results),
+        "failed": len(failed),
+        "failed_names": [item.get("name") for item in failed],
+    }
+
+
+def run_smoke(cli_path: Path, quality_gate_path: Path) -> dict[str, Any]:
+    """Run the full smoke suite and return an aggregated report dict."""
     healthcheck_path = cli_path.with_name("context_healthcheck.sh")
     results = [
         test_health(cli_path),
@@ -298,20 +408,12 @@ def run_smoke(cli_path: Path, quality_gate_path: Path) -> dict:
     }
 
 
-def summarize_results(results: list[dict]) -> dict:
-    failed = [item for item in results if not item.get("ok")]
-    return {
-        "status": "pass" if not failed else "fail",
-        "total": len(results),
-        "failed": len(failed),
-        "failed_names": [item.get("name") for item in failed],
-    }
-
-
 def main() -> int:
+    """Entry point: run smoke suite and print JSON report to stdout."""
     root = Path(__file__).resolve().parent
     cli_path = root / "context_cli.py"
     quality_gate_path = root / "e2e_quality_gate.py"
+
     payload = run_smoke(cli_path, quality_gate_path)
     output = {
         "scope": "workspace",

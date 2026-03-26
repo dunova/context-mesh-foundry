@@ -14,7 +14,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import autoresearch_contextgo as ar
+import autoresearch_contextgo as ar  # noqa: E402
 
 
 class AutoResearchTests(unittest.TestCase):
@@ -32,10 +32,9 @@ class AutoResearchTests(unittest.TestCase):
                 "dimensions": {"stability": 100, "recall": 100, "token_efficiency": 95},
                 "total_score": 99.0,
             }
-            with mock.patch.object(ar, "LOG_PATH", log_path):
-                with mock.patch.object(ar, "STATE_PATH", state_path):
-                    ar.append_log(8, payload, "KEEP", "first")
-                    ar.append_log(8, payload2, "KEEP", "second")
+            with mock.patch.object(ar, "LOG_PATH", log_path), mock.patch.object(ar, "STATE_PATH", state_path):
+                ar.append_log(8, payload, "KEEP", "first")
+                ar.append_log(8, payload2, "KEEP", "second")
             lines = log_path.read_text(encoding="utf-8").strip().splitlines()
             self.assertEqual(len(lines), 2)
             self.assertIn("second", lines[1])
@@ -63,11 +62,13 @@ class AutoResearchTests(unittest.TestCase):
                     "native_text_bytes": 579,
                 },
             }
-            with mock.patch.object(ar, "LOG_PATH", log_path):
-                with mock.patch.object(ar, "STATE_PATH", state_path):
-                    with mock.patch.object(ar, "METRICS_PATH", metrics_path):
-                        with mock.patch.object(ar, "BEST_PATH", best_path):
-                            ar.append_log(12, payload, "KEEP", "metrics")
+            with (
+                mock.patch.object(ar, "LOG_PATH", log_path),
+                mock.patch.object(ar, "STATE_PATH", state_path),
+                mock.patch.object(ar, "METRICS_PATH", metrics_path),
+                mock.patch.object(ar, "BEST_PATH", best_path),
+            ):
+                ar.append_log(12, payload, "KEEP", "metrics")
             metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual(metrics[0]["round"], 12)
             self.assertEqual(metrics[0]["health_bytes"], 386)
@@ -84,28 +85,30 @@ class AutoResearchTests(unittest.TestCase):
             state_path = Path(tmpdir) / "latest.json"
             metrics_path = Path(tmpdir) / "metrics.json"
             best_path = Path(tmpdir) / "best.json"
-            with mock.patch.object(ar, "LOG_PATH", log_path):
-                with mock.patch.object(ar, "STATE_PATH", state_path):
-                    with mock.patch.object(ar, "METRICS_PATH", metrics_path):
-                        with mock.patch.object(ar, "BEST_PATH", best_path):
-                            with mock.patch.object(ar, "MAX_METRIC_HISTORY", 3):
-                                for round_no in range(1, 6):
-                                    payload = {
-                                        "round": round_no,
-                                        "timestamp": f"2026-03-26T10:0{round_no}:00",
-                                        "git_commit": f"c{round_no}",
-                                        "note": f"n{round_no}",
-                                        "dimensions": {"stability": 100, "recall": 100, "token_efficiency": 95},
-                                        "total_score": 99.0,
-                                        "signals": {
-                                            "health_bytes": 386,
-                                            "search_bytes": 1417,
-                                            "smoke_bytes": 346,
-                                            "native_total_bytes": 4382,
-                                            "native_text_bytes": 579,
-                                        },
-                                    }
-                                    ar.append_log(round_no, payload, "KEEP", f"n{round_no}")
+            with (
+                mock.patch.object(ar, "LOG_PATH", log_path),
+                mock.patch.object(ar, "STATE_PATH", state_path),
+                mock.patch.object(ar, "METRICS_PATH", metrics_path),
+                mock.patch.object(ar, "BEST_PATH", best_path),
+                mock.patch.object(ar, "MAX_METRIC_HISTORY", 3),
+            ):
+                for round_no in range(1, 6):
+                    payload = {
+                        "round": round_no,
+                        "timestamp": f"2026-03-26T10:0{round_no}:00",
+                        "git_commit": f"c{round_no}",
+                        "note": f"n{round_no}",
+                        "dimensions": {"stability": 100, "recall": 100, "token_efficiency": 95},
+                        "total_score": 99.0,
+                        "signals": {
+                            "health_bytes": 386,
+                            "search_bytes": 1417,
+                            "smoke_bytes": 346,
+                            "native_total_bytes": 4382,
+                            "native_text_bytes": 579,
+                        },
+                    }
+                    ar.append_log(round_no, payload, "KEEP", f"n{round_no}")
             metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual([item["round"] for item in metrics], [3, 4, 5])
 

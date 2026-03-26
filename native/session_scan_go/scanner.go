@@ -407,35 +407,50 @@ func candidateScore(field, text, queryLower string) int {
 }
 
 // clipSnippet returns a substring of text of at most limit runes, centred on
-// the match at byte position index.  It operates on rune boundaries to avoid
-// splitting multi-byte UTF-8 characters.
+// the match at byte position index.  It is rune-safe: all slicing is performed
+// on the []rune representation so that multi-byte UTF-8 characters (including
+// CJK codepoints) are never split.
+//
+// index is the byte offset of the query match within text (as returned by
+// strings.Index).  queryLen is the byte length of the query term (used only to
+// keep the result non-negative; pass 0 if unknown).  limit is the maximum
+// number of runes in the returned string.
 func clipSnippet(text string, index, queryLen, limit int) string {
+	if limit <= 0 {
+		return text
+	}
 	runes := []rune(text)
-	if limit <= 0 || utf8.RuneCountInString(text) <= limit {
+	total := len(runes)
+	if total <= limit {
 		return text
 	}
 	if queryLen < 0 {
 		queryLen = 0
 	}
-	// Find the rune index closest to byte position 'index'.
+
+	// Convert the byte offset 'index' to a rune index.  We iterate over rune
+	// start positions (as produced by range-over-string) and count how many
+	// runes precede byte offset 'index'.  This is O(n) but avoids allocating
+	// a second string just for index arithmetic.
 	runeIdx := 0
-	for i := range text {
-		if i >= index {
+	for bytePos := range text {
+		if bytePos >= index {
 			break
 		}
 		runeIdx++
 	}
+
+	// Centre the window on the match.
 	radius := limit / 2
 	start := runeIdx - radius
 	if start < 0 {
 		start = 0
 	}
 	end := start + limit
-	if end > len(runes) {
-		end = len(runes)
-		if end-limit > 0 {
-			start = end - limit
-		} else {
+	if end > total {
+		end = total
+		start = end - limit
+		if start < 0 {
 			start = 0
 		}
 	}

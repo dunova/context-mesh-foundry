@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -25,10 +26,12 @@ class CaseResult:
 
 
 def session_db_path(storage_root: Path) -> Path:
+    """Return the path to the session index SQLite database within storage_root."""
     return storage_root / "index" / "session_index.db"
 
 
 def prepare_fixture_home(home: Path) -> None:
+    """Create a minimal fake home directory tree for quality gate tests."""
     codex_root = home / ".codex" / "sessions" / "2026" / "03" / "25"
     codex_root.mkdir(parents=True, exist_ok=True)
     (codex_root / "sample.jsonl").write_text(
@@ -97,6 +100,7 @@ def prepare_fixture_home(home: Path) -> None:
 
 
 def run_cmd(args: list[str], env: dict[str, str], timeout: int = 20) -> tuple[int, str, str]:
+    """Run a subprocess with the given env and return (returncode, stdout, stderr)."""
     proc = subprocess.run(
         args,
         cwd=str(REPO_ROOT),
@@ -109,6 +113,7 @@ def run_cmd(args: list[str], env: dict[str, str], timeout: int = 20) -> tuple[in
 
 
 def case_health(env: dict[str, str]) -> CaseResult:
+    """Run the health command and verify all_ok is True."""
     t0 = time.time()
     rc, out, err = run_cmd(["python3", str(CONTEXT_CLI), "health"], env)
     payload = {}
@@ -116,16 +121,15 @@ def case_health(env: dict[str, str]) -> CaseResult:
     start = text.find("{")
     end = text.rfind("}")
     if start >= 0 and end > start:
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             payload = json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            pass
     ok = rc == 0 and bool(payload.get("all_ok"))
     detail = f"rc={rc}, all_ok={payload.get('all_ok')}, mode={payload.get('remote_sync_policy', {}).get('mode')}"
     return CaseResult("health", ok, detail, time.time() - t0)
 
 
 def case_save_and_readback(env: dict[str, str]) -> CaseResult:
+    """Save a memory and verify it can be retrieved via semantic search."""
     t0 = time.time()
     marker = f"gate-marker-{int(time.time())}"
     rc_save, out_save, _ = run_cmd(
@@ -149,6 +153,7 @@ def case_save_and_readback(env: dict[str, str]) -> CaseResult:
 
 
 def case_session_index_sources(env: dict[str, str], storage_root: Path) -> CaseResult:
+    """Verify all required session source types appear in the session index."""
     t0 = time.time()
     run_cmd(["python3", str(CONTEXT_CLI), "health"], env, timeout=60)
     session_db = session_db_path(storage_root)
@@ -168,6 +173,7 @@ def case_session_index_sources(env: dict[str, str], storage_root: Path) -> CaseR
 
 
 def case_local_search(env: dict[str, str]) -> CaseResult:
+    """Verify the search command returns results containing the fixture marker."""
     t0 = time.time()
     rc, out, err = run_cmd(
         ["python3", str(CONTEXT_CLI), "search", "NotebookLM", "--limit", "3", "--literal"],
@@ -181,6 +187,7 @@ def case_local_search(env: dict[str, str]) -> CaseResult:
 
 
 def main() -> int:
+    """Run all quality-gate cases in an isolated temp environment and report results."""
     with tempfile.TemporaryDirectory(prefix="contextgo-gate-") as tmpdir:
         fake_home = Path(tmpdir)
         storage_root = fake_home / ".contextgo"

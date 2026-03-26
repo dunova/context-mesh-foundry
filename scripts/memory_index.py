@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
-"""Unified local memory index for ContextGO."""
+"""Unified local memory index for ContextGO.
+
+Provides SQLite-backed storage, full-text search, timeline navigation,
+and import/export of memory observations collected from local session files.
+"""
 
 from __future__ import annotations
+
+__all__ = [
+    "Observation",
+    "ensure_index_db",
+    "export_observations_payload",
+    "get_index_db_path",
+    "get_observations_by_ids",
+    "import_observations_payload",
+    "index_stats",
+    "search_index",
+    "strip_private_blocks",
+    "sync_index_from_storage",
+    "timeline_index",
+]
 
 import hashlib
 import json
@@ -19,38 +37,80 @@ except ImportError:  # pragma: no cover
     from .context_config import storage_root  # type: ignore[import-not-found]
 
 
-PRIVATE_BLOCK_RE = re.compile(r"<private>[\s\S]*?</private>", re.IGNORECASE)
-PRIVATE_TAG_RE = re.compile(r"</?private>", re.IGNORECASE)
+# ---------------------------------------------------------------------------
+# Regex helpers
+# ---------------------------------------------------------------------------
+
+_PRIVATE_BLOCK_RE = re.compile(r"<private>[\s\S]*?</private>", re.IGNORECASE)
+_PRIVATE_TAG_RE = re.compile(r"</?private>", re.IGNORECASE)
+
+_SECRET_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\bsk-proj-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Text sanitisation
+# ---------------------------------------------------------------------------
 
 
 def strip_private_blocks(text: str) -> str:
+    """Remove ``<private>…</private>`` blocks and stray tags from *text*."""
     if not text:
         return ""
-    without_block = PRIVATE_BLOCK_RE.sub("", text)
-    return PRIVATE_TAG_RE.sub("", without_block).strip()
+    without_block = _PRIVATE_BLOCK_RE.sub("", text)
+    return _PRIVATE_TAG_RE.sub("", without_block).strip()
 
 
-def get_storage_root() -> Path:
-    return storage_root()
+def _sanitize_text(text: str) -> str:
+    """Strip private blocks and redact known secret patterns."""
+    out = strip_private_blocks(text or "")
+    for pat in _SECRET_PATTERNS:
+        out = pat.sub("***REDACTED***", out)
+    return out.strip()
+
+
+# ---------------------------------------------------------------------------
+# Path helpers
+# ---------------------------------------------------------------------------
 
 
 def get_index_db_path() -> Path:
-    """Return the path to the memory index SQLite database."""
+    """Return the path to the memory index SQLite database.
+
+    Honour ``MEMORY_INDEX_DB_PATH`` when set; otherwise place the database
+    under the configured storage root.
+    """
     override = os.environ.get("MEMORY_INDEX_DB_PATH", "").strip()
     if override:
         return Path(override).expanduser()
-    return get_storage_root() / "index" / "memory_index.db"
+    return storage_root() / "index" / "memory_index.db"
 
 
 def _history_dirs() -> list[Path]:
-    root = get_storage_root()
+    """Return the canonical directories that contain local history files."""
+    root = storage_root()
     return [
         root / "resources" / "shared" / "history",
         root / "resources" / "shared" / "conversations",
     ]
 
 
+# ---------------------------------------------------------------------------
+# Internal utilities
+# ---------------------------------------------------------------------------
+
+
 def _to_epoch(ts: str, fallback: int) -> int:
+    """Parse an ISO-8601 timestamp to a Unix epoch integer.
+
+    Returns *fallback* when *ts* is empty or cannot be parsed.
+    """
     if not ts:
         return fallback
     try:
@@ -59,8 +119,15 @@ def _to_epoch(ts: str, fallback: int) -> int:
         return fallback
 
 
+# ---------------------------------------------------------------------------
+# Domain model
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class Observation:
+    """A single indexed memory observation."""
+
     fingerprint: str
     source_type: str
     session_id: str
@@ -72,7 +139,17 @@ class Observation:
     created_at_epoch: int
 
 
+# ---------------------------------------------------------------------------
+# Markdown parsing
+# ---------------------------------------------------------------------------
+
+
 def _parse_markdown(path: Path) -> Observation | None:
+    """Parse a Markdown file into an :class:`Observation`.
+
+    Returns ``None`` when the file is empty, unreadable, or produces no
+    usable content after sanitisation.
+    """
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
@@ -92,25 +169,20 @@ def _parse_markdown(path: Path) -> Observation | None:
         s = ln.strip()
         if s.startswith("# ") and not title:
             title = s[2:].strip()
-            continue
-        if s.lower().startswith("tags:"):
+        elif s.lower().startswith("tags:"):
             tags = [x.strip() for x in s.split(":", 1)[1].split(",") if x.strip()]
-            continue
-        if s.lower().startswith("date:"):
+        elif s.lower().startswith("date:"):
             created_at = s.split(":", 1)[1].strip()
-            continue
-        if s.lower() == "## content":
+        elif s.lower() == "## content":
             in_content = True
-            continue
-        if in_content:
+        elif in_content:
             body_lines.append(ln)
 
     if not body_lines:
         body_lines = lines
+
     content = strip_private_blocks("\n".join(body_lines)).strip()
-    title = strip_private_blocks(title).strip()
-    if not title:
-        title = path.stem
+    title = strip_private_blocks(title).strip() or path.stem
     if not content:
         return None
 
@@ -119,7 +191,8 @@ def _parse_markdown(path: Path) -> Observation | None:
     if not created_at:
         created_at = datetime.fromtimestamp(created_at_epoch).isoformat()
 
-    source_type = "conversation" if "/conversations/" in str(path).replace("\\", "/") else "history"
+    path_str = str(path).replace("\\", "/")
+    source_type = "conversation" if "/conversations/" in path_str else "history"
     session_id = path.stem.split("_")[-1] if "_" in path.stem else path.stem
 
     fingerprint = hashlib.sha256(f"{source_type}|{title}|{content}|{created_at_epoch}".encode()).hexdigest()
@@ -137,46 +210,69 @@ def _parse_markdown(path: Path) -> Observation | None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Database schema
+# ---------------------------------------------------------------------------
+
+_DDL = """
+CREATE TABLE IF NOT EXISTS observations (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    fingerprint      TEXT    UNIQUE NOT NULL,
+    source_type      TEXT    NOT NULL,
+    session_id       TEXT    NOT NULL,
+    title            TEXT    NOT NULL,
+    content          TEXT    NOT NULL,
+    tags_json        TEXT    NOT NULL,
+    file_path        TEXT    NOT NULL,
+    created_at       TEXT    NOT NULL,
+    created_at_epoch INTEGER NOT NULL,
+    updated_at_epoch INTEGER NOT NULL
+)
+"""
+
+_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_obs_created ON observations(created_at_epoch DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_obs_source  ON observations(source_type, created_at_epoch DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id, created_at_epoch DESC)",
+]
+
+
 def ensure_index_db() -> Path:
+    """Ensure the SQLite index database and its schema exist.
+
+    Creates all parent directories as needed.  Returns the resolved path to
+    the database file.
+    """
     db_path = get_index_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS observations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                fingerprint TEXT UNIQUE NOT NULL,
-                source_type TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                tags_json TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                created_at_epoch INTEGER NOT NULL,
-                updated_at_epoch INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_obs_created ON observations(created_at_epoch DESC)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_obs_source ON observations(source_type, created_at_epoch DESC)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id, created_at_epoch DESC)")
+        conn.execute(_DDL)
+        for idx_sql in _INDEXES:
+            conn.execute(idx_sql)
         conn.commit()
     finally:
         conn.close()
     return db_path
 
 
+# ---------------------------------------------------------------------------
+# Sync
+# ---------------------------------------------------------------------------
+
+
 def sync_index_from_storage() -> dict[str, int]:
+    """Scan local history directories and reconcile the index database.
+
+    Returns a summary dict with keys ``scanned``, ``added``, ``updated``,
+    and ``removed``.
+    """
     db_path = ensure_index_db()
     conn = sqlite3.connect(db_path)
-    added = 0
-    updated = 0
-    removed = 0
-    scanned = 0
+    added = updated = removed = scanned = 0
     now_epoch = int(datetime.now().timestamp())
     seen_local_paths: set[str] = set()
+
     try:
         for base in _history_dirs():
             if not base.exists():
@@ -185,25 +281,35 @@ def sync_index_from_storage() -> dict[str, int]:
                 scanned += 1
                 seen_local_paths.add(str(file_path))
                 obs = _parse_markdown(file_path)
-                if not obs:
+                if obs is None:
                     continue
+
+                # Reconcile by file path first to avoid duplicate rows.
                 same_path_rows = conn.execute(
-                    "SELECT id, fingerprint FROM observations WHERE file_path = ? ORDER BY updated_at_epoch DESC, id DESC",
+                    "SELECT id, fingerprint FROM observations"
+                    " WHERE file_path = ?"
+                    " ORDER BY updated_at_epoch DESC, id DESC",
                     (obs.file_path,),
                 ).fetchall()
+
                 if same_path_rows:
                     keep_id = int(same_path_rows[0][0])
-                    # clean historical duplicates for same path
                     for dup in same_path_rows[1:]:
                         conn.execute("DELETE FROM observations WHERE id = ?", (int(dup[0]),))
                         removed += 1
-                    keep_fp = str(same_path_rows[0][1])
-                    if keep_fp != obs.fingerprint:
+                    if str(same_path_rows[0][1]) != obs.fingerprint:
                         conn.execute(
                             """
                             UPDATE observations
-                            SET fingerprint = ?, source_type = ?, session_id = ?, title = ?, content = ?,
-                                tags_json = ?, created_at = ?, created_at_epoch = ?, updated_at_epoch = ?
+                            SET fingerprint      = ?,
+                                source_type      = ?,
+                                session_id       = ?,
+                                title            = ?,
+                                content          = ?,
+                                tags_json        = ?,
+                                created_at       = ?,
+                                created_at_epoch = ?,
+                                updated_at_epoch = ?
                             WHERE id = ?
                             """,
                             (
@@ -226,6 +332,8 @@ def sync_index_from_storage() -> dict[str, int]:
                             (now_epoch, keep_id),
                         )
                     continue
+
+                # Reconcile by fingerprint to handle renames.
                 row = conn.execute(
                     "SELECT id, file_path FROM observations WHERE fingerprint = ?",
                     (obs.fingerprint,),
@@ -241,8 +349,9 @@ def sync_index_from_storage() -> dict[str, int]:
                     conn.execute(
                         """
                         INSERT INTO observations(
-                            fingerprint, source_type, session_id, title, content, tags_json,
-                            file_path, created_at, created_at_epoch, updated_at_epoch
+                            fingerprint, source_type, session_id, title, content,
+                            tags_json, file_path, created_at, created_at_epoch,
+                            updated_at_epoch
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
@@ -260,30 +369,36 @@ def sync_index_from_storage() -> dict[str, int]:
                     )
                     added += 1
 
+        # Remove stale rows whose backing files have been deleted.
         stale = conn.execute(
-            """
-            SELECT id, file_path FROM observations
-            WHERE source_type IN ('history', 'conversation')
-            """
+            "SELECT id, file_path FROM observations WHERE source_type IN ('history', 'conversation')"
         ).fetchall()
-        for rid, path in stale:
-            if path not in seen_local_paths:
+        for rid, fpath in stale:
+            if fpath not in seen_local_paths:
                 conn.execute("DELETE FROM observations WHERE id = ?", (rid,))
                 removed += 1
+
         conn.commit()
     finally:
         conn.close()
+
     return {"scanned": scanned, "added": added, "updated": updated, "removed": removed}
 
 
+# ---------------------------------------------------------------------------
+# Query helpers
+# ---------------------------------------------------------------------------
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    """Convert a SQLite row to a plain dictionary with a decoded tags list."""
     tags: list[str] = []
     try:
         loaded = json.loads(row["tags_json"] or "[]")
         if isinstance(loaded, list):
             tags = [str(x) for x in loaded]
     except (json.JSONDecodeError, ValueError):
-        tags = []
+        pass
     return {
         "id": row["id"],
         "source_type": row["source_type"],
@@ -306,6 +421,22 @@ def search_index(
     date_start_epoch: int | None = None,
     date_end_epoch: int | None = None,
 ) -> list[dict[str, Any]]:
+    """Search the index and return matching observations as dicts.
+
+    All user-supplied values flow through bind parameters; the WHERE clause
+    is assembled only from static predicate strings.
+
+    Args:
+        query: Free-text query matched against title, content, and tags.
+        limit: Maximum number of results (clamped to 1–200).
+        offset: Zero-based result offset for pagination.
+        source_type: Filter by source type, or ``"all"`` for no filter.
+        date_start_epoch: Inclusive lower bound on ``created_at_epoch``.
+        date_end_epoch: Inclusive upper bound on ``created_at_epoch``.
+
+    Returns:
+        List of observation dicts ordered by ``created_at_epoch`` descending.
+    """
     db_path = ensure_index_db()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -327,8 +458,6 @@ def search_index(
             where.append("created_at_epoch <= ?")
             args.append(date_end_epoch)
 
-        # Build WHERE clause from hardcoded predicate strings; user-supplied
-        # values flow exclusively through bind parameters (args).
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
         sql = f"SELECT * FROM observations {where_clause} ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
         args.extend([max(1, min(limit, 200)), max(0, offset)])
@@ -338,7 +467,22 @@ def search_index(
         conn.close()
 
 
-def timeline_index(anchor_id: int, depth_before: int = 3, depth_after: int = 3) -> list[dict[str, Any]]:
+def timeline_index(
+    anchor_id: int,
+    depth_before: int = 3,
+    depth_after: int = 3,
+) -> list[dict[str, Any]]:
+    """Return observations surrounding *anchor_id* in chronological order.
+
+    Args:
+        anchor_id: Database ID of the central observation.
+        depth_before: Number of observations to include before the anchor.
+        depth_after: Number of observations to include after the anchor.
+
+    Returns:
+        List of observation dicts in ascending chronological order, or an
+        empty list when *anchor_id* does not exist.
+    """
     db_path = ensure_index_db()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -351,30 +495,34 @@ def timeline_index(anchor_id: int, depth_before: int = 3, depth_after: int = 3) 
             return []
 
         before_rows = conn.execute(
-            """
-            SELECT * FROM observations
-            WHERE created_at_epoch <= ?
-            ORDER BY created_at_epoch DESC
-            LIMIT ?
-            """,
+            "SELECT * FROM observations WHERE created_at_epoch <= ? ORDER BY created_at_epoch DESC LIMIT ?",
             (anchor["created_at_epoch"], max(1, depth_before + 1)),
         ).fetchall()
         after_rows = conn.execute(
-            """
-            SELECT * FROM observations
-            WHERE created_at_epoch > ?
-            ORDER BY created_at_epoch ASC
-            LIMIT ?
-            """,
+            "SELECT * FROM observations WHERE created_at_epoch > ? ORDER BY created_at_epoch ASC LIMIT ?",
             (anchor["created_at_epoch"], max(0, depth_after)),
         ).fetchall()
+
         merged = list(reversed(before_rows)) + list(after_rows)
         return [_row_to_dict(r) for r in merged]
     finally:
         conn.close()
 
 
-def get_observations_by_ids(ids: list[int], limit: int = 100) -> list[dict[str, Any]]:
+def get_observations_by_ids(
+    ids: list[int],
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Fetch observations by their primary-key IDs.
+
+    Args:
+        ids: List of integer observation IDs.
+        limit: Maximum number of IDs to query (clamped to 1–300).
+
+    Returns:
+        List of matching observation dicts ordered by ``created_at_epoch``
+        descending.
+    """
     if not ids:
         return []
     db_path = ensure_index_db()
@@ -393,6 +541,11 @@ def get_observations_by_ids(ids: list[int], limit: int = 100) -> list[dict[str, 
 
 
 def index_stats() -> dict[str, Any]:
+    """Return aggregate statistics for the index database.
+
+    Returns:
+        Dict with ``db_path``, ``total_observations``, and ``latest_epoch``.
+    """
     db_path = ensure_index_db()
     conn = sqlite3.connect(db_path)
     try:
@@ -407,17 +560,34 @@ def index_stats() -> dict[str, Any]:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Export / Import
+# ---------------------------------------------------------------------------
+
+
 def export_observations_payload(
     query: str = "",
     *,
     limit: int = 5000,
     source_type: str = "all",
 ) -> dict[str, Any]:
+    """Sync the index and return a serialisable export payload.
+
+    Args:
+        query: Optional free-text filter applied during export.
+        limit: Maximum number of observations to include (clamped to 1–50 000).
+        source_type: Source type filter, or ``"all"`` for no filter.
+
+    Returns:
+        Dict with ``exported_at``, ``query``, ``source_type``, ``sync``,
+        ``total_observations``, and ``observations``.
+    """
     sync_info = sync_index_from_storage()
-    target = max(1, min(int(limit), 50000))
+    target = max(1, min(int(limit), 50_000))
     rows: list[dict[str, Any]] = []
     offset = 0
     page = 200
+
     while len(rows) < target:
         batch = search_index(
             query=query,
@@ -442,45 +612,32 @@ def export_observations_payload(
     }
 
 
-SECRET_PATTERNS = [
-    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
-    re.compile(r"\bsk-proj-[A-Za-z0-9_-]{16,}\b"),
-    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
-    re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"),
-    re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
-    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
-]
-
-
-def _sanitize_import_text(text: str) -> str:
-    out = strip_private_blocks(text or "")
-    for pat in SECRET_PATTERNS:
-        out = pat.sub("***REDACTED***", out)
-    return out.strip()
-
-
 def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Sanitise and normalise a single raw import record.
+
+    Strips private blocks and known secret patterns from all text fields,
+    rejects absolute local paths, and derives a deterministic fingerprint
+    when none is supplied.
+    """
     raw_tags = raw.get("tags") or []
     if not isinstance(raw_tags, list):
         raw_tags = [raw_tags]
-    clean_tags = []
-    for tag in raw_tags:
-        cleaned = _sanitize_import_text(str(tag))
-        if cleaned:
-            clean_tags.append(cleaned[:80])
+    clean_tags = [cleaned for tag in raw_tags if (cleaned := _sanitize_text(str(tag))[:80])]
 
-    raw_path = _sanitize_import_text(str(raw.get("file_path") or "import://json"))[:300]
+    raw_path = _sanitize_text(str(raw.get("file_path") or "import://json"))[:300]
     if raw_path.startswith("/") or raw_path.startswith("~"):
         raw_path = "import://local-path-redacted"
 
-    title = _sanitize_import_text(str(raw.get("title") or "imported memory"))[:240]
-    content = _sanitize_import_text(str(raw.get("content") or ""))
+    title = _sanitize_text(str(raw.get("title") or "imported memory"))[:240]
+    content = _sanitize_text(str(raw.get("content") or ""))
     created_at_epoch = int(raw.get("created_at_epoch") or int(datetime.now().timestamp()))
+
     fingerprint = str(raw.get("fingerprint") or "").strip()
     if not fingerprint and content:
-        fingerprint = hashlib.sha256(
-            f"{raw.get('source_type') or 'import'}|{raw.get('session_id') or 'imported'}|{title}|{content}|{created_at_epoch}".encode()
-        ).hexdigest()
+        src = raw.get("source_type") or "import"
+        sid = raw.get("session_id") or "imported"
+        fingerprint = hashlib.sha256(f"{src}|{sid}|{title}|{content}|{created_at_epoch}".encode()).hexdigest()
+
     return {
         "fingerprint": fingerprint,
         "source_type": str(raw.get("source_type") or "import"),
@@ -499,15 +656,33 @@ def import_observations_payload(
     *,
     sync_from_storage: bool = True,
 ) -> dict[str, Any]:
+    """Import observations from an export payload into the local index.
+
+    Skips records that already exist (matched by fingerprint) and records
+    with no usable content.
+
+    Args:
+        payload: Dict containing an ``observations`` list, as produced by
+            :func:`export_observations_payload`.
+        sync_from_storage: When ``True``, trigger a storage sync after
+            inserting imported records.
+
+    Returns:
+        Dict with ``inserted``, ``skipped``, and ``db_path``.
+
+    Raises:
+        ValueError: When ``payload["observations"]`` is not a list.
+    """
     observations = payload.get("observations") or []
     if not isinstance(observations, list):
-        raise ValueError("invalid payload: observations must be list")
+        raise ValueError("invalid payload: observations must be a list")
 
     db_path = ensure_index_db()
     conn = sqlite3.connect(db_path)
     inserted = 0
     skipped = 0
     now_epoch = int(datetime.now().timestamp())
+
     try:
         for raw in observations:
             if not isinstance(raw, dict):
@@ -526,8 +701,9 @@ def import_observations_payload(
             conn.execute(
                 """
                 INSERT INTO observations(
-                    fingerprint, source_type, session_id, title, content, tags_json,
-                    file_path, created_at, created_at_epoch, updated_at_epoch
+                    fingerprint, source_type, session_id, title, content,
+                    tags_json, file_path, created_at, created_at_epoch,
+                    updated_at_epoch
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -551,8 +727,4 @@ def import_observations_payload(
     if sync_from_storage:
         sync_index_from_storage()
 
-    return {
-        "inserted": inserted,
-        "skipped": skipped,
-        "db_path": str(db_path),
-    }
+    return {"inserted": inserted, "skipped": skipped, "db_path": str(db_path)}

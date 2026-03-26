@@ -27,8 +27,12 @@ def load_config() -> dict:
     if not CONFIG_PATH.exists():
         print(f"ERROR: config file not found: {CONFIG_PATH}", file=sys.stderr)
         sys.exit(2)
-    with open(CONFIG_PATH) as f:
-        return json.load(f)
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: invalid JSON in {CONFIG_PATH}: {exc}", file=sys.stderr)
+        sys.exit(2)
 
 
 def _extract_string_array(source: str, start_pattern: str) -> list[str]:
@@ -99,13 +103,7 @@ def _decode_string_escapes(s: str) -> str:
     Handles the subset of escape sequences likely to appear in noise marker strings:
     \\n, \\t, \\r, \\\\, and \\".
     """
-    return (
-        s.replace('\\"', '"')
-         .replace("\\n", "\n")
-         .replace("\\t", "\t")
-         .replace("\\r", "\r")
-         .replace("\\\\", "\\")
-    )
+    return s.replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r").replace("\\\\", "\\")
 
 
 def _normalize_extracted(strings: list[str]) -> list[str]:
@@ -130,6 +128,7 @@ def compare(label: str, config_list: list[str], extracted: list[str]) -> list[st
 
 
 def main() -> int:
+    """Check Rust and Go noise markers are in sync with the JSON config."""
     config = load_config()
     config_native = config.get("native_noise_markers", [])
     config_prefixes = config.get("noise_prefixes", [])

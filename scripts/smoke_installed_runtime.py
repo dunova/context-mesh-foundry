@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 def resolve_install_root() -> Path:
+    """Return the scripts directory path for the installed ContextGO runtime."""
     explicit = os.environ.get("CONTEXTGO_INSTALL_ROOT")
     if explicit:
         base = Path(explicit).expanduser()
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover
 
 
 def main() -> int:
+    """Run the installed-runtime smoke suite and print a JSON result."""
     cli_path = INSTALL_ROOT / "context_cli.py"
     quality_gate_path = INSTALL_ROOT / "e2e_quality_gate.py"
     payload = run_smoke(cli_path, quality_gate_path)

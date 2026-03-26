@@ -188,6 +188,7 @@ def evaluate(query: str) -> dict:
 
 
 def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
+    """Append a round result to the TSV log and update JSON state/metrics/best files."""
     ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
     row = "\t".join(
         [
@@ -279,6 +280,7 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build and return the CLI argument parser for the AutoResearch runner."""
     parser = argparse.ArgumentParser(description="ContextGO AutoResearch runner")
     parser.add_argument("--round", type=int, default=1, help="current round number")
     parser.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS, help="total number of rounds")
@@ -288,6 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Evaluate the ContextGO runtime for one round and print results as JSON."""
     args = build_parser().parse_args(argv)
     payload = evaluate(args.query)
     payload["task_name"] = "ContextGO AutoResearch"

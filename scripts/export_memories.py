@@ -9,6 +9,7 @@ import context_cli
 
 
 def main() -> int:
+    """Export ContextGO memories to a JSON file."""
     parser = argparse.ArgumentParser(description="Export ContextGO memories.")
     parser.add_argument("query", help="Search query. Use empty string for all.", nargs="?", default="")
     parser.add_argument("output", help="Output JSON path.")

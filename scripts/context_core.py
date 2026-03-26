@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-"""Shared runtime helpers for ContextGO."""
+"""Shared runtime helpers for ContextGO.
+
+Public surface
+--------------
+safe_mtime              -- mtime as float, 0.0 on error
+iter_shared_files       -- newest-first list of text files under a root
+local_memory_matches    -- keyword search across shared memory files
+normalize_tags          -- normalise tags from list / CSV / JSON string
+safe_filename           -- filesystem-safe slug
+write_memory_markdown   -- write a memory entry as a Markdown file
+"""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -11,43 +22,77 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-TEXT_FILE_SUFFIXES = frozenset({".md", ".txt", ".json", ".jsonl", ".log"})
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
 
-_WHITESPACE_RE = re.compile(r"\s+")
+#: File suffixes treated as readable text during scans.
+TEXT_FILE_SUFFIXES: frozenset[str] = frozenset({".md", ".txt", ".json", ".jsonl", ".log"})
+
+#: Maximum length for slugified filenames.
+_FILENAME_MAX_CHARS: int = 120
+
+#: Context radius (characters) shown either side of a search match.
+_SNIPPET_RADIUS: int = 120
+
+# ---------------------------------------------------------------------------
+# Internal compiled patterns
+# ---------------------------------------------------------------------------
+
+_WHITESPACE_RE: re.Pattern[str] = re.compile(r"\s+")
+_SAFE_FILENAME_RE: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9._-]+")
+
+# ---------------------------------------------------------------------------
+# Filesystem helpers
+# ---------------------------------------------------------------------------
 
 
 def safe_mtime(path: Path | str) -> float:
-    """Return file mtime as float, or 0.0 on any error."""
+    """Return the mtime of *path* as a float, or ``0.0`` on any OS error."""
     try:
         return Path(path).stat().st_mtime
     except OSError:
         return 0.0
 
 
-def compact_text(text: str) -> str:
-    """Collapse all whitespace runs to a single space and strip edges."""
-    return _WHITESPACE_RE.sub(" ", text or "").strip()
-
-
 def iter_shared_files(shared_root: Path | str, max_files: int) -> list[Path]:
-    """Return up to max_files text files under shared_root, newest first."""
+    """Return up to *max_files* text files beneath *shared_root*, newest first.
+
+    Hidden files (names starting with ``.``) are excluded.  Returns an empty
+    list when *shared_root* does not exist or is not a directory.
+    """
     root = Path(shared_root)
     if not root.is_dir():
         return []
+
     files: list[Path] = [
-        path
-        for path in root.rglob("*")
-        if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in TEXT_FILE_SUFFIXES
+        p
+        for p in root.rglob("*")
+        if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in TEXT_FILE_SUFFIXES
     ]
     files.sort(key=safe_mtime, reverse=True)
     return files[: max(1, int(max_files))]
 
 
+# ---------------------------------------------------------------------------
+# Text utilities
+# ---------------------------------------------------------------------------
+
+
+def compact_text(text: str) -> str:
+    """Collapse all whitespace runs to a single space and strip leading/trailing whitespace."""
+    return _WHITESPACE_RE.sub(" ", text or "").strip()
+
+
+# ---------------------------------------------------------------------------
+# Memory search
+# ---------------------------------------------------------------------------
+
+
 def _build_uri_hint(rel_path: str, uri_prefix: str) -> str:
+    """Prepend *uri_prefix* to *rel_path*, or return *rel_path* unchanged when prefix is empty."""
     prefix = (uri_prefix or "").strip()
-    if not prefix:
-        return rel_path
-    return f"{prefix}{rel_path}"
+    return f"{prefix}{rel_path}" if prefix else rel_path
 
 
 def local_memory_matches(
@@ -56,11 +101,35 @@ def local_memory_matches(
     shared_root: Path | str,
     limit: int = 3,
     max_files: int = 300,
-    read_bytes: int = 120000,
+    read_bytes: int = 120_000,
     uri_prefix: str = "local://",
     files: Iterable[Path | str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Search shared_root for files matching query; return up to limit results."""
+    """Search *shared_root* for files whose path or content contains *query*.
+
+    Parameters
+    ----------
+    query:
+        Case-insensitive search term.
+    shared_root:
+        Directory to scan (ignored when *files* is provided).
+    limit:
+        Maximum number of results to return.
+    max_files:
+        Maximum number of files to consider during a scan.
+    read_bytes:
+        Maximum bytes read per file for content matching.
+    uri_prefix:
+        Prefix prepended to relative paths in the ``uri_hint`` field.
+    files:
+        Optional explicit file list; skips the directory scan when supplied.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Each entry contains ``uri_hint``, ``file_path``, ``matched_in``,
+        ``mtime`` (ISO-8601), and ``snippet``.
+    """
     q = (query or "").strip()
     if not q:
         return []
@@ -69,6 +138,7 @@ def local_memory_matches(
     search_files: list[Path] = (
         [Path(p) for p in files] if files is not None else iter_shared_files(root, max_files=max_files)
     )
+
     ql = q.lower()
     cap = max(1, int(limit))
     read_cap = max(4096, int(read_bytes))
@@ -76,11 +146,13 @@ def local_memory_matches(
 
     for path in search_files:
         matched_in: str | None = None
-        snippet = ""
+        snippet: str = ""
+
         try:
             rel_path = path.relative_to(root).as_posix()
         except ValueError:
             rel_path = path.name
+
         if ql in rel_path.lower():
             matched_in = "path"
             snippet = rel_path
@@ -92,8 +164,8 @@ def local_memory_matches(
             idx = text.lower().find(ql)
             if idx >= 0:
                 matched_in = "content"
-                start = max(0, idx - 120)
-                end = min(len(text), idx + len(q) + 120)
+                start = max(0, idx - _SNIPPET_RADIUS)
+                end = min(len(text), idx + len(q) + _SNIPPET_RADIUS)
                 snippet = compact_text(text[start:end])
 
         if matched_in:
@@ -108,15 +180,25 @@ def local_memory_matches(
             )
         if len(matches) >= cap:
             break
+
     return matches
 
 
+# ---------------------------------------------------------------------------
+# Tag normalisation
+# ---------------------------------------------------------------------------
+
+
 def normalize_tags(tags: list[str] | str | None) -> list[str]:
-    """Normalize tags from list, comma-separated string, or JSON array string."""
+    """Normalise *tags* from a list, a comma-separated string, or a JSON array string.
+
+    Returns a deduplicated list of stripped, non-empty strings in the original
+    order.  ``None`` and empty inputs return an empty list.
+    """
     if tags is None:
         return []
     if isinstance(tags, list):
-        return [str(t).strip() for t in tags if str(t).strip()]
+        return [s for t in tags if (s := str(t).strip())]
     if isinstance(tags, str):
         raw = tags.strip()
         if not raw:
@@ -124,24 +206,27 @@ def normalize_tags(tags: list[str] | str | None) -> list[str]:
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, list):
-                return [str(t).strip() for t in parsed if str(t).strip()]
+                return [s for t in parsed if (s := str(t).strip())]
         except (json.JSONDecodeError, ValueError):
             pass
         return [part.strip() for part in raw.split(",") if part.strip()]
-    return [str(tags).strip()]
+    return [s] if (s := str(tags).strip()) else []
 
 
-_SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
-
-MEMORY_FILENAME_MAX_CHARS = 120
-MEMORY_CONTENT_SNIPPET_RADIUS = 120
+# ---------------------------------------------------------------------------
+# Memory file writing
+# ---------------------------------------------------------------------------
 
 
 def safe_filename(value: str) -> str:
-    """Return a filesystem-safe lowercase filename slug (max 120 chars)."""
-    s = _SAFE_FILENAME_RE.sub("_", (value or "").strip().lower())
-    s = s.strip("._-")
-    return (s or "memory")[:MEMORY_FILENAME_MAX_CHARS]
+    """Return a filesystem-safe lowercase slug of *value* (max ``_FILENAME_MAX_CHARS`` chars).
+
+    Characters outside ``[a-zA-Z0-9._-]`` are replaced with underscores.
+    Leading/trailing punctuation is stripped.  Falls back to ``"memory"``
+    when the result would otherwise be empty.
+    """
+    s = _SAFE_FILENAME_RE.sub("_", (value or "").strip().lower()).strip("._-")
+    return (s or "memory")[:_FILENAME_MAX_CHARS]
 
 
 def write_memory_markdown(
@@ -152,10 +237,34 @@ def write_memory_markdown(
     conversations_root: Path | str,
     timestamp: str | None = None,
 ) -> Path:
-    """Write a memory as a Markdown file and return its path.
+    """Write a memory entry as a Markdown file and return its path.
 
-    Raises ValueError if title or content is empty.
-    File is created with mode 0o600; parent directory is chmod 0o700.
+    The parent directory is created with mode ``0o700`` if it does not exist.
+    The file itself is written with mode ``0o600``.
+
+    Parameters
+    ----------
+    title:
+        Human-readable title; must be non-empty.
+    content:
+        Body text; must be non-empty.
+    tags:
+        Optional tags accepted as a list, CSV string, or JSON array string.
+    conversations_root:
+        Directory in which the file is written.
+    timestamp:
+        Optional ``YYYYMMDD_HHMMSS`` prefix for the filename.  Defaults to
+        the current local time when omitted.
+
+    Returns
+    -------
+    Path
+        Absolute path to the written file.
+
+    Raises
+    ------
+    ValueError
+        If *title* or *content* is empty after stripping whitespace.
     """
     clean_title = (title or "").strip()
     clean_content = (content or "").strip()
@@ -167,20 +276,21 @@ def write_memory_markdown(
     normalized_tags = normalize_tags(tags)
     root = Path(conversations_root)
     root.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(root, 0o700)
-    except OSError:
-        pass
 
-    safe_timestamp = (timestamp or "").strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = root / f"{safe_timestamp}_{safe_filename(clean_title)}.md"
+    safe_ts = (timestamp or "").strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = root / f"{safe_ts}_{safe_filename(clean_title)}.md"
+
     body = (
         f"# {clean_title}\n\n"
         f"Tags: {', '.join(normalized_tags)}\n"
         f"Date: {datetime.now().isoformat()}\n\n"
         f"{clean_content}\n"
     )
+
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(body)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(body)
+
     return path

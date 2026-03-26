@@ -5,6 +5,11 @@
 # Usage: apply_context_first_policy.sh [--help]
 #
 # Idempotent: removes any existing SCF block before appending the current one.
+# Missing target files are silently skipped (not an error).
+#
+# Exit codes:
+#   0  Policy applied (or skipped for absent files) successfully.
+#   1  Unexpected error (e.g. mktemp failure).
 set -euo pipefail
 
 usage() {
@@ -28,8 +33,8 @@ fi
 
 log() { printf '[context-first] %s\n' "$*"; }
 
-START_MARK="<!-- SCF:CONTEXT-FIRST:START -->"
-END_MARK="<!-- SCF:CONTEXT-FIRST:END -->"
+readonly START_MARK="<!-- SCF:CONTEXT-FIRST:START -->"
+readonly END_MARK="<!-- SCF:CONTEXT-FIRST:END -->"
 
 read -r -d '' POLICY_BLOCK <<'EOF' || true
 <!-- SCF:CONTEXT-FIRST:START -->

@@ -3,6 +3,13 @@
 #
 # Usage: start_memory_viewer.sh [--help]
 #
+# Starts context_cli serve and blocks until interrupted (SIGINT/SIGTERM).
+# Use CONTEXTGO_VIEWER_TOKEN when binding to a non-loopback address.
+#
+# Exit codes:
+#   0  Server exited cleanly (e.g. via SIGINT).
+#   1  context_cli.py not found, or the server process failed.
+#
 # Environment variables:
 #   CONTEXTGO_VIEWER_HOST   Bind address (default: 127.0.0.1)
 #   CONTEXTGO_VIEWER_PORT   TCP port      (default: 37677)
@@ -28,9 +35,13 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 HOST="${CONTEXTGO_VIEWER_HOST:-127.0.0.1}"
+readonly HOST
 PORT="${CONTEXTGO_VIEWER_PORT:-37677}"
+readonly PORT
 TOKEN="${CONTEXTGO_VIEWER_TOKEN:-}"
+readonly TOKEN
 
 if [ ! -f "$SCRIPT_DIR/context_cli.py" ]; then
     printf 'ERROR: context_cli.py not found in %s\n' "$SCRIPT_DIR" >&2

@@ -22,15 +22,18 @@ class Check:
 
 
 def run_cmd(args: list[str], timeout: int = 30) -> tuple[int, str, str]:
+    """Run a subprocess and return (returncode, stdout, stderr)."""
     proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     return proc.returncode, proc.stdout or "", proc.stderr or ""
 
 
 def run_cli(*args: str, timeout: int = 30) -> tuple[int, str, str]:
+    """Invoke context_cli.py with the given args and return (returncode, stdout, stderr)."""
     return run_cmd([sys.executable, str(CLI_PATH), *args], timeout=timeout)
 
 
 def check_cli_fixed_cases() -> list[Check]:
+    """Run a set of fixed regression queries against the CLI and return results."""
     cases: list[Check] = []
     fixed_inputs = [
         ("cli-health", ["health"], '"all_ok": true'),
@@ -52,6 +55,7 @@ def check_cli_fixed_cases() -> list[Check]:
 
 
 def main() -> int:
+    """Run all regression checks and print a JSON summary."""
     checks: list[Check] = []
     checks.extend(check_cli_fixed_cases())
 

@@ -13,6 +13,7 @@ pip install contextgo
 ---
 
 [![Build](https://github.com/dunova/ContextGO/actions/workflows/verify.yml/badge.svg)](https://github.com/dunova/ContextGO/actions/workflows/verify.yml)
+[![Coverage](https://codecov.io/gh/dunova/ContextGO/branch/main/graph/badge.svg)](https://codecov.io/gh/dunova/ContextGO)
 [![Version](https://img.shields.io/badge/version-v0.7.0-2563eb?style=flat)](https://github.com/dunova/ContextGO/releases/tag/v0.7.0)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-6d28d9?style=flat)](https://github.com/dunova/ContextGO/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-0ea5e9?style=flat)](https://www.python.org/)

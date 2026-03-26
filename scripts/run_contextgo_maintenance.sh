@@ -3,6 +3,13 @@
 #
 # Usage: run_contextgo_maintenance.sh [--help]
 #
+# Runs repair-queue and enqueue-missing against the local ContextGO index.
+# All output is appended to the maintenance log file.
+#
+# Exit codes:
+#   0  Maintenance completed successfully.
+#   1  context_cli.py not found, or the maintenance command failed.
+#
 # Environment variables:
 #   CONTEXTGO_STORAGE_ROOT    Storage root directory (default: ~/.contextgo)
 #   CONTEXTGO_MAINTENANCE_LOG Override log file path.
@@ -26,9 +33,13 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 LOG_DIR="${CONTEXTGO_STORAGE_ROOT:-$HOME/.contextgo}/logs"
+readonly LOG_DIR
 LOG_FILE="${CONTEXTGO_MAINTENANCE_LOG:-$LOG_DIR/contextgo_maintenance.log}"
+readonly LOG_FILE
 SERVICE_LABEL="ContextGO maintenance"
+readonly SERVICE_LABEL
 
 log_line() {
     local ts

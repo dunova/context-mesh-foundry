@@ -4,7 +4,12 @@
 #
 # Usage: verify_context_first_policy.sh [--help]
 #
-# Exits 0 on all checks passed, 1 on any failure.
+# Verifies that apply_context_first_policy.sh has been run and that all
+# expected agent entry-point files and skill markers are present and correct.
+#
+# Exit codes:
+#   0  All checks passed.
+#   1  One or more checks failed (first failure exits immediately).
 set -euo pipefail
 
 usage() {
@@ -44,7 +49,9 @@ require_text() {
 # Locate context_cli.py relative to this script, with a fallback to the
 # installed path (avoids hard-coding /Volumes/AI).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 CLI_SCRIPT="$SCRIPT_DIR/context_cli.py"
+readonly CLI_SCRIPT
 
 # Policy injection checks
 require_text "$HOME/.codex/AGENTS.md"              "SCF:CONTEXT-FIRST:START" "codex entry has context-first policy"

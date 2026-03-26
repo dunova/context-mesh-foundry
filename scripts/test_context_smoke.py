@@ -14,7 +14,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import context_smoke
+import context_smoke  # noqa: E402
 
 
 class ContextSmokeTests(unittest.TestCase):
@@ -40,7 +40,6 @@ class ContextSmokeTests(unittest.TestCase):
             if args[1:] == ["/tmp/context_cli.py", "health"]:
                 payload = {"native_backends": {"available_backends": ["rust", "go"]}}
                 return 0, json.dumps(payload), ""
-            backend = args[4]
             query = args[10]
             payload = {
                 "matches": [
@@ -88,9 +87,11 @@ class ContextSmokeTests(unittest.TestCase):
             }
             return 0, json.dumps(payload), ""
 
-        with mock.patch.object(context_smoke, "run_cmd", side_effect=fake_run_cmd):
-            with mock.patch.object(context_smoke.time, "sleep") as mock_sleep:
-                result = context_smoke.test_native_scan_contract(Path("/tmp/context_cli.py"))
+        with (
+            mock.patch.object(context_smoke, "run_cmd", side_effect=fake_run_cmd),
+            mock.patch.object(context_smoke.time, "sleep") as mock_sleep,
+        ):
+            result = context_smoke.test_native_scan_contract(Path("/tmp/context_cli.py"))
 
         self.assertTrue(result["ok"])
         self.assertEqual(mock_sleep.call_count, 1)

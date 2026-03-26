@@ -67,12 +67,12 @@ if [ -f "$HC_SCRIPT" ]; then
     bash "$HC_SCRIPT" --quiet || true
 fi
 
-cat <<HINT
-
-[scf-prewarm] Recommended follow-up steps:
-  1. python3 $SCRIPT_DIR/context_cli.py search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
-  2. python3 $SCRIPT_DIR/context_cli.py semantic "$QUERY" --limit 5
-  3. Record useful conclusions in the GSD phase document (CONTEXT/PLAN).
-
-[scf-prewarm] Query used: "$QUERY"
-HINT
+printf '\n'
+printf '[scf-prewarm] Recommended follow-up steps:\n'
+printf '  1. python3 "%s/context_cli.py" search "%s" --type "%s" --limit "%s" --literal\n' \
+    "$SCRIPT_DIR" "$QUERY" "$MODE" "$LIMIT"
+printf '  2. python3 "%s/context_cli.py" semantic "%s" --limit 5\n' \
+    "$SCRIPT_DIR" "$QUERY"
+printf '  3. Record useful conclusions in the GSD phase document (CONTEXT/PLAN).\n'
+printf '\n'
+printf '[scf-prewarm] Query used: "%s"\n' "$QUERY"

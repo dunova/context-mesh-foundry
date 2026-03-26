@@ -343,3 +343,61 @@ func BenchmarkClipSnippet(b *testing.B) {
 		clipSnippet(text, 30, 50, 50)
 	}
 }
+
+func BenchmarkIsNoise(b *testing.B) {
+	filter := NewNoiseFilter(DefaultNoiseMarkers)
+	lines := []string{
+		"clean, helpful line about the project architecture",
+		"## heading style noise that should be filtered out",
+		"我继续沿结果质量这条线打，不回到命名层。先复看当前工作树。",
+		"The session_scan_go binary discovers JSONL files in ~/.codex and ~/.claude.",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, l := range lines {
+			filter.IsNoise(l)
+		}
+	}
+}
+
+func BenchmarkSnippetMatcherMatch(b *testing.B) {
+	filter := NewNoiseFilter(DefaultNoiseMarkers)
+	m := NewSnippetMatcher("session_scan_go", filter, defaultSnippetLimit)
+	text := "The session_scan_go binary performs high-performance parallel scanning of JSONL session files for Codex and Claude projects."
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.Match(text)
+	}
+}
+
+// ── clipSnippet CJK correctness ───────────────────────────────────────────────
+
+func TestClipSnippetCJK(t *testing.T) {
+	// Each CJK character is 3 bytes in UTF-8.  Verify that the snippet window
+	// is measured in runes, not bytes, so CJK text is never split or
+	// miscounted.
+	text := "前缀内容：这里包含查询词目标以及后缀内容，用于验证多字节字符不被截断。"
+	// "查询词" starts at some byte offset; find it via strings.Index on lower.
+	query := "查询词"
+	idx := strings.Index(strings.ToLower(text), strings.ToLower(query))
+	if idx < 0 {
+		t.Fatal("test setup: query not found in text")
+	}
+
+	limit := 10
+	snippet := clipSnippet(text, idx, len(query), limit)
+	runeCount := len([]rune(snippet))
+	if runeCount > limit {
+		t.Fatalf("clipSnippet returned %d runes, want <= %d; snippet=%q", runeCount, limit, snippet)
+	}
+	if !strings.Contains(snippet, query) {
+		t.Fatalf("clipSnippet result %q does not contain query %q", snippet, query)
+	}
+
+	// Verify the result is valid UTF-8 (no torn multi-byte sequences).
+	for i, r := range snippet {
+		if r == '\uFFFD' {
+			t.Fatalf("clipSnippet produced replacement character at rune index %d; snippet=%q", i, snippet)
+		}
+	}
+}
