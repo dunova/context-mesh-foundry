@@ -288,28 +288,23 @@ impl ScannerReport {
         );
         let aggregates = summarize_by_source(&self.summaries);
         for label in scanner.root_labels() {
-            match aggregates.get(label) {
-                Some(aggregate) => {
+            if let Some(aggregate) = aggregates.get(label) {
+                println!(
+                    "  {} -> {} sessions, {} 行, {} 字节",
+                    aggregate.label,
+                    aggregate.session_count,
+                    aggregate.total_lines,
+                    aggregate.total_bytes
+                );
+                if let Some(sample) = aggregate.sample {
                     println!(
-                        "  {} -> {} sessions, 总行数 {}, 占用 {} 字节",
-                        aggregate.label,
-                        aggregate.session_count,
-                        aggregate.total_lines,
-                        aggregate.total_bytes
+                        "    示例：{} | {} -> {} | {} | [{}]",
+                        sample.session_id,
+                        sample.first_timestamp.as_deref().unwrap_or("?"),
+                        sample.last_timestamp.as_deref().unwrap_or("?"),
+                        sample.path.display(),
+                        sample.match_field.as_deref().unwrap_or("unknown")
                     );
-                    if let Some(sample) = aggregate.sample {
-                        println!(
-                            "    示例：{} | {} -> {} | {} | [{}]",
-                            sample.session_id,
-                            sample.first_timestamp.as_deref().unwrap_or("?"),
-                            sample.last_timestamp.as_deref().unwrap_or("?"),
-                            sample.path.display(),
-                            sample.match_field.as_deref().unwrap_or("unknown")
-                        );
-                    }
-                }
-                None => {
-                    println!("  {} -> 0 sessions", label);
                 }
             }
         }

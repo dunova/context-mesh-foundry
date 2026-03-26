@@ -63,6 +63,31 @@ def _native_eval(backend: str, query: str) -> dict:
     }
 
 
+def _native_text_eval(backend: str, query: str) -> dict:
+    rc, out, err = run_cmd(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "context_cli.py"),
+            "native-scan",
+            "--backend",
+            backend,
+            "--threads",
+            "4",
+            "--query",
+            query,
+            "--limit",
+            "3",
+        ],
+        timeout=180,
+    )
+    return {
+        "backend": backend,
+        "rc": rc,
+        "bytes": len((out or err).encode("utf-8")),
+        "ok": rc == 0,
+    }
+
+
 def _smoke_eval() -> tuple[int, dict, int]:
     for _ in range(2):
         rc, out, err = run_cmd(
@@ -95,6 +120,8 @@ def evaluate(query: str) -> dict:
     )
     rust = _native_eval("rust", query)
     go = _native_eval("go", query)
+    rust_text = _native_text_eval("rust", query)
+    go_text = _native_text_eval("go", query)
 
     health_payload = _json_from_text(health_out or health_err)
     stability = 0
@@ -113,6 +140,7 @@ def evaluate(query: str) -> dict:
 
     health_bytes = len((health_out or health_err).encode("utf-8"))
     native_bytes = rust["bytes"] + go["bytes"]
+    native_text_bytes = rust_text["bytes"] + go_text["bytes"]
     token_efficiency = 100
     if health_bytes > 600:
         token_efficiency -= min(20, (health_bytes - 600) // 50)
@@ -120,6 +148,8 @@ def evaluate(query: str) -> dict:
         token_efficiency -= min(40, (smoke_bytes - 2000) // 100)
     if native_bytes > 3500:
         token_efficiency -= min(40, (native_bytes - 3500) // 150)
+    if native_text_bytes > 600:
+        token_efficiency -= min(10, (native_text_bytes - 600) // 40)
     token_efficiency = max(0, token_efficiency)
 
     total_score = round(stability * 0.45 + recall * 0.35 + token_efficiency * 0.20, 2)
@@ -140,8 +170,11 @@ def evaluate(query: str) -> dict:
             "search_bytes": len((search_out or search_err).encode("utf-8")),
             "smoke_bytes": smoke_bytes,
             "native_total_bytes": native_bytes,
+            "native_text_bytes": native_text_bytes,
             "rust": rust,
             "go": go,
+            "rust_text": rust_text,
+            "go_text": go_text,
         },
     }
 
