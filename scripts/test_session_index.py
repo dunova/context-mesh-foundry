@@ -367,6 +367,13 @@ class SessionIndexTests(unittest.TestCase):
                     "/tmp/session.jsonl",
                 )
             )
+            self.assertTrue(
+                session_index._is_current_repo_meta_result(
+                    repo,
+                    "职责只限测试，不要改文件。测试集使用 artifacts/testsets/dataset_2026-03-25.json。",
+                    "/tmp/session.jsonl",
+                )
+            )
             self.assertFalse(
                 session_index._is_current_repo_meta_result(
                     "/tmp/other",

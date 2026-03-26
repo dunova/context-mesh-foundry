@@ -63,6 +63,38 @@ class ContextSmokeTests(unittest.TestCase):
             self.assertIn("--claude-root", call)
             self.assertIn("--json", call)
 
+    def test_native_scan_contract_retries_transient_backend_lock(self) -> None:
+        calls: list[list[str]] = []
+        first_go = {"value": True}
+
+        def fake_run_cmd(args: list[str], timeout: int = 60):
+            calls.append(args)
+            if args[1:] == ["/tmp/context_cli.py", "health"]:
+                payload = {"native_backends": {"available_backends": ["go"]}}
+                return 0, json.dumps(payload), ""
+            if args[4] == "go" and first_go["value"]:
+                first_go["value"] = False
+                return 1, "", "native/session_scan_go/go.mod: resource temporarily unavailable"
+            query = args[10]
+            payload = {
+                "matches": [
+                    {
+                        "session_id": "native-fixture-session",
+                        "snippet": f"最终交付：ContextGO native smoke marker {query} 已验证。",
+                    }
+                ]
+            }
+            return 0, json.dumps(payload), ""
+
+        with mock.patch.object(context_smoke, "run_cmd", side_effect=fake_run_cmd):
+            with mock.patch.object(context_smoke.time, "sleep") as mock_sleep:
+                result = context_smoke.test_native_scan_contract(Path("/tmp/context_cli.py"))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(mock_sleep.call_count, 1)
+        native_calls = [call for call in calls if "native-scan" in call]
+        self.assertEqual(len(native_calls), 2)
+
     def test_write_native_fixture_creates_expected_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             codex_root, claude_root = context_smoke._write_native_fixture(Path(tmpdir), "marker-123")

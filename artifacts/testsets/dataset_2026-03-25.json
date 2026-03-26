@@ -1,0 +1,587 @@
+{
+  "date": "2026-03-25",
+  "total_rows": 72,
+  "sources": {
+    "codex_history": 1,
+    "codex_session": 70,
+    "shell_zsh": 1
+  },
+  "items": [
+    {
+      "source_type": "codex_history",
+      "session_id": "history",
+      "title": "history.jsonl",
+      "file_path": "/Users/dunova/.codex/history.jsonl",
+      "created_at": "2026-03-25T00:14:45",
+      "created_at_epoch": 1774368885
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-25-019d24ed-9e3a-70a1-a45e-6db4f06f73bb.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-27-019d2501-cb32-7ae3-bd38-924a41db1bd9.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-24-019d2501-bd3d-7732-bef7-4e7667c39466.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-10-019d2516-95a5-7891-93ab-26022258f2d0.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-41-54-019d2504-06b9-7552-b519-286a5871a0a2.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-24-019d24ed-9a2a-7951-b409-79707a841296.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-22-019d24ed-91e3-7130-b15c-cca846023819.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T14-54-14-019d23c5-bb51-7ac0-8ec8-dd946ee7a192.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T14-11-51-019d239e-eca7-7800-b7cf-986fb659f28a.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-12-019d2516-9dca-7850-8999-08322ccb02ce.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-09-019d2516-924a-7ed1-982c-a88a7ba717f4.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-25-019d2501-c091-7610-a940-54bbf5587ba9.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-40-40-019d2502-e871-70b3-b80c-e96b98be6e98.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-23-019d24ed-948e-7583-bfa5-f7a1ad410bba.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-21-019d24ed-8dab-7641-be61-4fc0fa5cada3.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-23-019d2501-bb18-7d13-a6fe-f60ae1273f2f.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-25-019d2501-c33d-7393-8965-d107493fff0c.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-15-019d2516-a994-7f30-bfcc-f5e5397e39bb.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-28-019d2501-cdd1-7201-9755-9f662233cf67.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-13-019d2516-a158-78a2-8504-013092885a05.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-26-019d2501-c5a3-75c0-9168-c9cd5c0b55e5.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-23-019d24ed-979e-7d41-883a-750321b0bd6e.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-14-019d2516-a717-7a81-b8b2-b563af0a2ca0.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-14-019d2516-a4b3-7742-8be7-cddc2098b482.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-25-019d24ed-9c73-7850-abe9-5b84c5865cb2.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T14-54-30-019d23c5-fb3f-7a91-bee5-c27e1e6f00f4.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T21-02-11-019d2516-9aa2-7ea0-bb85-0e94524f0f7f.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-17-26-019d24ed-a04c-7ea0-af5d-b335ed6f0b7b.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d239e-eca7-7800-b7cf-986fb659f28a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-39-27-019d2501-c8a5-75d0-8d29-eee9fb16da1b.jsonl",
+      "created_at": "2026-03-25T06:11:51.097Z",
+      "created_at_epoch": 1774419111
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d23d7-b805-7dd0-b260-54dbba5f843d",
+      "title": "/Volumes/AI/GitHub",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T15-13-53-019d23d7-b805-7dd0-b260-54dbba5f843d.jsonl",
+      "created_at": "2026-03-25T07:13:53.170Z",
+      "created_at_epoch": 1774422833
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d23e4-b8da-7fb1-a9f9-55aa9088f0a4",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T15-28-05-019d23e4-b8da-7fb1-a9f9-55aa9088f0a4.jsonl",
+      "created_at": "2026-03-25T07:28:05.343Z",
+      "created_at_epoch": 1774423685
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d23e5-0390-7e30-a6ae-921e05597eff",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T15-28-24-019d23e5-0390-7e30-a6ae-921e05597eff.jsonl",
+      "created_at": "2026-03-25T07:28:24.468Z",
+      "created_at_epoch": 1774423704
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d2438-b29b-73c0-879a-fea3928463eb",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T16-59-48-019d2438-b29b-73c0-879a-fea3928463eb.jsonl",
+      "created_at": "2026-03-25T08:59:48.771Z",
+      "created_at_epoch": 1774429188
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d2439-0855-7001-90b8-c7a37d146d0e",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-00-10-019d2439-0855-7001-90b8-c7a37d146d0e.jsonl",
+      "created_at": "2026-03-25T09:00:10.712Z",
+      "created_at_epoch": 1774429210
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d2439-b1b1-7960-b6bd-e375bcf3df0c",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-00-54-019d2439-b1b1-7960-b6bd-e375bcf3df0c.jsonl",
+      "created_at": "2026-03-25T09:00:54.073Z",
+      "created_at_epoch": 1774429254
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d243a-0e71-7fb0-84ac-6569ac70bde7",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-01-17-019d243a-0e71-7fb0-84ac-6569ac70bde7.jsonl",
+      "created_at": "2026-03-25T09:01:17.813Z",
+      "created_at_epoch": 1774429277
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d243a-68ee-7930-acb2-d5dbd70ec7a2",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-01-40-019d243a-68ee-7930-acb2-d5dbd70ec7a2.jsonl",
+      "created_at": "2026-03-25T09:01:40.989Z",
+      "created_at_epoch": 1774429300
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d243a-d869-77f0-a8fd-a8c297b88647",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-02-09-019d243a-d869-77f0-a8fd-a8c297b88647.jsonl",
+      "created_at": "2026-03-25T09:02:09.600Z",
+      "created_at_epoch": 1774429329
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d243b-3265-7d40-ba79-0a383bb3acd3",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-02-32-019d243b-3265-7d40-ba79-0a383bb3acd3.jsonl",
+      "created_at": "2026-03-25T09:02:32.551Z",
+      "created_at_epoch": 1774429352
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d243b-cd40-7a91-81d3-264fe0ea4f9a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T17-03-12-019d243b-cd40-7a91-81d3-264fe0ea4f9a.jsonl",
+      "created_at": "2026-03-25T09:03:12.195Z",
+      "created_at_epoch": 1774429392
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24a4-12c9-7eb2-8157-1d43d68d5306",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T18-57-05-019d24a4-12c9-7eb2-8157-1d43d68d5306.jsonl",
+      "created_at": "2026-03-25T10:57:05.996Z",
+      "created_at_epoch": 1774436225
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24a4-ff8f-7240-9ba0-b46ff6a94a28",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T18-58-06-019d24a4-ff8f-7240-9ba0-b46ff6a94a28.jsonl",
+      "created_at": "2026-03-25T10:58:06.356Z",
+      "created_at_epoch": 1774436286
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24a5-e47c-74e2-a517-47e4548df607",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T18-59-04-019d24a5-e47c-74e2-a517-47e4548df607.jsonl",
+      "created_at": "2026-03-25T10:59:04.965Z",
+      "created_at_epoch": 1774436344
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24a6-cb13-7853-b151-92d70637ae42",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-00-03-019d24a6-cb13-7853-b151-92d70637ae42.jsonl",
+      "created_at": "2026-03-25T11:00:03.991Z",
+      "created_at_epoch": 1774436403
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24a7-e1b3-7411-8556-9627b8287d0d",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-01-15-019d24a7-e1b3-7411-8556-9627b8287d0d.jsonl",
+      "created_at": "2026-03-25T11:01:15.322Z",
+      "created_at_epoch": 1774436475
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24a9-7d48-71f0-a5a8-21275d3677c1",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-03-00-019d24a9-7d48-71f0-a5a8-21275d3677c1.jsonl",
+      "created_at": "2026-03-25T11:03:00.690Z",
+      "created_at_epoch": 1774436580
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24aa-0930-7841-9726-98dd20f46efb",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-03-36-019d24aa-0930-7841-9726-98dd20f46efb.jsonl",
+      "created_at": "2026-03-25T11:03:36.503Z",
+      "created_at_epoch": 1774436616
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24aa-97d7-7ee3-9a9e-9995cf57b174",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-04-13-019d24aa-97d7-7ee3-9a9e-9995cf57b174.jsonl",
+      "created_at": "2026-03-25T11:04:13.040Z",
+      "created_at_epoch": 1774436653
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24c7-9e0b-7170-bb32-9f33fe1de04a",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-35-55-019d24c7-9e0b-7170-bb32-9f33fe1de04a.jsonl",
+      "created_at": "2026-03-25T11:35:55.152Z",
+      "created_at_epoch": 1774438555
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24c8-57ac-7980-8733-0ca579c63ed2",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-36-42-019d24c8-57ac-7980-8733-0ca579c63ed2.jsonl",
+      "created_at": "2026-03-25T11:36:42.674Z",
+      "created_at_epoch": 1774438602
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24c8-f55d-7241-91b1-bb8e7e49dfa3",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-37-23-019d24c8-f55d-7241-91b1-bb8e7e49dfa3.jsonl",
+      "created_at": "2026-03-25T11:37:23.042Z",
+      "created_at_epoch": 1774438643
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24ca-0e6f-7153-abf9-f89b5b0f66d8",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-38-35-019d24ca-0e6f-7153-abf9-f89b5b0f66d8.jsonl",
+      "created_at": "2026-03-25T11:38:35.002Z",
+      "created_at_epoch": 1774438715
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24ca-ebab-7b73-901f-1b5e9888ae12",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-39-31-019d24ca-ebab-7b73-901f-1b5e9888ae12.jsonl",
+      "created_at": "2026-03-25T11:39:31.632Z",
+      "created_at_epoch": 1774438771
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24cc-30b3-73d3-af48-8feb385cc80e",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-40-54-019d24cc-30b3-73d3-af48-8feb385cc80e.jsonl",
+      "created_at": "2026-03-25T11:40:54.844Z",
+      "created_at_epoch": 1774438854
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24cd-3d6a-7372-a9d6-72877a2d861e",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-42-03-019d24cd-3d6a-7372-a9d6-72877a2d861e.jsonl",
+      "created_at": "2026-03-25T11:42:03.633Z",
+      "created_at_epoch": 1774438923
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24ce-3a70-7613-bd8f-7f39b8635703",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-43-08-019d24ce-3a70-7613-bd8f-7f39b8635703.jsonl",
+      "created_at": "2026-03-25T11:43:08.405Z",
+      "created_at_epoch": 1774438988
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24cf-a911-7b12-a202-41c123a03c4f",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-44-42-019d24cf-a911-7b12-a202-41c123a03c4f.jsonl",
+      "created_at": "2026-03-25T11:44:42.261Z",
+      "created_at_epoch": 1774439082
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24d0-9e99-7cc2-9357-b4e218070b1d",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T19-45-45-019d24d0-9e99-7cc2-9357-b4e218070b1d.jsonl",
+      "created_at": "2026-03-25T11:45:45.117Z",
+      "created_at_epoch": 1774439145
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e1-598a-73d3-8153-fd4c5bfe4c6b",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-04-01-019d24e1-598a-73d3-8153-fd4c5bfe4c6b.jsonl",
+      "created_at": "2026-03-25T12:04:01.570Z",
+      "created_at_epoch": 1774440241
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e1-e505-79a2-9247-7c29432ff26e",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-04-37-019d24e1-e505-79a2-9247-7c29432ff26e.jsonl",
+      "created_at": "2026-03-25T12:04:37.255Z",
+      "created_at_epoch": 1774440277
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e2-dc99-79f3-88f5-e8522af9bea5",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-05-40-019d24e2-dc99-79f3-88f5-e8522af9bea5.jsonl",
+      "created_at": "2026-03-25T12:05:40.637Z",
+      "created_at_epoch": 1774440340
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e3-9eb6-72c1-8819-a5f79dd21ad5",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-06-30-019d24e3-9eb6-72c1-8819-a5f79dd21ad5.jsonl",
+      "created_at": "2026-03-25T12:06:30.331Z",
+      "created_at_epoch": 1774440390
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e4-51b1-7813-8854-6aac64c46980",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-07-16-019d24e4-51b1-7813-8854-6aac64c46980.jsonl",
+      "created_at": "2026-03-25T12:07:16.156Z",
+      "created_at_epoch": 1774440436
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e5-0e10-70d3-b482-e0b04e9ed68c",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-08-04-019d24e5-0e10-70d3-b482-e0b04e9ed68c.jsonl",
+      "created_at": "2026-03-25T12:08:04.372Z",
+      "created_at_epoch": 1774440484
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e5-f41c-7fc3-977b-f32969170f43",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-09-03-019d24e5-f41c-7fc3-977b-f32969170f43.jsonl",
+      "created_at": "2026-03-25T12:09:03.372Z",
+      "created_at_epoch": 1774440543
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d24e6-9519-7bb2-a872-971bfd03f6bc",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/25/rollout-2026-03-25T20-09-44-019d24e6-9519-7bb2-a872-971bfd03f6bc.jsonl",
+      "created_at": "2026-03-25T12:09:44.475Z",
+      "created_at_epoch": 1774440584
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d267d-b441-7383-a4df-5854136b14db",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/26/rollout-2026-03-26T03-34-25-019d267d-b441-7383-a4df-5854136b14db.jsonl",
+      "created_at": "2026-03-25T19:34:25.607Z",
+      "created_at_epoch": 1774467265
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d267d-b489-7a42-acf0-7db3099ad5e8",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/26/rollout-2026-03-26T03-34-25-019d267d-b489-7a42-acf0-7db3099ad5e8.jsonl",
+      "created_at": "2026-03-25T19:34:25.684Z",
+      "created_at_epoch": 1774467265
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d267d-b4b2-7422-a9ac-07db581d1e43",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/26/rollout-2026-03-26T03-34-25-019d267d-b4b2-7422-a9ac-07db581d1e43.jsonl",
+      "created_at": "2026-03-25T19:34:25.727Z",
+      "created_at_epoch": 1774467265
+    },
+    {
+      "source_type": "codex_session",
+      "session_id": "019d267d-b46a-7232-9b69-ed6c0fbf6981",
+      "title": "/Volumes/AI/GitHub/context-mesh-foundry",
+      "file_path": "/Users/dunova/.codex/sessions/2026/03/26/rollout-2026-03-26T03-34-25-019d267d-b46a-7232-9b69-ed6c0fbf6981.jsonl",
+      "created_at": "2026-03-25T19:34:25.645Z",
+      "created_at_epoch": 1774467265
+    },
+    {
+      "source_type": "shell_zsh",
+      "session_id": ".zsh_history",
+      "title": ".zsh_history",
+      "file_path": "/Users/dunova/.zsh_history",
+      "created_at": "2026-03-25T22:20:49",
+      "created_at_epoch": 1774448449
+    }
+  ]
+}

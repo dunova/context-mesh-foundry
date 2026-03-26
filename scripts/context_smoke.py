@@ -209,25 +209,27 @@ def test_native_scan_contract(cli_path: Path) -> dict:
     with tempfile.TemporaryDirectory(prefix="contextgo-native-smoke-") as tmpdir:
         codex_root, claude_root = _write_native_fixture(Path(tmpdir), marker)
         for backend in backends:
-            rc, out, err = run_cmd(
-                [
-                    sys.executable,
-                    str(cli_path),
-                    "native-scan",
-                    "--backend",
-                    backend,
-                    "--codex-root",
-                    str(codex_root),
-                    "--claude-root",
-                    str(claude_root),
-                    "--query",
-                    marker,
-                    "--limit",
-                    "3",
-                    "--json",
-                ],
-                timeout=120,
-            )
+            args = [
+                sys.executable,
+                str(cli_path),
+                "native-scan",
+                "--backend",
+                backend,
+                "--codex-root",
+                str(codex_root),
+                "--claude-root",
+                str(claude_root),
+                "--query",
+                marker,
+                "--limit",
+                "3",
+                "--json",
+            ]
+            rc, out, err = run_cmd(args, timeout=120)
+            transient = "resource temporarily unavailable"
+            if rc != 0 and transient in ((out or "") + "\n" + (err or "")).lower():
+                time.sleep(0.5)
+                rc, out, err = run_cmd(args, timeout=120)
             text = (out or err).strip()
             try:
                 payload = json.loads(text)
