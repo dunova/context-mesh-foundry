@@ -3,3 +3,9 @@ R001	2026-03-26T04:08:10	50	100	88	75.1	ITERATE	baseline-after-smoke-compaction
 R002	2026-03-26T04:09:22	100	100	88	97.6	KEEP	retry-stable-smoke-eval
 R003	2026-03-26T09:56:25	100	60	88	83.6	KEEP	pre-snippet-compaction-baseline
 R004	2026-03-26T09:58:50	100	100	90	98.0	KEEP	post-search-fallback-fix
+R005	2026-03-26T10:01:06	100	100	90	98.0	KEEP	pre-conclusion-snippet-pass
+R006	2026-03-26T10:02:21	100	100	90	98.0	KEEP	prefer-conclusion-centered-snippets
+R007	2026-03-26T10:05:10	50	100	95	76.5	ITERATE	compact-json-cli-output
+R008	2026-03-26T10:07:55	100	100	95	99.0	KEEP	compact-json-healthcheck-fix
+R008	2026-03-26T10:08:51	100	100	95	99.0	KEEP	compact-json-healthcheck-fix
+R009	2026-03-26T10:10:18	100	100	95	99.0	KEEP	compact-json-cli-output-fixed

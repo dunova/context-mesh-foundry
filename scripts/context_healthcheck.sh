@@ -90,9 +90,9 @@ check_cli_runtime() {
     fi
 
     out="$(python3 "$cli_script" health 2>&1)"
-    if echo "$out" | grep -q '"all_ok": true'; then
-        sessions="$(echo "$out" | awk -F': ' '/"sessions"/ {gsub(/,/, "", $2); print $2; exit}')"
-        db_path="$(echo "$out" | awk -F': ' '/"db"/ {gsub(/[",]/, "", $2); print $2; exit}')"
+    if echo "$out" | python3 -c 'import json,sys; print("1" if json.loads(sys.stdin.read()).get("all_ok") else "0")' 2>/dev/null | grep -q '^1$'; then
+        sessions="$(echo "$out" | python3 -c 'import json,sys; data=json.loads(sys.stdin.read()); print((data.get("session_search_lite") or {}).get("sessions") or 0)' 2>/dev/null)"
+        db_path="$(echo "$out" | python3 -c 'import json,sys; data=json.loads(sys.stdin.read()); print((data.get("session_search_lite") or {}).get("db") or "")' 2>/dev/null)"
         report_ok "本地会话索引健康检查通过（sessions=${sessions:-0}）"
         if [ -n "$db_path" ]; then
             report_ok "会话索引数据库：$db_path"

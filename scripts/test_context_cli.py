@@ -153,7 +153,7 @@ class ContextCliTests(unittest.TestCase):
                     rc = context_cli.run(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
-        self.assertIn('"session_id": "abc"', printed)
+        self.assertIn('"session_id":"abc"', printed)
         self.assertNotIn("Compiling", printed)
         mock_stderr.write.assert_not_called()
 

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import uuid
 
 
 def run_cmd(args: list[str], timeout: int = 60) -> tuple[int, str, str]:
@@ -63,7 +64,7 @@ def test_rw_cycle(cli_path: Path) -> dict:
     with tempfile.TemporaryDirectory(prefix="cmf-smoke-") as tmpdir:
         tmpdir = Path(tmpdir)
         export_path = tmpdir / "export.json"
-        marker = f"smoke-{int(time.time())}"
+        marker = f"smoke-{uuid.uuid4().hex[:12]}"
         r1 = run_cmd([sys.executable, str(cli_path), "save", "--title", "smoke", "--content", marker, "--tags", "smoke"])
         r2 = run_cmd([sys.executable, str(cli_path), "semantic", marker, "--limit", "3"])
         r3 = run_cmd([sys.executable, str(cli_path), "export", marker, str(export_path), "--limit", "10"])

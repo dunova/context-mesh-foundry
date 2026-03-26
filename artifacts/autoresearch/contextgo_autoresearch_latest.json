@@ -1,36 +1,36 @@
 {
-  "timestamp": "2026-03-26T09:58:50",
+  "timestamp": "2026-03-26T10:10:18",
   "query": "NotebookLM",
   "dimensions": {
     "stability": 100,
     "recall": 100,
-    "token_efficiency": 90
+    "token_efficiency": 95
   },
-  "total_score": 98.0,
+  "total_score": 99.0,
   "signals": {
     "health_ok": true,
     "smoke_ok": true,
     "search_ok": true,
     "search_bytes": 1733,
-    "smoke_bytes": 623,
-    "native_total_bytes": 5092,
+    "smoke_bytes": 346,
+    "native_total_bytes": 4382,
     "rust": {
       "backend": "rust",
       "rc": 0,
       "match_count": 3,
-      "bytes": 3138,
+      "bytes": 2694,
       "ok": true
     },
     "go": {
       "backend": "go",
       "rc": 0,
       "match_count": 3,
-      "bytes": 1954,
+      "bytes": 1688,
       "ok": true
     }
   },
   "task_name": "ContextGO AutoResearch",
   "target_score": 95,
   "max_rounds": 100,
-  "round": 4
+  "round": 9
 }

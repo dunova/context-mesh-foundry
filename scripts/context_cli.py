@@ -129,6 +129,13 @@ def _compact_smoke_payload(payload: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _print_json(payload: object, *, pretty: bool = False) -> None:
+    if pretty:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+
+
 def _source_freshness() -> dict:
     antigravity_candidates = sorted(
         (HOME / ".gemini" / "antigravity" / "brain").glob("*/walkthrough.md"),
@@ -341,7 +348,7 @@ def run(args: argparse.Namespace) -> int:
         if args.json:
             payload = result.json_payload()
             if isinstance(payload, dict):
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                _print_json(payload)
                 if result.returncode != 0 and result.stderr:
                     print(result.stderr.rstrip(), file=sys.stderr)
                 return result.returncode
@@ -354,7 +361,7 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "smoke":
         payload = context_smoke.run_smoke(Path(__file__).resolve().parent / "context_cli.py", Path(__file__).resolve().parent / "e2e_quality_gate.py")
         output = payload if args.verbose else _compact_smoke_payload(payload)
-        print(json.dumps(output, ensure_ascii=False, indent=2))
+        _print_json(output, pretty=bool(args.verbose))
         failed = [item for item in payload["results"] if not item["ok"]]
         return 1 if failed else 0
 
@@ -381,7 +388,7 @@ def run(args: argparse.Namespace) -> int:
             "native_backends": context_native.health_payload(),
             "all_ok": bool(recall_payload.get("session_index_db_exists")),
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _print_json(payload)
         return 0 if payload["all_ok"] else 1
 
     print(f"Unknown command: {args.command}", file=sys.stderr)
