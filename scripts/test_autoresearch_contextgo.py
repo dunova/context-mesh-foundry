@@ -45,6 +45,7 @@ class AutoResearchTests(unittest.TestCase):
             log_path = Path(tmpdir) / "log.tsv"
             state_path = Path(tmpdir) / "latest.json"
             metrics_path = Path(tmpdir) / "metrics.json"
+            best_path = Path(tmpdir) / "best.json"
             payload = {
                 "round": 12,
                 "timestamp": "2026-03-26T10:17:49",
@@ -61,10 +62,13 @@ class AutoResearchTests(unittest.TestCase):
             with mock.patch.object(ar, "LOG_PATH", log_path):
                 with mock.patch.object(ar, "STATE_PATH", state_path):
                     with mock.patch.object(ar, "METRICS_PATH", metrics_path):
-                        ar.append_log(12, payload, "KEEP", "metrics")
+                        with mock.patch.object(ar, "BEST_PATH", best_path):
+                            ar.append_log(12, payload, "KEEP", "metrics")
             metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
             self.assertEqual(metrics[0]["round"], 12)
             self.assertEqual(metrics[0]["health_bytes"], 386)
+            best = json.loads(best_path.read_text(encoding="utf-8"))
+            self.assertEqual(best["round"], 12)
 
 
 if __name__ == "__main__":

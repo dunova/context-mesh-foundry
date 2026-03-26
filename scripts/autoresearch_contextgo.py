@@ -16,6 +16,7 @@ ARTIFACT_ROOT = REPO_ROOT / "artifacts" / "autoresearch"
 LOG_PATH = ARTIFACT_ROOT / "contextgo_autoresearch.tsv"
 STATE_PATH = ARTIFACT_ROOT / "contextgo_autoresearch_latest.json"
 METRICS_PATH = ARTIFACT_ROOT / "contextgo_autoresearch_metrics.json"
+BEST_PATH = ARTIFACT_ROOT / "contextgo_autoresearch_best.json"
 DEFAULT_MAX_ROUNDS = 100
 DEFAULT_QUERY = "NotebookLM"
 
@@ -236,10 +237,32 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
         except Exception:
             existing_metrics = []
     current_round = payload.get("round", round_no)
-    existing_metrics = [item for item in existing_metrics if item.get("round") != current_round]
+    existing_metrics = [
+        item
+        for item in existing_metrics
+        if item.get("round") != current_round and item.get("health_bytes") is not None
+    ]
     existing_metrics.extend(metrics)
     existing_metrics.sort(key=lambda item: item.get("round", 0))
     METRICS_PATH.write_text(json.dumps(existing_metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+    if existing_metrics:
+        def _metric_value(item: dict, key: str, default: int) -> int:
+            value = item.get(key)
+            return default if value is None else int(value)
+
+        best = max(
+            existing_metrics,
+            key=lambda item: (
+                item.get("total_score", 0),
+                item.get("token_efficiency", 0),
+                -_metric_value(item, "health_bytes", 10**9),
+                -_metric_value(item, "search_bytes", 10**9),
+                -_metric_value(item, "smoke_bytes", 10**9),
+                -_metric_value(item, "native_total_bytes", 10**9),
+                -_metric_value(item, "native_text_bytes", 10**9),
+            ),
+        )
+        BEST_PATH.write_text(json.dumps(best, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def build_parser() -> argparse.ArgumentParser:

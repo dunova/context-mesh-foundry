@@ -16,4 +16,4 @@ R014	2026-03-26T10:21:14	100	100	95	99.0	KEEP	compact-health-default-output
 R015	2026-03-26T10:23:27	100	100	95	99.0	KEEP	pre-native-text-compaction
 R016	2026-03-26T10:25:05	100	100	95	99.0	KEEP	score-health-bytes
 R017	2026-03-26T10:29:20	100	100	95	99.0	KEEP	track-native-text-bytes
-R018	2026-03-26T10:33:37	100	100	95	99.0	KEEP	write-metrics-trend-file
+R018	2026-03-26T10:44:12	100	100	95	99.0	KEEP	normalize-metrics-and-best-final
