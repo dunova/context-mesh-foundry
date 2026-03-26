@@ -3,12 +3,15 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
+// DefaultNoiseMarkers is the set of substrings that identify a text fragment
+// as noise.  Each entry is compared case-insensitively against the candidate.
 var DefaultNoiseMarkers = []string{
 	"# agents.md instructions",
 	"### available skills",
@@ -55,7 +58,7 @@ var DefaultNoiseMarkers = []string{
 	"状态汇总：",
 	"已关闭且有有效产出",
 	"我先按仓库要求做上下文预热",
-	"我先做“全局一致性同步”检查",
+	"我先做"全局一致性同步"检查",
 	"主链不再是瓶颈",
 	"现在真正该优化的是",
 	"native 结果质量现状",
@@ -67,7 +70,7 @@ var DefaultNoiseMarkers = []string{
 	"我继续直接提主链结果质量",
 	"我先复跑主链",
 	"再决定要不要进一步做字段级过滤",
-	"现在不是“能不能跑”的问题",
+	"现在不是"能不能跑"的问题",
 	"让它质量更好，能替代旧逻辑",
 	"我继续。",
 	"我现在直接复跑主链",
@@ -83,6 +86,8 @@ var DefaultNoiseMarkers = []string{
 	"\noutput:",
 }
 
+// DefaultNoisePrefixes contains line prefixes that identify a fragment as
+// noise.  Each entry is compared case-insensitively against the candidate.
 var DefaultNoisePrefixes = []string{
 	"##",
 	"```",
@@ -93,18 +98,23 @@ var DefaultNoisePrefixes = []string{
 	"https",
 }
 
+// defaultSnippetLimit is the maximum character length of an extracted snippet.
 const defaultSnippetLimit = 180
 
+// SessionScanner processes individual session files and extracts summaries.
 type SessionScanner struct {
 	noiseFilter  *NoiseFilter
 	snippetLimit int
 }
 
+// TextCandidate holds a text fragment alongside the JSON field path it came from.
 type TextCandidate struct {
 	Field string
 	Text  string
 }
 
+// NewSessionScanner creates a SessionScanner.  Nil filter falls back to
+// DefaultNoiseMarkers; non-positive snippetLimit falls back to defaultSnippetLimit.
 func NewSessionScanner(filter *NoiseFilter, snippetLimit int) *SessionScanner {
 	if filter == nil {
 		filter = NewNoiseFilter(DefaultNoiseMarkers)
@@ -118,14 +128,20 @@ func NewSessionScanner(filter *NoiseFilter, snippetLimit int) *SessionScanner {
 	}
 }
 
+// ProcessFile reads item.Path, applies query matching, and returns a populated
+// SessionSummary.  The boolean return is false when the file should be excluded
+// (no match, or belongs to the active working directory session).
 func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummary, bool) {
 	file, err := os.Open(item.Path)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "open %s: %v\n", item.Path, err)
 		return SessionSummary{}, false
 	}
 	defer file.Close()
+
 	stat, err := file.Stat()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "stat %s: %v\n", item.Path, err)
 		return SessionSummary{}, false
 	}
 
@@ -141,18 +157,17 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 	currentWorkdir := normalizedCurrentWorkdir()
 	sessionCwd := ""
 
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 32*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	sc := bufio.NewScanner(file)
+	sc.Buffer(make([]byte, 0, 1024*1024), 32*1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
 		summary.Lines++
-		parsedJSON := false
+
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(line), &payload); err == nil {
-			parsedJSON = true
 			if shouldSkipRecordType(payload) {
 				continue
 			}
@@ -186,8 +201,7 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 					}
 				}
 			}
-		}
-		if !matcher.QueryEmpty() && !parsedJSON {
+		} else if !matcher.QueryEmpty() {
 			if snippet, ok := matcher.Match(line); ok {
 				score := candidateScore("raw_line", line, matcher.queryLower)
 				if score > summary.MatchScore {
@@ -199,26 +213,32 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 			}
 		}
 	}
+	if err := sc.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "scan %s: %v\n", item.Path, err)
+	}
 	return summary, matchFound
 }
 
+// shouldSkipRecordType returns true for record types that contain no useful
+// user-visible text (tool call outputs, token counts, etc.).
 func shouldSkipRecordType(payload map[string]any) bool {
-	topLevelType, _ := payload["type"].(string)
-	if topLevelType == "turn_context" || topLevelType == "custom_tool_call" {
+	topType, _ := payload["type"].(string)
+	switch topType {
+	case "turn_context", "custom_tool_call":
 		return true
-	}
-	if topLevelType == "response_item" {
+	case "response_item":
 		if nested, ok := payload["payload"].(map[string]any); ok {
-			payloadType, _ := nested["type"].(string)
-			if payloadType == "function_call_output" || payloadType == "function_call" || payloadType == "reasoning" {
+			pt, _ := nested["type"].(string)
+			switch pt {
+			case "function_call_output", "function_call", "reasoning":
 				return true
 			}
 		}
-	}
-	if topLevelType == "event_msg" {
+	case "event_msg":
 		if nested, ok := payload["payload"].(map[string]any); ok {
-			payloadType, _ := nested["type"].(string)
-			if payloadType == "token_count" || payloadType == "task_started" {
+			pt, _ := nested["type"].(string)
+			switch pt {
+			case "token_count", "task_started":
 				return true
 			}
 		}
@@ -226,59 +246,68 @@ func shouldSkipRecordType(payload map[string]any) bool {
 	return false
 }
 
+// NoiseFilter decides whether a text fragment should be excluded from results.
 type NoiseFilter struct {
 	markers  []string
 	prefixes []string
 }
 
+// NewNoiseFilter builds a NoiseFilter from the given marker list.
+// All markers and DefaultNoisePrefixes are normalised to lowercase.
 func NewNoiseFilter(markers []string) *NoiseFilter {
 	normalized := make([]string, 0, len(markers))
-	for _, marker := range markers {
-		marker = strings.ToLower(strings.TrimSpace(marker))
-		if marker != "" {
-			normalized = append(normalized, marker)
+	for _, m := range markers {
+		m = strings.ToLower(strings.TrimSpace(m))
+		if m != "" {
+			normalized = append(normalized, m)
 		}
 	}
 	prefixes := make([]string, 0, len(DefaultNoisePrefixes))
-	for _, prefix := range DefaultNoisePrefixes {
-		prefix = strings.ToLower(strings.TrimSpace(prefix))
-		if prefix != "" {
-			prefixes = append(prefixes, prefix)
+	for _, p := range DefaultNoisePrefixes {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p != "" {
+			prefixes = append(prefixes, p)
 		}
 	}
 	return &NoiseFilter{markers: normalized, prefixes: prefixes}
 }
 
+// IsNoise reports whether line (already lower-cased) matches any noise pattern.
 func (f *NoiseFilter) IsNoise(line string) bool {
 	if f == nil {
 		return false
 	}
 	line = strings.ToLower(strings.TrimSpace(line))
-	for _, prefix := range f.prefixes {
-		if prefix != "" && strings.HasPrefix(line, prefix) {
+	for _, p := range f.prefixes {
+		if p != "" && strings.HasPrefix(line, p) {
 			return true
 		}
 	}
-	for _, marker := range f.markers {
-		if marker != "" && strings.Contains(line, marker) {
+	for _, m := range f.markers {
+		if m != "" && strings.Contains(line, m) {
 			return true
 		}
 	}
-	lines := strings.Split(line, "\n")
-	shortTokenLines := 0
-	for _, item := range lines {
-		item = strings.TrimSpace(item)
-		if item == "" {
+
+	// Heuristic: many short spaceless tokens suggest a directory listing or
+	// skill manifest.
+	shortTokens := 0
+	for _, part := range strings.Split(line, "\n") {
+		part = strings.TrimSpace(part)
+		if part == "" {
 			continue
 		}
-		if len(item) <= 40 && !strings.Contains(item, " ") && strings.Count(item, "/") < 2 && strings.Count(item, "-") <= 3 {
-			shortTokenLines++
+		if len(part) <= 40 && !strings.Contains(part, " ") &&
+			strings.Count(part, "/") < 2 && strings.Count(part, "-") <= 3 {
+			shortTokens++
 		}
 	}
-	if shortTokenLines >= 5 {
+	if shortTokens >= 5 {
 		return true
 	}
-	if strings.Contains(line, "drwx") || strings.Contains(line, "rwxr-xr-x") || strings.Contains(line, "\ntotal ") {
+	if strings.Contains(line, "drwx") ||
+		strings.Contains(line, "rwxr-xr-x") ||
+		strings.Contains(line, "\ntotal ") {
 		return true
 	}
 	if strings.Contains(line, "notebooklm") &&
@@ -288,18 +317,22 @@ func (f *NoiseFilter) IsNoise(line string) bool {
 		return true
 	}
 	if (strings.Contains(line, "我先") || strings.Contains(line, "我继续")) &&
-		(strings.Contains(line, "search") || strings.Contains(line, "native-scan") || strings.Contains(line, "session_index")) {
+		(strings.Contains(line, "search") ||
+			strings.Contains(line, "native-scan") ||
+			strings.Contains(line, "session_index")) {
 		return true
 	}
 	return false
 }
 
+// SnippetMatcher extracts and validates query-matching snippets from text.
 type SnippetMatcher struct {
 	queryLower   string
 	filter       *NoiseFilter
 	snippetLimit int
 }
 
+// NewSnippetMatcher creates a SnippetMatcher for the given query string.
 func NewSnippetMatcher(query string, filter *NoiseFilter, limit int) *SnippetMatcher {
 	return &SnippetMatcher{
 		queryLower:   strings.ToLower(strings.TrimSpace(query)),
@@ -308,10 +341,13 @@ func NewSnippetMatcher(query string, filter *NoiseFilter, limit int) *SnippetMat
 	}
 }
 
+// QueryEmpty reports whether the query is empty, meaning all files match.
 func (m *SnippetMatcher) QueryEmpty() bool {
 	return m == nil || m.queryLower == ""
 }
 
+// Match returns the best snippet from text centred on the first query
+// occurrence, and true when the text is a non-noise match.
 func (m *SnippetMatcher) Match(text string) (string, bool) {
 	if m == nil || m.QueryEmpty() {
 		return "", false
@@ -335,15 +371,19 @@ func (m *SnippetMatcher) Match(text string) (string, bool) {
 	return snippet, true
 }
 
+// fieldPriority returns a base score for a JSON field path.  Higher-priority
+// fields carry user-visible content; lower-priority fields carry meta text.
 func fieldPriority(field string) int {
 	switch field {
 	case "message.content.text", "payload.content.text":
 		return 120
 	case "message", "message.content", "payload.message", "root.text", "payload.text":
 		return 100
-	case "root.content", "root.display", "payload.display", "root.last_agent_message", "payload.last_agent_message":
+	case "root.content", "root.display", "payload.display",
+		"root.last_agent_message", "payload.last_agent_message":
 		return 70
-	case "root.prompt", "payload.prompt", "root.user_instructions", "payload.user_instructions":
+	case "root.prompt", "payload.prompt",
+		"root.user_instructions", "payload.user_instructions":
 		return 20
 	case "raw_line":
 		return 10
@@ -352,7 +392,9 @@ func fieldPriority(field string) int {
 	}
 }
 
-func candidateScore(field string, text string, queryLower string) int {
+// candidateScore computes a match quality score combining field priority and
+// hit frequency.
+func candidateScore(field, text, queryLower string) int {
 	hits := 0
 	if queryLower != "" {
 		hits = strings.Count(strings.ToLower(text), queryLower)
@@ -360,7 +402,10 @@ func candidateScore(field string, text string, queryLower string) int {
 	return fieldPriority(field) + hits*25
 }
 
-func clipSnippet(text string, index int, queryLen int, limit int) string {
+// clipSnippet returns a substring of text of at most limit bytes, centred on
+// the match at index.  It operates on bytes, not runes, which is sufficient
+// because the index originates from strings.Index.
+func clipSnippet(text string, index, queryLen, limit int) string {
 	if limit <= 0 || len(text) <= limit {
 		return text
 	}
@@ -375,91 +420,96 @@ func clipSnippet(text string, index int, queryLen int, limit int) string {
 	end := start + limit
 	if end > len(text) {
 		end = len(text)
-		start = max(0, end-limit)
+		if end-limit > 0 {
+			start = end - limit
+		} else {
+			start = 0
+		}
 	}
 	return text[start:end]
 }
 
-func max(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
+// extractTextCandidates returns all non-empty text fields from a parsed JSON
+// record, labelled with their field path.
 func extractTextCandidates(payload map[string]any) []TextCandidate {
 	out := make([]TextCandidate, 0, 8)
-	appendIfString := func(field string, value any) {
+	appendStr := func(field string, value any) {
 		if text, ok := value.(string); ok {
-			text = strings.TrimSpace(text)
-			if text != "" {
+			if text = strings.TrimSpace(text); text != "" {
 				out = append(out, TextCandidate{Field: field, Text: text})
 			}
 		}
 	}
-	for _, item := range []struct {
-		Field string
-		Key   string
-	}{
-		{Field: "message", Key: "message"},
-		{Field: "root.display", Key: "display"},
-		{Field: "root.text", Key: "text"},
-		{Field: "root.prompt", Key: "prompt"},
-		{Field: "root.output", Key: "output"},
-		{Field: "root.content", Key: "content"},
-	} {
-		appendIfString(item.Field, payload[item.Key])
+
+	rootFields := []struct{ field, key string }{
+		{"message", "message"},
+		{"root.display", "display"},
+		{"root.text", "text"},
+		{"root.prompt", "prompt"},
+		{"root.output", "output"},
+		{"root.content", "content"},
 	}
+	for _, f := range rootFields {
+		appendStr(f.field, payload[f.key])
+	}
+
 	if nested, ok := payload["payload"].(map[string]any); ok {
-		for _, item := range []struct {
-			Field string
-			Key   string
-		}{
-			{Field: "payload.message", Key: "message"},
-			{Field: "payload.display", Key: "display"},
-			{Field: "payload.text", Key: "text"},
-			{Field: "payload.prompt", Key: "prompt"},
-			{Field: "payload.output", Key: "output"},
-			{Field: "payload.user_instructions", Key: "user_instructions"},
-			{Field: "payload.last_agent_message", Key: "last_agent_message"},
-		} {
-			appendIfString(item.Field, nested[item.Key])
+		payloadFields := []struct{ field, key string }{
+			{"payload.message", "message"},
+			{"payload.display", "display"},
+			{"payload.text", "text"},
+			{"payload.prompt", "prompt"},
+			{"payload.output", "output"},
+			{"payload.user_instructions", "user_instructions"},
+			{"payload.last_agent_message", "last_agent_message"},
 		}
-		if content, ok := nested["content"].([]any); ok {
-			for _, item := range content {
+		for _, f := range payloadFields {
+			appendStr(f.field, nested[f.key])
+		}
+		if items, ok := nested["content"].([]any); ok {
+			for _, item := range items {
 				if m, ok := item.(map[string]any); ok {
-					appendIfString("payload.content.text", m["text"])
+					appendStr("payload.content.text", m["text"])
 				}
 			}
 		}
 	}
+
 	if message, ok := payload["message"].(map[string]any); ok {
-		appendIfString("message.content", message["content"])
-		if content, ok := message["content"].([]any); ok {
-			for _, item := range content {
+		appendStr("message.content", message["content"])
+		if items, ok := message["content"].([]any); ok {
+			for _, item := range items {
 				if m, ok := item.(map[string]any); ok {
-					appendIfString("message.content.text", m["text"])
+					appendStr("message.content.text", m["text"])
 				}
 			}
 		}
 	}
-	appendIfString("root.user_instructions", payload["user_instructions"])
-	appendIfString("root.last_agent_message", payload["last_agent_message"])
+
+	appendStr("root.user_instructions", payload["user_instructions"])
+	appendStr("root.last_agent_message", payload["last_agent_message"])
 	return out
 }
 
+// extractSessionID returns the session identifier from a parsed JSON record,
+// checking payload.id and root sessionId fields.
 func extractSessionID(payload map[string]any) string {
-	if sessionID, ok := payload["sessionId"].(string); ok && sessionID != "" {
-		return sessionID
-	}
 	if nested, ok := payload["payload"].(map[string]any); ok {
 		if id, ok := nested["id"].(string); ok && id != "" {
 			return id
 		}
 	}
+	if id, ok := payload["sessionId"].(string); ok && id != "" {
+		return id
+	}
+	if id, ok := payload["session_id"].(string); ok && id != "" {
+		return id
+	}
 	return ""
 }
 
+// extractTimestamp returns the most relevant timestamp from a parsed JSON
+// record.  It prefers payload.timestamp, then falls back to root-level keys.
 func extractTimestamp(payload map[string]any) string {
 	if nested, ok := payload["payload"].(map[string]any); ok {
 		if ts, ok := nested["timestamp"].(string); ok && ts != "" {
@@ -474,6 +524,7 @@ func extractTimestamp(payload map[string]any) string {
 	return ""
 }
 
+// extractCwd returns the working directory recorded in a parsed JSON record.
 func extractCwd(payload map[string]any) string {
 	if nested, ok := payload["payload"].(map[string]any); ok {
 		if cwd, ok := nested["cwd"].(string); ok && cwd != "" {
@@ -486,6 +537,8 @@ func extractCwd(payload map[string]any) string {
 	return ""
 }
 
+// normalizedCurrentWorkdir returns the canonical path of the active working
+// directory.  It honours CONTEXTGO_ACTIVE_WORKDIR when set.
 func normalizedCurrentWorkdir() string {
 	if explicit := strings.TrimSpace(os.Getenv("CONTEXTGO_ACTIVE_WORKDIR")); explicit != "" {
 		return normalizePath(explicit)
@@ -497,6 +550,7 @@ func normalizedCurrentWorkdir() string {
 	return normalizePath(cwd)
 }
 
+// normalizePath resolves symlinks and returns an absolute path.
 func normalizePath(path string) string {
 	if path == "" {
 		return ""
@@ -510,6 +564,7 @@ func normalizePath(path string) string {
 	return path
 }
 
+// Aggregate holds per-source statistics computed from a result set.
 type Aggregate struct {
 	Source     string
 	Count      int
@@ -517,17 +572,19 @@ type Aggregate struct {
 	TotalSize  int64
 }
 
+// summarize groups results by source and computes aggregate statistics.
 func summarize(results []SessionSummary) []Aggregate {
-	m := map[string]*Aggregate{}
-	for _, result := range results {
-		agg, ok := m[result.Source]
+	m := make(map[string]*Aggregate, 4)
+	for i := range results {
+		r := &results[i]
+		agg, ok := m[r.Source]
 		if !ok {
-			agg = &Aggregate{Source: result.Source}
-			m[result.Source] = agg
+			agg = &Aggregate{Source: r.Source}
+			m[r.Source] = agg
 		}
 		agg.Count++
-		agg.TotalLines += result.Lines
-		agg.TotalSize += result.SizeBytes
+		agg.TotalLines += r.Lines
+		agg.TotalSize += r.SizeBytes
 	}
 	out := make([]Aggregate, 0, len(m))
 	for _, agg := range m {
@@ -539,6 +596,3 @@ func summarize(results []SessionSummary) []Aggregate {
 	return out
 }
 
-func (o ScanOutput) Aggregates() []Aggregate {
-	return summarize(o.Matches)
-}

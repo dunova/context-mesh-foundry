@@ -23,7 +23,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 NATIVE_ROOT = REPO_ROOT / "native"
 RUST_PROJECT = NATIVE_ROOT / "session_scan"
 GO_PROJECT = NATIVE_ROOT / "session_scan_go"
-DEFAULT_TARGET_DIR = env_str("CONTEXTGO_NATIVE_TARGET_DIR", default="/tmp/contextgo_target")
+
+# Default native target dir: prefer a user-owned path to avoid world-writable
+# /tmp races.  Use XDG_CACHE_HOME when available, otherwise fall back to a
+# per-uid /tmp subdirectory so that two different users on the same machine
+# never share build artifacts.
+def _default_native_target_dir() -> str:
+    xdg_cache = os.environ.get("XDG_CACHE_HOME", "").strip()
+    if xdg_cache:
+        return str(Path(xdg_cache) / "contextgo" / "target")
+    return str(Path.home() / ".cache" / "contextgo" / "target")
+
+DEFAULT_TARGET_DIR = env_str(
+    "CONTEXTGO_NATIVE_TARGET_DIR",
+    default=_default_native_target_dir(),
+)
 NATIVE_HEALTH_CACHE_TTL_SEC = env_int("CONTEXTGO_NATIVE_HEALTH_CACHE_TTL_SEC", default=30, minimum=0)
 NATIVE_HEALTH_CACHE_PATH = Path(DEFAULT_TARGET_DIR) / "native_health_cache.json"
 RUST_RELEASE_BIN = Path(DEFAULT_TARGET_DIR) / "release" / "session_scan"
@@ -48,7 +62,7 @@ class NativeRunResult:
             return None
         try:
             payload = json.loads(text)
-        except Exception as exc:
+        except (json.JSONDecodeError, ValueError) as exc:
             self._payload_error = str(exc)
             snippet = self._find_json_snippet(text)
             if snippet:
@@ -56,7 +70,7 @@ class NativeRunResult:
                     payload = json.loads(snippet)
                     self._payload_cache = payload
                     return payload
-                except Exception as nested:
+                except (json.JSONDecodeError, ValueError) as nested:
                     self._payload_error = f"{self._payload_error}; fallback parse failed: {nested}"
                     return None
             return None
@@ -345,7 +359,7 @@ def _load_health_cache() -> dict[str, Any] | None:
         return None
     try:
         payload = json.loads(NATIVE_HEALTH_CACHE_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -364,12 +378,18 @@ def _store_health_cache(payload: dict[str, Any]) -> None:
     if NATIVE_HEALTH_CACHE_TTL_SEC <= 0:
         return
     try:
-        NATIVE_HEALTH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        NATIVE_HEALTH_CACHE_PATH.write_text(
-            json.dumps({"cached_at": int(time.time()), "payload": payload}, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    except Exception:
+        cache_dir = NATIVE_HEALTH_CACHE_PATH.parent
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(cache_dir, 0o700)
+        except OSError:
+            pass
+        data = json.dumps({"cached_at": int(time.time()), "payload": payload}, ensure_ascii=False)
+        # Write via low-level open with mode 0o600 to restrict read access.
+        fd = os.open(str(NATIVE_HEALTH_CACHE_PATH), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(data)
+    except OSError:
         return
 
 
@@ -401,7 +421,7 @@ def health_payload(*, probe: bool = False) -> dict[str, Any]:
                 "returncode": result.returncode,
                 "has_json": isinstance(result.json_payload(), dict),
             }
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             payload[backend] = {"ok": False, "error": str(exc)}
     payload["probe_mode"] = "executed"
     _store_health_cache(payload)

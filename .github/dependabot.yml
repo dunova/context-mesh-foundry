@@ -1,0 +1,66 @@
+version: 2
+
+updates:
+  # GitHub Actions dependencies
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - ci/cd
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Python dependencies
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    commit-message:
+      prefix: "build(python)"
+    labels:
+      - dependencies
+      - python
+    open-pull-requests-limit: 5
+
+  # Go dependencies
+  - package-ecosystem: gomod
+    directory: /native/session_scan_go
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    commit-message:
+      prefix: "build(go)"
+    labels:
+      - dependencies
+      - go
+    open-pull-requests-limit: 5
+
+  # Cargo (Rust) dependencies
+  - package-ecosystem: cargo
+    directory: /native/session_scan
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    commit-message:
+      prefix: "build(rust)"
+    labels:
+      - dependencies
+      - rust
+    open-pull-requests-limit: 5

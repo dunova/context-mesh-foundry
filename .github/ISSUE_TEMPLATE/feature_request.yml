@@ -1,0 +1,66 @@
+name: Feature Request
+description: Propose a new feature or improvement for ContextGO
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a new capability or a meaningful improvement to an existing one. Be as specific as possible so maintainers can evaluate the request efficiently.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Describe the problem or limitation you are facing. Focus on the "why", not the solution.
+      placeholder: "I am unable to ... because ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature or change you would like to see, including any API or CLI surface changes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: List any alternative approaches you have evaluated and why you prefer this proposal.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Component Area
+      description: Which part of ContextGO does this feature touch?
+      options:
+        - CLI (scripts/)
+        - Python core
+        - Go native prototype
+        - Rust native prototype
+        - Benchmarks
+        - CI/CD
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any relevant links, prior art, benchmarks, or screenshots that support the proposal.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This feature aligns with the stated goals of the project.
+          required: true

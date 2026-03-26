@@ -1,24 +1,158 @@
 {
+  "_comment": [
+    "ContextGO configuration template.",
+    "Copy this file, rename it (e.g. contextgo.config.json), and set",
+    "CONTEXTGO_CONFIG_PATH to point at it, or place it at the default",
+    "location: ~/.contextgo/config.json.",
+    "",
+    "All ${VAR} placeholders are expanded from the environment at startup.",
+    "String values that begin with '${' are treated as env-var references.",
+    "Omit a section entirely to use built-in defaults."
+  ],
+
   "storage": {
-    "vectordb": { "name": "contextgo", "backend": "local", "path": "${CONTEXTGO_STORAGE_ROOT}" },
-    "agfs": { "backend": "local", "path": "${CONTEXTGO_STORAGE_ROOT}", "port": 1833 }
+    "_comment": "Paths for the local vector store and the AGFS backing store.",
+
+    "vectordb": {
+      "name": "contextgo",
+      "backend": "local",
+      "path": "${CONTEXTGO_STORAGE_ROOT}"
+    },
+
+    "agfs": {
+      "_comment": "Agent File System backing store; port is used only for the local HTTP adapter.",
+      "backend": "local",
+      "path": "${CONTEXTGO_STORAGE_ROOT}",
+      "port": 1833
+    }
   },
+
   "embedding": {
+    "_comment": [
+      "Dense embedding model used for semantic search.",
+      "Supported providers: litellm, openai, ollama.",
+      "Set dimension to match the model's actual output dimension."
+    ],
+
     "dense": {
       "model": "gemini/gemini-embedding-001",
       "provider": "litellm",
       "api_key": "${GEMINI_API_KEY}",
-      "dimension": 3072
+      "dimension": 3072,
+      "batch_size": 32,
+      "timeout_sec": 30,
+      "max_retries": 3
     }
   },
+
   "vlm": {
+    "_comment": [
+      "Vision-language model used for image/screenshot ingestion.",
+      "Set to null to disable VLM processing entirely."
+    ],
     "model": "gemini/gemini-1.5-pro",
     "provider": "gemini",
     "api_key": "${GEMINI_API_KEY}",
     "temperature": 0.0,
-    "max_retries": 2
+    "max_retries": 2,
+    "timeout_sec": 60
   },
-  "default_search_mode": "fast",
-  "default_search_limit": 3,
-  "log_level": "INFO"
+
+  "search": {
+    "_comment": [
+      "Default search behaviour; all values can be overridden per-request.",
+      "mode: 'fast' (BM25 only) | 'semantic' (dense only) | 'hybrid'.",
+      "hybrid_alpha: weight of dense score in hybrid mode (0.0 = BM25 only,",
+      "              1.0 = dense only)."
+    ],
+    "default_mode": "fast",
+    "default_limit": 20,
+    "hybrid_alpha": 0.5,
+    "min_score": 0.0,
+    "max_limit": 200
+  },
+
+  "viewer": {
+    "_comment": [
+      "Memory viewer HTTP server settings.",
+      "token: set a non-empty value to enable bearer-token auth.",
+      "       Required when host is not 127.0.0.1 / localhost / ::1."
+    ],
+    "host": "127.0.0.1",
+    "port": 37677,
+    "token": "${CONTEXTGO_VIEWER_TOKEN}",
+    "sse_interval_sec": 1.0,
+    "sse_max_ticks": 120,
+    "sync_min_interval_sec": 5.0,
+    "max_post_bytes": 1048576,
+    "max_batch_ids": 500
+  },
+
+  "daemon": {
+    "_comment": [
+      "Background daemon polling and ingestion settings.",
+      "Setting an interval to 0 disables the corresponding scan."
+    ],
+    "poll_interval_sec": 180,
+    "fast_poll_interval_sec": 20,
+    "idle_sleep_cap_sec": 600,
+    "cycle_budget_sec": 8,
+    "loop_jitter_sec": 0.7,
+    "error_backoff_max_sec": 30,
+    "index_sync_min_interval_sec": 20,
+
+    "monitors": {
+      "_comment": "Enable monitors selectively. All disabled by default.",
+      "shell": false,
+      "opencode": false,
+      "kilo": false
+    },
+
+    "transcript_scan": {
+      "codex_interval_sec": 300,
+      "claude_interval_sec": 300
+    },
+
+    "antigravity": {
+      "_comment": [
+        "Antigravity passively ingests completed AI session transcripts.",
+        "ingest_mode: 'final_only' | 'incremental'.",
+        "busy_ls_threshold: skip ingestion when active process count >= N."
+      ],
+      "enabled": true,
+      "scan_interval_sec": 300,
+      "quiet_sec": 240,
+      "min_doc_bytes": 500,
+      "ingest_mode": "final_only",
+      "suspend_when_busy": true,
+      "busy_ls_threshold": 2
+    }
+  },
+
+  "remote_sync": {
+    "_comment": [
+      "Optional remote sync to a self-hosted or cloud ContextGO backend.",
+      "Disabled by default; set enabled=true and configure base_url + api_key."
+    ],
+    "enabled": false,
+    "base_url": "${CONTEXTGO_REMOTE_URL}",
+    "api_key": "${CONTEXTGO_REMOTE_API_KEY}",
+    "push_interval_sec": 60,
+    "pull_interval_sec": 120,
+    "timeout_sec": 15,
+    "max_retries": 3
+  },
+
+  "maintenance": {
+    "_comment": "Periodic index maintenance task settings.",
+    "max_enqueue": 500,
+    "repair_queue": true,
+    "enqueue_missing": true
+  },
+
+  "logging": {
+    "_comment": "Log verbosity: DEBUG | INFO | WARNING | ERROR | CRITICAL",
+    "level": "INFO",
+    "structured": false
+  }
 }

@@ -1,3 +1,12 @@
+// Package main implements a high-performance scanner for Codex/Claude session
+// files.  It walks .json and .jsonl session directories in parallel, extracts
+// structured metadata (timestamps, session IDs, text snippets), suppresses
+// noise, and emits either a human-readable summary or a machine-readable JSON
+// report consumed by the Python layer of ContextGO.
+//
+// Usage:
+//
+//	session_scan_go --query "agent" --limit 20 --json
 package main
 
 import (
@@ -13,11 +22,14 @@ import (
 	"time"
 )
 
+// WorkItem pairs a file path with its logical source label.
 type WorkItem struct {
 	Source string
 	Path   string
 }
 
+// SessionSummary holds the metadata and best match extracted from one session
+// file.  Fields tagged with omitempty are omitted from JSON when empty.
 type SessionSummary struct {
 	Source         string `json:"source"`
 	Path           string `json:"path"`
@@ -31,6 +43,7 @@ type SessionSummary struct {
 	MatchScore     int    `json:"-"`
 }
 
+// ScanOutput is the top-level JSON envelope emitted when --json is set.
 type ScanOutput struct {
 	FilesScanned int              `json:"files_scanned"`
 	Query        string           `json:"query,omitempty"`
@@ -38,100 +51,136 @@ type ScanOutput struct {
 	Truncated    bool             `json:"truncated,omitempty"`
 }
 
+// Aggregates returns per-source statistics derived from the matched results.
+func (o ScanOutput) Aggregates() []Aggregate {
+	return summarize(o.Matches)
+}
+
 func main() {
-	codexRoot := flag.String("codex-root", filepath.Join(os.Getenv("HOME"), ".codex", "sessions"), "Codex 会话根目录")
-	claudeRoot := flag.String("claude-root", filepath.Join(os.Getenv("HOME"), ".claude", "projects"), "Claude 会话根目录")
-	threads := flag.Int("threads", 4, "并发 worker 数")
-	query := flag.String("query", "", "仅保留包含 query 的结果")
-	limit := flag.Int("limit", 20, "最多输出结果数")
-	jsonOutput := flag.Bool("json", false, "输出 JSON")
+	home := os.Getenv("HOME")
+	codexRoot := flag.String("codex-root", filepath.Join(home, ".codex", "sessions"), "Root directory for Codex session files")
+	claudeRoot := flag.String("claude-root", filepath.Join(home, ".claude", "projects"), "Root directory for Claude session files")
+	threads := flag.Int("threads", 4, "Number of parallel worker goroutines")
+	query := flag.String("query", "", "Return only results whose text contains this substring")
+	limit := flag.Int("limit", 20, "Maximum number of results to return")
+	jsonOutput := flag.Bool("json", false, "Emit machine-readable JSON instead of a human summary")
 	flag.Parse()
 
 	start := time.Now()
-	work := collectFiles([]WorkItem{
+
+	roots := []WorkItem{
 		{Source: "codex_session", Path: *codexRoot},
-		{Source: "codex_session", Path: filepath.Join(os.Getenv("HOME"), ".codex", "archived_sessions")},
+		{Source: "codex_session", Path: filepath.Join(home, ".codex", "archived_sessions")},
 		{Source: "claude_session", Path: *claudeRoot},
-	})
+	}
+	work := collectFiles(roots)
+
 	scanner := NewSessionScanner(NewNoiseFilter(DefaultNoiseMarkers), defaultSnippetLimit)
 	results, truncated := scan(work, *threads, *query, *limit, scanner)
+
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].MatchScore != results[j].MatchScore {
-			return results[i].MatchScore > results[j].MatchScore
+		a, b := results[i], results[j]
+		if a.MatchScore != b.MatchScore {
+			return a.MatchScore > b.MatchScore
 		}
-		if results[i].LastTimestamp != results[j].LastTimestamp {
-			return results[i].LastTimestamp > results[j].LastTimestamp
+		if a.LastTimestamp != b.LastTimestamp {
+			return a.LastTimestamp > b.LastTimestamp
 		}
-		if results[i].FirstTimestamp != results[j].FirstTimestamp {
-			return results[i].FirstTimestamp > results[j].FirstTimestamp
+		if a.FirstTimestamp != b.FirstTimestamp {
+			return a.FirstTimestamp > b.FirstTimestamp
 		}
-		if results[i].Source != results[j].Source {
-			return results[i].Source < results[j].Source
+		if a.Source != b.Source {
+			return a.Source < b.Source
 		}
-		return results[i].Path < results[j].Path
+		return a.Path < b.Path
 	})
+
 	if *limit > 0 && len(results) > *limit {
 		results = results[:*limit]
 		truncated = true
 	}
+
 	payload := ScanOutput{
 		FilesScanned: len(work),
 		Query:        *query,
 		Matches:      results,
 		Truncated:    truncated,
 	}
+
 	if *jsonOutput {
-		raw, _ := json.MarshalIndent(payload, "", "  ")
+		raw, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Println(string(raw))
 		return
 	}
-	fmt.Printf("扫描完毕：%d 文件，匹配 %d 条，耗时 %s。\n", len(work), len(results), time.Since(start).Round(time.Millisecond))
+
+	fmt.Printf("Scan complete: %d files, %d matches, elapsed %s.\n",
+		len(work), len(results), time.Since(start).Round(time.Millisecond))
+
 	aggs := payload.Aggregates()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "来源\t匹配数\t总行数\t总字节")
-	for _, item := range aggs {
-		fmt.Fprintf(w, "%s\t%d\t%d\t%d\n", item.Source, item.Count, item.TotalLines, item.TotalSize)
+	fmt.Fprintln(w, "source\tmatches\ttotal_lines\ttotal_bytes")
+	for _, agg := range aggs {
+		fmt.Fprintf(w, "%s\t%d\t%d\t%d\n", agg.Source, agg.Count, agg.TotalLines, agg.TotalSize)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "tabwriter flush: %v\n", err)
+	}
+
 	if truncated && *limit > 0 {
-		fmt.Printf("结果已按 limit %d 截断，可能存在更多匹配\n", *limit)
+		fmt.Printf("Results truncated at limit %d; additional matches may exist.\n", *limit)
 	}
 }
 
+// collectFiles walks each root directory and returns WorkItems for all .json
+// and .jsonl files, skipping skill directories.
 func collectFiles(roots []WorkItem) []WorkItem {
-	items := make([]WorkItem, 0)
+	items := make([]WorkItem, 0, 64)
 	for _, root := range roots {
 		if _, err := os.Stat(root.Path); err != nil {
 			continue
 		}
-		_ = filepath.Walk(root.Path, func(path string, info os.FileInfo, err error) error {
+		walkErr := filepath.Walk(root.Path, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info == nil || info.IsDir() {
 				return nil
 			}
 			if shouldSkipPath(path) {
 				return nil
 			}
-			ext := strings.ToLower(filepath.Ext(path))
-			if ext == ".jsonl" || ext == ".json" {
+			switch filepath.Ext(path) {
+			case ".jsonl", ".json":
 				items = append(items, WorkItem{Source: root.Source, Path: path})
 			}
 			return nil
 		})
+		if walkErr != nil {
+			fmt.Fprintf(os.Stderr, "walk error for %s: %v\n", root.Path, walkErr)
+		}
 	}
 	return items
 }
 
+// shouldSkipPath reports whether path belongs to a skill directory that should
+// be excluded from session scanning.
 func shouldSkipPath(path string) bool {
-	lowerPath := strings.ToLower(path)
-	return strings.Contains(lowerPath, "/skills/") || strings.Contains(lowerPath, "skills-repo")
+	lower := strings.ToLower(path)
+	return strings.Contains(lower, "/skills/") || strings.Contains(lower, "skills-repo")
 }
 
+// scan fans out WorkItems to threads workers, collects SessionSummary results,
+// and returns them together with a truncated flag (always false here; the
+// caller applies the limit after sorting).
 func scan(items []WorkItem, threads int, query string, limit int, scanner *SessionScanner) ([]SessionSummary, bool) {
 	if threads < 1 {
 		threads = 1
 	}
-	workCh := make(chan WorkItem)
-	resultCh := make(chan SessionSummary)
+
+	workCh := make(chan WorkItem, threads*2)
+	resultCh := make(chan SessionSummary, threads*2)
+
 	var wg sync.WaitGroup
 	for i := 0; i < threads; i++ {
 		wg.Add(1)
@@ -144,6 +193,7 @@ func scan(items []WorkItem, threads int, query string, limit int, scanner *Sessi
 			}
 		}()
 	}
+
 	go func() {
 		for _, item := range items {
 			workCh <- item
@@ -153,9 +203,10 @@ func scan(items []WorkItem, threads int, query string, limit int, scanner *Sessi
 		close(resultCh)
 	}()
 
-	results := make([]SessionSummary, 0, len(items))
+	results := make([]SessionSummary, 0, min(len(items), limit*2))
 	for result := range resultCh {
 		results = append(results, result)
 	}
 	return results, false
 }
+

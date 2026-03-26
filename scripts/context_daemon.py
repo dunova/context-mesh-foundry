@@ -8,31 +8,33 @@ Goals:
 - Safe long-running behavior (bounded memory, rotating logs, retries)
 """
 
+import atexit
 import glob
 import hashlib
 import json
 import logging
 import logging.handlers
 import os
+import random
 import re
+import signal
 import stat
 import subprocess
-import atexit
-import random
-try:
-    import resource as _resource_mod
-except ImportError:
-    _resource_mod = None  # type: ignore[assignment]
-import signal
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+try:
+    import resource as _resource_mod
+except ImportError:
+    _resource_mod = None  # type: ignore[assignment]
+
 try:
     from memory_index import strip_private_blocks, sync_index_from_storage
     from context_config import env_bool, env_float, env_int, env_str, storage_root
-except Exception:  # pragma: no cover - module import path compatibility
+except ImportError:  # pragma: no cover - module import path compatibility
     from .memory_index import strip_private_blocks, sync_index_from_storage  # type: ignore[import-not-found]
     from .context_config import env_bool, env_float, env_int, env_str, storage_root  # type: ignore[import-not-found]
 
@@ -44,19 +46,23 @@ REMOTE_SYNC_URL = env_str("CONTEXTGO_REMOTE_URL", default="http://127.0.0.1:8090
 REMOTE_RESOURCE_ENDPOINT = f"{REMOTE_SYNC_URL.rstrip('/')}/resources"
 REMOTE_HISTORY_TARGET = "contextgo://resources/shared/history"
 
-def _mesh_env_names(name):
+def _mesh_env_names(name: str) -> tuple[str]:
     return (f"CONTEXTGO_{name}",)
 
-def mesh_env_bool(name, default):
+
+def mesh_env_bool(name: str, default: bool) -> bool:
     return env_bool(*_mesh_env_names(name), default=default)
 
-def mesh_env_int(name, default, **kwargs):
+
+def mesh_env_int(name: str, default: int, **kwargs: Any) -> int:
     return env_int(*_mesh_env_names(name), default=default, **kwargs)
 
-def mesh_env_float(name, default, **kwargs):
+
+def mesh_env_float(name: str, default: float, **kwargs: Any) -> float:
     return env_float(*_mesh_env_names(name), default=default, **kwargs)
 
-def mesh_env_str(name, default):
+
+def mesh_env_str(name: str, default: str) -> str:
     return env_str(*_mesh_env_names(name), default=default)
 
 # Security: require HTTPS for non-localhost URLs to prevent MITM
@@ -298,18 +304,18 @@ def _pid_alive(pid: int) -> bool:
         return False
 
 
-def _release_single_instance_lock():
+def _release_single_instance_lock() -> None:
     global _LOCK_FD
     try:
         if _LOCK_FD is not None:
             os.close(_LOCK_FD)
             _LOCK_FD = None
-    except Exception:
+    except OSError:
         pass
     try:
         if LOCK_FILE.exists():
             LOCK_FILE.unlink()
-    except Exception:
+    except OSError:
         pass
 
 
@@ -327,16 +333,16 @@ def _acquire_single_instance_lock() -> bool:
             try:
                 raw = LOCK_FILE.read_text(encoding="utf-8").strip()
                 pid = int(raw) if raw else 0
-            except Exception:
+            except (OSError, ValueError):
                 pid = 0
             if pid > 0 and _pid_alive(pid):
                 logger.error("Another ContextGO daemon instance is running (pid=%s), exiting.", pid)
                 return False
             try:
                 LOCK_FILE.unlink()
-            except Exception:
+            except OSError:
                 pass
-        except Exception as exc:
+        except OSError as exc:
             logger.error("Failed to acquire daemon lock: %s", exc)
             return False
     logger.error("Failed to acquire daemon lock after stale cleanup.")
@@ -353,8 +359,8 @@ def _count_antigravity_language_servers() -> int:
         )
         if proc.returncode not in (0, 1):
             return 0
-        return len([ln for ln in (proc.stdout or "").splitlines() if ln.strip()])
-    except Exception:
+        return sum(1 for ln in (proc.stdout or "").splitlines() if ln.strip())
+    except (OSError, subprocess.TimeoutExpired):
         return 0
 
 
@@ -1001,7 +1007,7 @@ class SessionTracker:
     def _build_transcript_sid(self, path: str) -> str:
         try:
             rel = os.path.relpath(path, CLAUDE_TRANSCRIPTS_DIR)
-        except Exception:
+        except ValueError:
             rel = os.path.basename(path)
         base = self._sanitize_filename_part(os.path.basename(path).replace(".jsonl", ""))
         digest = hashlib.sha256(rel.encode("utf-8", errors="ignore")).hexdigest()[:10]
@@ -1077,7 +1083,7 @@ class SessionTracker:
             del self.file_cursors[key]
         logger.info("Cleaned %d file cursors.", remove_n)
 
-    def maybe_sync_index(self, force: bool = False):
+    def maybe_sync_index(self, force: bool = False) -> None:
         if not self._index_dirty and not force:
             return
         now = time.time()
@@ -1087,7 +1093,7 @@ class SessionTracker:
             sync_index_from_storage()
             self._index_dirty = False
             self._last_index_sync = now
-        except Exception as exc:
+        except OSError as exc:
             self._error_count += 1
             logger.warning("sync_index_from_storage failed: %s", exc)
 
@@ -1162,25 +1168,20 @@ class SessionTracker:
             logger.error("Failed pending write: %s", exc)
         return False
 
-    def _retry_pending(self):
+    @staticmethod
+    def _pending_mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def _retry_pending(self) -> None:
         if not self._http_client:
             return
 
         pending_candidates = list(PENDING_DIR.glob("*.md"))
-        pending: list[Path] = []
-        for p in pending_candidates:
-            try:
-                if p.is_file():
-                    pending.append(p)
-            except OSError:
-                continue
-        def _safe_mtime(p: Path) -> float:
-            try:
-                return p.stat().st_mtime
-            except OSError:
-                return 0.0
-
-        pending.sort(key=_safe_mtime)
+        pending: list[Path] = [p for p in pending_candidates if p.is_file()]
+        pending.sort(key=self._pending_mtime)
         if not pending:
             return
 
@@ -1204,32 +1205,26 @@ class SessionTracker:
             except Exception:
                 break
 
-    def _prune_pending_files(self):
+    def _prune_pending_files(self) -> None:
         try:
             files = [p for p in PENDING_DIR.glob("*.md") if p.is_file()]
-        except Exception:
+        except OSError:
             return
         if len(files) < MAX_PENDING_FILES:
             return
-        def _safe_mtime(p: Path) -> float:
-            try:
-                return p.stat().st_mtime
-            except OSError:
-                return 0.0
-
-        files.sort(key=_safe_mtime)
+        files.sort(key=self._pending_mtime)
         for old in files[: len(files) - MAX_PENDING_FILES + 1]:
             try:
                 old.unlink(missing_ok=True)
-            except Exception:
+            except OSError:
                 continue
 
-    def maybe_retry_pending(self):
+    def maybe_retry_pending(self) -> None:
         if not PENDING_DIR.exists():
             return
         try:
             has_pending = any(PENDING_DIR.glob("*.md"))
-        except Exception:
+        except OSError:
             has_pending = False
         if not has_pending:
             return
@@ -1428,7 +1423,7 @@ def main():
     if tracker._http_client:
         try:
             tracker._http_client.close()
-        except Exception:
+        except OSError:
             pass
     logger.info("Daemon shutdown complete. Exported %d sessions total.", tracker._export_count)
 

@@ -26,15 +26,15 @@ except ImportError:  # pragma: no cover
 
 
 HOME = Path.home()
-LOCAL_STORAGE_ROOT = Path(
-    storage_root()
-)
+LOCAL_STORAGE_ROOT = storage_root()
 LOCAL_SHARED_ROOT = LOCAL_STORAGE_ROOT / "resources" / "shared"
 LOCAL_CONVERSATIONS_ROOT = LOCAL_SHARED_ROOT / "conversations"
 LOCAL_SCAN_MAX_FILES = env_int("CONTEXT_CLI_LOCAL_SCAN_MAX_FILES", "CONTEXTGO_LOCAL_SCAN_MAX_FILES", default=300, minimum=50)
 LOCAL_SCAN_READ_BYTES = env_int("CONTEXT_CLI_LOCAL_SCAN_READ_BYTES", "CONTEXTGO_LOCAL_SCAN_READ_BYTES", default=120000, minimum=4096)
 ENABLE_REMOTE_MEMORY_HTTP = env_bool("CONTEXTGO_ENABLE_REMOTE_MEMORY_HTTP", "CONTEXT_CLI_ENABLE_REMOTE_MEMORY_HTTP", default=False)
 REMOTE_MEMORY_URL = env_str("CONTEXTGO_REMOTE_URL", default="http://127.0.0.1:8090/api/v1")
+
+
 def _local_memory_matches(query: str, limit: int = 3) -> list[dict]:
     return context_core.local_memory_matches(
         query,
@@ -58,27 +58,27 @@ def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
         return f"Failed to save memory: {exc}."
 
     if ENABLE_REMOTE_MEMORY_HTTP:
-        try:
-            import urllib.request
+        import urllib.request
 
-            payload = json.dumps(
-                {
-                    "path": str(path),
-                    "target": "contextgo://resources/shared/conversations",
-                    "reason": "save_conversation",
-                    "instruction": f"Index global conversation memory: {(title or '').strip()}",
-                }
-            ).encode("utf-8")
-            req = urllib.request.Request(
-                f"{REMOTE_MEMORY_URL}/resources",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
+        payload = json.dumps(
+            {
+                "path": str(path),
+                "target": "contextgo://resources/shared/conversations",
+                "reason": "save_conversation",
+                "instruction": f"Index global conversation memory: {(title or '').strip()}",
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{REMOTE_MEMORY_URL}/resources",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
             with urllib.request.urlopen(req, timeout=5):
                 pass
             return f"Saved locally and indexed remotely: {path}"
-        except Exception as exc:
+        except OSError as exc:
             return f"Saved locally: {path} (remote indexing skipped: {exc})"
 
     return f"Saved locally: {path}"
@@ -171,9 +171,9 @@ def _remote_process_count() -> int:
             text=True,
             timeout=3,
         )
-    except Exception:
+    except (OSError, subprocess.TimeoutExpired):
         return 0
-    return len([line for line in (proc.stdout or "").splitlines() if line.strip()])
+    return sum(1 for line in (proc.stdout or "").splitlines() if line.strip())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -360,7 +360,11 @@ def run(args: argparse.Namespace) -> int:
         return result.returncode
 
     if args.command == "smoke":
-        payload = context_smoke.run_smoke(Path(__file__).resolve().parent / "context_cli.py", Path(__file__).resolve().parent / "e2e_quality_gate.py")
+        _scripts_dir = Path(__file__).resolve().parent
+        payload = context_smoke.run_smoke(
+            _scripts_dir / "context_cli.py",
+            _scripts_dir / "e2e_quality_gate.py",
+        )
         output = payload if args.verbose else _compact_smoke_payload(payload)
         _print_json(output, pretty=bool(args.verbose))
         failed = [item for item in payload["results"] if not item["ok"]]

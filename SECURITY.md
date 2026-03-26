@@ -1,22 +1,119 @@
-# 安全政策
+# Security Policy
 
-## 适用范围
-- 本仓库仅维护 ContextGO 单体运行时，主线入口为 `scripts/context_cli.py`、`scripts/context_daemon.py`、`scripts/context_maintenance.py`、`scripts/session_index.py`、`scripts/memory_index.py`。默认不再依赖旧桥接层，统一路径指向本地 `contextgo` 安装与 smoke/benchmark 环境。
-- 默认运行链路 local-first，任何远程/云 recall、部署入口必须显式开启且在文档中说明，并提供本地 smoke/benchmark 覆盖路径（`python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark`）。`context_smoke.py` 与 benchmark 依赖 `scripts/context_config.storage_root()`（默认 `~/.contextgo` 或由 `CONTEXTGO_STORAGE_ROOT` 覆盖），请先确认路径归属当前用户、可写且不映射历史数据树。
+## Scope
 
-## 报告流程
-1. 私下联系安全负责人（若无统一渠道，可在 PR/issue 中@团队安全负责人或直接在公司内部安全邮箱提交）。  
-2. 提供受影响模块、复现步骤、影响范围、建议缓解方案。  
-3. 若怀疑暴露敏感信息，优先使用加密/私有渠道递交，避免在公开 issue 中泄露细节。
+This policy covers the ContextGO monorepo runtime. The primary entry points are:
 
-## 重要控制
-- 本地优先：默认不会在运行时依赖外部服务，所有默认配置都在本机文件系统操作。  
-- 配置最小化：不读取全局环境变量除非在 `scripts/context_cli.py` 中明确声明；新增环境变量要同步更新文档并在 smoke/benchmark 中验证。任何对 `CONTEXTGO_STORAGE_ROOT` 的调整必须确保 `scripts/context_config.storage_root()` 仍指向当前用户可访问的 `~/.contextgo`（或显式设置的路径），并通过 `bash scripts/context_healthcheck.sh`（可附 `--deep` 探测）确认权限与运行环境。
-- 运行时日志、索引结果文件的默认权限为 `0600`，避免意外泄露。  
-- 所有写入历史/记忆的路径必须通过脱敏流程（`context_daemon` 中的 `<private>` 过滤）处理。  
-- smoke/benchmark 覆盖：变更后需运行 `python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark`，验证默认 `context_cli`/`context_daemon`/`context_server` 健康。Smoke 会在确认 `scripts/context_config.storage_root()` 可写之后，从 `INSTALL_ROOT=~/.local/share/contextgo/scripts` 调用 `context_cli.py` 与 `e2e_quality_gate.py`；发布产物应在该 INSTALL_ROOT 同时保留 `context_healthcheck.sh`、`benchmarks/run.py` 等运维入口，避免健康检查与 benchmark 流程断裂。
+- `scripts/context_cli.py` - unified CLI
+- `scripts/context_daemon.py` - background sync daemon
+- `scripts/context_maintenance.py` - maintenance utility
+- `scripts/session_index.py` - session indexing
+- `scripts/memory_index.py` - memory/observation indexing
+- `scripts/memory_viewer.py` - local HTTP viewer server
+- Native backends: `native/session_scan` (Rust), `native/session_scan_go` (Go)
 
-## 贡献者守则
-- 禁止在提交中包含 secrets（API key、token、密码）或机器/用户专属路径，必要时替换为 `XXX` 并在 PR 描述中说明。  
-- 新功能优先落在主链脚本，向 `scripts/legacy` 等遗留模块添加功能需先评估是否能迁移至主链。  
-- 安全验证命令：`python3 scripts/context_cli.py health`、`python3 scripts/context_smoke.py`、`python3 scripts/smoke_installed_runtime.py`、`python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark` 及 `bash -n scripts/*.sh`、`python3 -m pytest scripts/test_context_core.py`，并在 PR 中汇总结果。
+Out-of-scope: third-party dependencies, downstream forks, or deployment infrastructure not included in this repository.
+
+## Supported Versions
+
+Only the latest commit on the `main` branch is actively supported with security fixes. We do not backport fixes to older releases.
+
+## Reporting a Vulnerability
+
+**Do not open a public GitHub issue for security vulnerabilities.**
+
+To report a vulnerability privately:
+
+1. Email the maintainers at the address listed in the repository's `package.json` or `pyproject.toml` (if present), or contact the listed security contact in the repository profile.
+2. If no email address is available, use GitHub's private vulnerability reporting feature: navigate to the repository's **Security** tab and click **Report a vulnerability**.
+3. Encrypt sensitive reports using the maintainer's public PGP key if one is published in the repository.
+
+### What to include
+
+Please provide:
+
+- A clear description of the vulnerability and affected component(s)
+- The version or commit hash where you observed the issue
+- Step-by-step reproduction instructions (proof-of-concept code or commands)
+- The potential impact and attack scenario
+- Any suggested mitigations or patches
+
+### Response timeline
+
+- **Acknowledgement**: within 72 hours of receipt
+- **Initial triage**: within 7 days
+- **Fix or mitigation**: within 30 days for critical/high severity; 90 days for medium/low
+- **Public disclosure**: coordinated with the reporter after a fix is available
+
+We follow responsible disclosure: if a fix is delayed beyond the agreed timeline, the reporter may publish after giving 7 days notice.
+
+## Architecture and Security Controls
+
+### Local-first design
+
+By default ContextGO operates entirely on the local filesystem. No network requests are made unless explicitly configured:
+
+- `CONTEXTGO_ENABLE_REMOTE_SYNC=0` (daemon remote sync, default: off)
+- `CONTEXTGO_ENABLE_REMOTE_MEMORY_HTTP=0` (CLI HTTP export, default: off)
+- The memory viewer binds to `127.0.0.1` by default and requires a token when bound to any non-loopback address.
+
+### HTTPS enforcement
+
+The daemon refuses to start if `CONTEXTGO_REMOTE_URL` is set to a non-localhost HTTP URL. Only `https://` is accepted for remote hosts. This is enforced at module import time in `context_daemon.py`.
+
+### Storage root validation
+
+`context_config.storage_root()` validates that the resolved path is absolute and has at least three path components (e.g. `/home/user/.contextgo`) to prevent accidentally using `/`, `/tmp`, or similarly dangerous roots.
+
+### File permission hardening
+
+- Storage root, pending directory, log directory: `0700`
+- Memory markdown files, SQLite index databases, lock files, health cache: `0600`
+- These permissions are set at creation time using `os.open(..., 0o600)` / `os.chmod(...)`.
+
+### Symlink safety
+
+The daemon checks that the configured storage root is not a symlink to a directory owned by another user. Source history files (shell history, JSONL files) that are symlinks are silently skipped via `SessionTracker._is_safe_source()`.
+
+### Private data filtering
+
+All content written to the index passes through `strip_private_blocks()` (removes `<private>...</private>` blocks) and the daemon's `SECRET_REPLACEMENTS` list, which redacts common credential patterns (API keys, tokens, passwords, PEM blocks, OAuth tokens, AWS access key IDs).
+
+### Token comparison
+
+The memory viewer uses `hmac.compare_digest` for `X-Context-Token` header comparison to prevent timing-based token enumeration attacks.
+
+### SQL parameterization
+
+All SQLite queries use parameterized placeholders (`?`) for user-supplied values. WHERE clauses are constructed from hardcoded predicate strings; user input flows only through bind parameters.
+
+### subprocess safety
+
+All `subprocess.run` / `subprocess.Popen` calls pass arguments as lists (never `shell=True`). Command arguments derived from user input (query strings, paths) are passed as separate list elements, never interpolated into shell strings.
+
+### Native build artifacts
+
+Rust and Go build artifacts default to `~/.cache/contextgo/target` (a user-owned directory) rather than a shared `/tmp` path to prevent TOCTOU races from other users on multi-tenant systems. Override with `CONTEXTGO_NATIVE_TARGET_DIR`.
+
+## Contributor Guidelines
+
+- **No secrets in commits**: API keys, tokens, passwords, or machine-specific absolute paths must never appear in committed files. Replace with `XXX` and document in the PR description.
+- **No pickle / eval / exec**: Deserializing untrusted data with `pickle`, or executing dynamic code via `eval`/`exec`, is prohibited. All external data is parsed as JSON.
+- **Dependency review**: New third-party dependencies require explicit justification. Prefer stdlib where feasible.
+- **Environment variable documentation**: Any new `CONTEXTGO_*` environment variable must be added to `.env.example` with a description before merging.
+- **Verification commands** (run before each PR and after security-relevant changes):
+
+  ```
+  python3 scripts/context_cli.py health
+  python3 scripts/context_smoke.py
+  python3 scripts/smoke_installed_runtime.py
+  python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
+  bash -n scripts/*.sh
+  python3 -m pytest scripts/test_context_core.py
+  ```
+
+## Known Limitations and Non-Goals
+
+- The local memory viewer (`context_cli.py serve`) is intended for single-user localhost use only. It is not hardened against adversarial clients on the network. Do not expose it to untrusted networks even with a token.
+- Shell history indexing reads `~/.zsh_history` and `~/.bash_history`. These files may contain sensitive commands. The daemon applies secret-pattern redaction before indexing, but this is best-effort and not a substitute for managing shell history hygiene.
+- The tool does not encrypt data at rest. Filesystem-level encryption (e.g. FileVault, LUKS) is recommended for sensitive environments.

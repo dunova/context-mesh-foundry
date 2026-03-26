@@ -1,14 +1,35 @@
 [Unit]
 Description=ContextGO Daemon (user)
+Documentation=https://github.com/your-org/ContextGO
+# Start after the user session network is available.
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/contextgo/scripts
-Environment=CONTEXTGO_ENABLE_REMOTE_SYNC=0
 ExecStart=/usr/bin/env python3 %h/.local/share/contextgo/scripts/context_daemon.py
-Restart=always
-RestartSec=3
+
+# Restart on any non-zero exit; do not restart on clean exit (code 0).
+Restart=on-failure
+RestartSec=5s
+# Cap restart attempts to avoid a tight crash loop.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+# Environment defaults; override with a drop-in or environment file.
+Environment=CONTEXTGO_ENABLE_REMOTE_SYNC=0
+Environment=CONTEXTGO_ENABLE_SHELL_MONITOR=0
+Environment=CONTEXTGO_ENABLE_OPENCODE_MONITOR=0
+Environment=CONTEXTGO_ENABLE_KILO_MONITOR=0
+Environment=CONTEXTGO_POLL_INTERVAL_SEC=180
+Environment=CONTEXTGO_FAST_POLL_INTERVAL_SEC=20
+Environment=CONTEXTGO_IDLE_SLEEP_CAP_SEC=600
+Environment=CONTEXTGO_ANTIGRAVITY_INGEST_MODE=final_only
+
+# Redirect stderr to the journal; override by setting StandardOutput/StandardError.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=contextgo-daemon
 
 [Install]
 WantedBy=default.target

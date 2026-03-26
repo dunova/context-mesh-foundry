@@ -2,15 +2,34 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+
+  <!-- Service identity -->
   <key>Label</key><string>com.contextgo.healthcheck</string>
-  <key>ProgramArguments</key><array>
+
+  <!-- Run the health check once at load, then every 15 minutes. -->
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>900</integer>
+
+  <!-- ProgramArguments is replaced at deploy time by unified_context_deploy.sh. -->
+  <key>ProgramArguments</key>
+  <array>
     <string>/bin/bash</string>
     <string>__SCRIPTS_DIR__/context_healthcheck.sh</string>
     <string>--quiet</string>
   </array>
-  <key>StartInterval</key><integer>900</integer>
-  <key>RunAtLoad</key><true/>
+
+  <!-- Redirect stdout and stderr to the dedicated health check log. -->
   <key>StandardOutPath</key><string>__LOG_DIR__/healthcheck.log</string>
   <key>StandardErrorPath</key><string>__LOG_DIR__/healthcheck.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>__HOME__</string>
+    <key>CONTEXTGO_STORAGE_ROOT</key><string>__HOME__/.contextgo</string>
+  </dict>
+
+  <!-- Health check is a one-shot task; do not keep alive on exit. -->
+  <key>KeepAlive</key><false/>
+
 </dict>
 </plist>

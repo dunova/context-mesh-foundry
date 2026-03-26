@@ -1,6 +1,38 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# unified_context_deploy.sh -- deploy ContextGO scripts and templates, patch
+# launchd plists (macOS), and optionally reload launchd agents.
+#
+# Usage: unified_context_deploy.sh [--help]
+#
+# Environment variables:
+#   CONTEXTGO_INSTALL_ROOT    Installation root  (default: ~/.local/share/contextgo)
+#   CONTEXTGO_STORAGE_ROOT    Storage root       (default: ~/.contextgo)
+#   PATCH_LAUNCHD             Patch plists       (default: 1)
+#   RELOAD_LAUNCHD            Reload agents      (default: 1)
+#   APPLY_CONTEXT_POLICY      Apply CF policy    (default: 1)
 set -euo pipefail
 umask 077
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [--help]
+
+Deploy ContextGO scripts and templates to the install root, patch macOS
+launchd plists, and optionally reload LaunchAgents.
+
+Environment variables:
+  CONTEXTGO_INSTALL_ROOT  Installation root (default: ~/.local/share/contextgo)
+  CONTEXTGO_STORAGE_ROOT  Storage root      (default: ~/.contextgo)
+  PATCH_LAUNCHD           Patch plists: 1=yes, 0=no  (default: 1)
+  RELOAD_LAUNCHD          Reload agents: 1=yes, 0=no  (default: 1)
+  APPLY_CONTEXT_POLICY    Apply context-first policy  (default: 1)
+EOF
+    exit 0
+}
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -11,27 +43,27 @@ PATCH_LAUNCHD="${PATCH_LAUNCHD:-1}"
 RELOAD_LAUNCHD="${RELOAD_LAUNCHD:-1}"
 APPLY_CONTEXT_POLICY="${APPLY_CONTEXT_POLICY:-1}"
 
-log() { echo "[deploy] $*"; }
+log() { printf '[deploy] %s\n' "$*"; }
 
 require_dir() {
-  local p="$1"
-  if [ ! -d "$p" ]; then
-    log "missing directory: $p"
-    exit 1
-  fi
+    local p="$1"
+    if [ ! -d "$p" ]; then
+        log "ERROR: required directory missing: $p" >&2
+        exit 1
+    fi
 }
 
 sync_dir() {
-  local src="$1" dst="$2"
-  mkdir -p "$dst"
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$src"/ "$dst"/
-  else
-    rm -rf "$dst"
+    local src="$1" dst="$2"
     mkdir -p "$dst"
-    cp -R "$src"/. "$dst"/
-  fi
-  log "synced: $src -> $dst"
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "$src"/ "$dst"/
+    else
+        rm -rf "$dst"
+        mkdir -p "$dst"
+        cp -R "$src"/. "$dst"/
+    fi
+    log "synced: $src -> $dst"
 }
 
 log "unified context deploy start"
@@ -40,26 +72,27 @@ require_dir "$REPO_ROOT/scripts"
 require_dir "$REPO_ROOT/templates"
 
 mkdir -p "$CONTEXTGO_STORAGE_ROOT/logs"
-chmod 700 "$CONTEXTGO_STORAGE_ROOT" "$CONTEXTGO_STORAGE_ROOT/logs" >/dev/null 2>&1 || true
+chmod 700 "$CONTEXTGO_STORAGE_ROOT" "$CONTEXTGO_STORAGE_ROOT/logs" 2>/dev/null || true
 
-sync_dir "$REPO_ROOT/scripts" "$INSTALL_ROOT/scripts"
+sync_dir "$REPO_ROOT/scripts"   "$INSTALL_ROOT/scripts"
 sync_dir "$REPO_ROOT/templates" "$INSTALL_ROOT/templates"
 log "installed canonical runtime at: $INSTALL_ROOT"
 
-if [ "$APPLY_CONTEXT_POLICY" = "1" ] && [ -f "$REPO_ROOT/scripts/apply_context_first_policy.sh" ]; then
-  log "applying context-first policy to terminal entry files"
-  bash "$REPO_ROOT/scripts/apply_context_first_policy.sh" || log "warning: context-first policy apply failed"
+if [ "$APPLY_CONTEXT_POLICY" = "1" ] && \
+   [ -f "$REPO_ROOT/scripts/apply_context_first_policy.sh" ]; then
+    log "applying context-first policy to terminal entry files"
+    bash "$REPO_ROOT/scripts/apply_context_first_policy.sh" \
+        || log "WARNING: context-first policy apply failed (non-fatal)"
 fi
 
 if [ "$PATCH_LAUNCHD" = "1" ] && command -v launchctl >/dev/null 2>&1; then
-export CONTEXTGO_INSTALL_ROOT="$INSTALL_ROOT"
-export CONTEXTGO_STORAGE_ROOT
-python3 - <<'PY'
-import plistlib
-from pathlib import Path
+    export CONTEXTGO_INSTALL_ROOT="$INSTALL_ROOT"
+    export CONTEXTGO_STORAGE_ROOT
+    python3 - <<'PY'
 import os
-
+import plistlib
 import shutil
+from pathlib import Path
 
 home = Path.home()
 launch = home / 'Library' / 'LaunchAgents'
@@ -68,25 +101,27 @@ script_dir = install_root / 'scripts'
 template_dir = install_root / 'templates' / 'launchd'
 launch.mkdir(parents=True, exist_ok=True)
 
-# Resolve python3 path dynamically instead of hardcoding a brew-specific path
+# Resolve python3: prefer versioned brew binaries, fall back to PATH.
 _python3_bin = shutil.which('python3')
-# Prefer the higher-version brew python if available
-for _candidate in ['/opt/homebrew/opt/python@3.13/libexec/bin/python3',
-                   '/opt/homebrew/opt/python@3.11/libexec/bin/python3']:
+for _candidate in (
+    '/opt/homebrew/opt/python@3.13/libexec/bin/python3',
+    '/opt/homebrew/opt/python@3.12/libexec/bin/python3',
+    '/opt/homebrew/opt/python@3.11/libexec/bin/python3',
+):
     if os.path.isfile(_candidate):
         _python3_bin = _candidate
         break
 
 if _python3_bin:
-    _daemon_program_args = [_python3_bin, str(script_dir / 'context_daemon.py')]
+    _daemon_args = [_python3_bin, str(script_dir / 'context_daemon.py')]
 else:
-    _daemon_program_args = ['/usr/bin/env', 'python3', str(script_dir / 'context_daemon.py')]
+    _daemon_args = ['/usr/bin/env', 'python3', str(script_dir / 'context_daemon.py')]
 
 patches = [
     (
         template_dir / 'com.contextgo.daemon.plist',
         launch / 'com.contextgo.daemon.plist',
-        _daemon_program_args,
+        _daemon_args,
         str(script_dir),
         {
             'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
@@ -117,14 +152,16 @@ patches = [
         ['/bin/bash', str(script_dir / 'context_healthcheck.sh'), '--quiet'],
         None,
         {
-            'CONTEXTGO_STORAGE_ROOT': os.environ.get('CONTEXTGO_STORAGE_ROOT', str(home / '.contextgo')),
+            'CONTEXTGO_STORAGE_ROOT': os.environ.get(
+                'CONTEXTGO_STORAGE_ROOT', str(home / '.contextgo')
+            ),
         },
     ),
 ]
 
 for template_path, plist_path, args, wd, extra_env in patches:
     if not template_path.exists():
-        print(f"[deploy] skip missing template: {template_path}")
+        print(f'[deploy] skip missing template: {template_path}')
         continue
     raw = template_path.read_text(encoding='utf-8')
     raw = raw.replace('__SCRIPTS_DIR__', str(script_dir))
@@ -142,15 +179,18 @@ for template_path, plist_path, args, wd, extra_env in patches:
         data['WorkingDirectory'] = wd
     with plist_path.open('wb') as f:
         plistlib.dump(data, f, sort_keys=False)
-    print(f"[deploy] patched plist: {plist_path.name}")
+    print(f'[deploy] patched plist: {plist_path.name}')
 PY
 fi
 
 if [ "$RELOAD_LAUNCHD" = "1" ] && command -v launchctl >/dev/null 2>&1; then
-  UID_NUM="$(id -u)"
-  python3 - <<PY
-import subprocess, time, urllib.request
+    UID_NUM="$(id -u)"
+    python3 - <<PY
+import subprocess
+import time
+import urllib.request
 from pathlib import Path
+
 home = Path.home()
 uid_num = "${UID_NUM}"
 labels = ["com.contextgo.daemon", "com.contextgo.healthcheck"]
@@ -158,46 +198,48 @@ labels = ["com.contextgo.daemon", "com.contextgo.healthcheck"]
 
 def run(cmd, timeout=8):
     try:
-        return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout, check=False).returncode
+        return subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        ).returncode
     except subprocess.TimeoutExpired:
         print(f"[deploy] launchctl timeout: {' '.join(cmd)}")
         return 124
 
 
-def wait_http_200(url, timeout_sec=60):
-    deadline = time.time() + timeout_sec
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=2) as r:
-                if r.status == 200:
-                    return True
-        except Exception:
-            pass
-        time.sleep(1)
-    return False
-
-
 def wait_process(pattern, timeout_sec=20):
     deadline = time.time() + timeout_sec
     while time.time() < deadline:
-        if subprocess.run(["pgrep", "-f", pattern], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        if (
+            subprocess.run(
+                ["pgrep", "-f", pattern],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode
+            == 0
+        ):
             return True
         time.sleep(1)
     return False
 
+
 for label in labels:
-    plist = home / 'Library' / 'LaunchAgents' / f'{label}.plist'
+    plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
     if not plist.exists():
+        print(f"[deploy] skip (plist not found): {label}")
         continue
-    run(['launchctl', 'bootout', f'gui/{uid_num}', str(plist)])
-    rc = run(['launchctl', 'bootstrap', f'gui/{uid_num}', str(plist)])
+    run(["launchctl", "bootout", f"gui/{uid_num}", str(plist)])
+    rc = run(["launchctl", "bootstrap", f"gui/{uid_num}", str(plist)])
     if rc != 0:
-        print(f'[deploy] launchctl bootstrap failed: {label}')
+        print(f"[deploy] ERROR: launchctl bootstrap failed: {label}")
         raise SystemExit(1)
-    run(['launchctl', 'kickstart', f'gui/{uid_num}/{label}'], timeout=5)
-    print(f'[deploy] reloaded launchd: {label}')
-    if label == 'com.contextgo.daemon' and not wait_process('context_daemon.py'):
-        print('[deploy] ERROR: context daemon not detected after reload')
+    run(["launchctl", "kickstart", f"gui/{uid_num}/{label}"], timeout=5)
+    print(f"[deploy] reloaded launchd: {label}")
+    if label == "com.contextgo.daemon" and not wait_process("context_daemon.py"):
+        print("[deploy] ERROR: context daemon not detected after reload")
         raise SystemExit(1)
 PY
 fi

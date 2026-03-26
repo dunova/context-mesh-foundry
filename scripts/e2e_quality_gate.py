@@ -117,7 +117,10 @@ def case_health(env: dict[str, str]) -> CaseResult:
     start = text.find("{")
     end = text.rfind("}")
     if start >= 0 and end > start:
-        payload = json.loads(text[start : end + 1])
+        try:
+            payload = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            pass
     ok = rc == 0 and bool(payload.get("all_ok"))
     detail = f"rc={rc}, all_ok={payload.get('all_ok')}, mode={payload.get('remote_sync_policy', {}).get('mode')}"
     return CaseResult("health", ok, detail, time.time() - t0)

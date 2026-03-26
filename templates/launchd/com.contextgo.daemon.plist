@@ -2,37 +2,74 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+
+  <!-- Service identity -->
   <key>Label</key><string>com.contextgo.daemon</string>
+
+  <!-- Start on load and keep alive; restart with a 5-second back-off after
+       an unexpected exit to avoid rapid restart loops. -->
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>EnvironmentVariables</key><dict>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+    <key>Crashed</key><true/>
+  </dict>
+  <key>ThrottleInterval</key><integer>5</integer>
+
+  <!-- ProgramArguments is replaced at deploy time by unified_context_deploy.sh.
+       The placeholder below ensures the plist is valid before patching. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>__SCRIPTS_DIR__/context_daemon.py</string>
+  </array>
+
+  <key>WorkingDirectory</key><string>__SCRIPTS_DIR__</string>
+
+  <!-- Redirect both stdout and stderr to the same rotating log file. -->
+  <key>StandardOutPath</key><string>__LOG_DIR__/contextgo_daemon.log</string>
+  <key>StandardErrorPath</key><string>__LOG_DIR__/contextgo_daemon.log</string>
+
+  <!-- Runtime environment.
+       All values are overridable via environment variables before deploy.
+       Monitors and remote sync are off by default; enable selectively. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>__HOME__</string>
+
+    <!-- Feature flags: set to "1" to enable -->
     <key>CONTEXTGO_ENABLE_SHELL_MONITOR</key><string>0</string>
     <key>CONTEXTGO_ENABLE_OPENCODE_MONITOR</key><string>0</string>
     <key>CONTEXTGO_ENABLE_KILO_MONITOR</key><string>0</string>
     <key>CONTEXTGO_ENABLE_REMOTE_SYNC</key><string>0</string>
+
+    <!-- Polling intervals (seconds) -->
     <key>CONTEXTGO_POLL_INTERVAL_SEC</key><string>180</string>
     <key>CONTEXTGO_FAST_POLL_INTERVAL_SEC</key><string>20</string>
     <key>CONTEXTGO_IDLE_SLEEP_CAP_SEC</key><string>600</string>
+
+    <!-- Transcript scan intervals (seconds) -->
     <key>CONTEXTGO_CODEX_SESSION_SCAN_INTERVAL_SEC</key><string>300</string>
     <key>CONTEXTGO_CLAUDE_TRANSCRIPT_SCAN_INTERVAL_SEC</key><string>300</string>
+
+    <!-- Antigravity ingestion settings -->
     <key>CONTEXTGO_ANTIGRAVITY_SCAN_INTERVAL_SEC</key><string>300</string>
     <key>CONTEXTGO_SUSPEND_ANTIGRAVITY_WHEN_BUSY</key><string>1</string>
     <key>CONTEXTGO_ANTIGRAVITY_BUSY_LS_THRESHOLD</key><string>2</string>
     <key>CONTEXTGO_ANTIGRAVITY_INGEST_MODE</key><string>final_only</string>
     <key>CONTEXTGO_ANTIGRAVITY_QUIET_SEC</key><string>240</string>
     <key>CONTEXTGO_ANTIGRAVITY_MIN_DOC_BYTES</key><string>500</string>
+
+    <!-- Loop / scheduler tuning -->
     <key>CONTEXTGO_CYCLE_BUDGET_SEC</key><string>8</string>
     <key>CONTEXTGO_INDEX_SYNC_MIN_INTERVAL_SEC</key><string>20</string>
     <key>CONTEXTGO_ERROR_BACKOFF_MAX_SEC</key><string>30</string>
     <key>CONTEXTGO_LOOP_JITTER_SEC</key><string>0.7</string>
   </dict>
-  <key>ProgramArguments</key><array>
-    <string>/usr/bin/env</string>
-    <string>python3</string>
-    <string>__SCRIPTS_DIR__/context_daemon.py</string>
-  </array>
-  <key>WorkingDirectory</key><string>__SCRIPTS_DIR__</string>
-  <key>StandardOutPath</key><string>__LOG_DIR__/contextgo_daemon.log</string>
-  <key>StandardErrorPath</key><string>__LOG_DIR__/contextgo_daemon.log</string>
+
+  <!-- Prevent the agent from being unloaded when the user switches sessions. -->
+  <key>SessionCreate</key><false/>
+
 </dict>
 </plist>

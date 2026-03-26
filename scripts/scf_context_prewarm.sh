@@ -1,54 +1,70 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# scf_context_prewarm.sh -- SCF context prewarm for GSD workflows.
+#
+# Usage: scf_context_prewarm.sh <query> [mode] [limit]
+#
+# Runs an exact history search via context_cli.py, then a quick health check.
 set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") <query> [mode] [limit]
+
+Run SCF context prewarm for GSD workflows:
+  1. Exact history search via context_cli.py (required step)
+  2. Quick health check as a post-prewarm signal
+
+Arguments:
+  query   Search term (required)
+  mode    Source type filter: all | content | session | ...  (default: all)
+  limit   Maximum results to return                          (default: 20)
+
+Examples:
+  $(basename "$0") "phase discuss auth bug" all 20
+  $(basename "$0") "CI flaky test" content 10
+EOF
+    exit 0
+}
 
 QUERY="${1:-}"
 MODE="${2:-all}"
 LIMIT="${3:-20}"
 
 if [ -z "$QUERY" ] || [ "$QUERY" = "-h" ] || [ "$QUERY" = "--help" ]; then
-  cat <<USAGE
-Usage: $(basename "$0") <query> [mode] [limit]
-
-Run SCF context prewarm for GSD workflows:
-  1) Unified CLI exact search (required)
-  2) Unified CLI health hint / semantic follow-up guidance
-
-Examples:
-  $(basename "$0") "phase discuss auth bug" all 20
-  $(basename "$0") "CI flaky test" content 10
-USAGE
-  exit 0
+    usage
 fi
 
-log() { echo "[scf-prewarm] $*"; }
+log() { printf '[scf-prewarm] %s\n' "$*"; }
 
-CLI_SCRIPT="$(cd "$(dirname "$0")" && pwd)/context_cli.py"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_SCRIPT="$SCRIPT_DIR/context_cli.py"
+HC_SCRIPT="$SCRIPT_DIR/context_healthcheck.sh"
+
 if [ ! -f "$CLI_SCRIPT" ]; then
-  log "context_cli.py not found; skipping exact search"
+    log "WARNING: context_cli.py not found at $CLI_SCRIPT; skipping exact search"
 else
-  log "running exact history search via context_cli.py"
-  set +e
-  python3 "$CLI_SCRIPT" search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
-  OC_RC=$?
-  set -e
-  if [ "$OC_RC" -ne 0 ]; then
-    log "search exited with code $OC_RC"
-  fi
+    log "running exact history search"
+    set +e
+    python3 "$CLI_SCRIPT" search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
+    RC=$?
+    set -e
+    if [ "$RC" -ne 0 ]; then
+        log "search exited with code $RC (non-fatal)"
+    fi
 fi
 
-# Health check is a safer shell-level proxy than trying to call MCP from bash directly.
-if [ -f "$(dirname "$0")/context_healthcheck.sh" ]; then
-  log "running context healthcheck (quick)"
-  bash "$(dirname "$0")/context_healthcheck.sh" --quiet || true
+# Health check is a shell-level proxy; safer than invoking MCP from bash.
+if [ -f "$HC_SCRIPT" ]; then
+    log "running context healthcheck (quick)"
+    bash "$HC_SCRIPT" --quiet || true
 fi
 
 cat <<HINT
 
-[scf-prewarm] Unified CLI follow-up:
-  1. python3 scripts/context_cli.py search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
-  2. python3 scripts/context_cli.py semantic "$QUERY" --limit 5
-  3. 将有效结论写入 GSD phase 文档（CONTEXT/PLAN）
+[scf-prewarm] Recommended follow-up steps:
+  1. python3 $SCRIPT_DIR/context_cli.py search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
+  2. python3 $SCRIPT_DIR/context_cli.py semantic "$QUERY" --limit 5
+  3. Record useful conclusions in the GSD phase document (CONTEXT/PLAN).
 
-[scf-prewarm] Recommended query:
-  "$QUERY"
+[scf-prewarm] Query used: "$QUERY"
 HINT

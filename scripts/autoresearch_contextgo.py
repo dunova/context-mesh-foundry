@@ -242,7 +242,7 @@ def append_log(round_no: int, payload: dict, decision: str, note: str) -> None:
     if METRICS_PATH.exists():
         try:
             existing_metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             existing_metrics = []
     current_round = payload.get("round", round_no)
     existing_metrics = [

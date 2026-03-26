@@ -136,7 +136,7 @@ def test_viewer(cli_path: Path) -> dict:
         proc.terminate()
         try:
             proc.wait(timeout=3)
-        except Exception:
+        except subprocess.TimeoutExpired:
             proc.kill()
 
 

@@ -1,3 +1,15 @@
+//! High-performance scanner for Codex/Claude session files.
+//!
+//! Walks `.json` and `.jsonl` session files in parallel using Rayon, extracts
+//! structured metadata (timestamps, session IDs, text snippets), filters noise,
+//! and emits either a human-readable summary or a machine-readable JSON report.
+//!
+//! # Usage
+//!
+//! ```text
+//! session_scan --query "agent" --limit 20 --json
+//! ```
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use rayon::prelude::*;
@@ -10,9 +22,14 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
+// ── sentinel strings used as lightweight error variants ──────────────────────
+
 const SKIPPED_QUERY_MISS: &str = "query not matched";
 const SKIPPED_CURRENT_WORKDIR: &str = "skip current workdir session";
 
+// ── noise filter tables ───────────────────────────────────────────────────────
+
+/// Substrings that mark a text fragment as noise.  Checked case-insensitively.
 const NOISE_MARKERS: &[&str] = &[
     "# agents.md instructions",
     "### available skills",
@@ -59,7 +76,7 @@ const NOISE_MARKERS: &[&str] = &[
     "状态汇总：",
     "已关闭且有有效产出",
     "我先按仓库要求做上下文预热",
-    "我先做“全局一致性同步”检查",
+    "我先做"全局一致性同步"检查",
     "主链不再是瓶颈",
     "现在真正该优化的是",
     "native 搜索结果质量",
@@ -69,7 +86,7 @@ const NOISE_MARKERS: &[&str] = &[
     "我继续直接提主链结果质量",
     "我先复跑主链",
     "再决定要不要进一步做字段级过滤",
-    "现在不是“能不能跑”的问题",
+    "现在不是"能不能跑"的问题",
     "让它质量更好，能替代旧逻辑",
     "我继续。",
     "我现在直接复跑主链",
@@ -85,42 +102,62 @@ const NOISE_MARKERS: &[&str] = &[
     "\noutput:",
 ];
 
+/// Line prefixes that mark a fragment as noise.  Checked case-insensitively.
 const NOISE_PREFIXES: &[&str] = &["##", "```", "> ", "- [", "* ", "http", "https"];
+
+/// Field name used when a match is found in an unparsed raw line.
 const RAW_LINE_FIELD: &str = "raw_line";
 
+// ── CLI ───────────────────────────────────────────────────────────────────────
+
 #[derive(Parser)]
-#[command(author, version, about = "高性能 Codex / Claude 会话扫描原型")]
+#[command(
+    author,
+    version,
+    about = "High-performance Codex/Claude session scanner"
+)]
 struct Args {
-    #[arg(long, default_value = "~/.codex/sessions", help = "Codex 会话根目录")]
+    /// Root directory for Codex sessions (tilde-expanded)
+    #[arg(long, default_value = "~/.codex/sessions")]
     codex_root: String,
 
-    #[arg(long, default_value = "~/.claude/projects", help = "Claude 会话根目录")]
+    /// Root directory for Claude sessions (tilde-expanded)
+    #[arg(long, default_value = "~/.claude/projects")]
     claude_root: String,
 
-    #[arg(long, default_value_t = 4, help = "Rayon 并行线程数")]
+    /// Number of Rayon worker threads
+    #[arg(long, default_value_t = 4)]
     threads: usize,
 
-    #[arg(long, default_value = "", help = "仅保留包含 query 的结果")]
+    /// Return only results whose text contains this substring
+    #[arg(long, default_value = "")]
     query: String,
 
-    #[arg(long, default_value_t = 20, help = "最多输出结果数")]
+    /// Maximum number of results to emit
+    #[arg(long, default_value_t = 20)]
     limit: usize,
 
-    #[arg(long, default_value_t = false, help = "输出 JSON")]
+    /// Emit machine-readable JSON instead of a human summary
+    #[arg(long, default_value_t = false)]
     json: bool,
 }
 
+// ── core data types ───────────────────────────────────────────────────────────
+
+/// A single file to process, annotated with its logical source label.
 struct WorkItem {
     source: &'static str,
     path: PathBuf,
 }
 
+/// A text candidate extracted from a parsed JSON record.
 #[derive(Clone, Debug)]
 struct MatchDetail {
     field: &'static str,
     text: String,
 }
 
+/// In-memory summary produced from one session file.
 struct SessionSummary {
     source: &'static str,
     path: PathBuf,
@@ -133,6 +170,9 @@ struct SessionSummary {
     match_field: Option<String>,
     match_score: i32,
 }
+
+// ── JSON-serialisable output types ────────────────────────────────────────────
+
 #[derive(serde::Serialize)]
 struct SerializableSummary {
     source: String,
@@ -165,6 +205,7 @@ struct JsonRootAggregate {
     sample: Option<JsonSample>,
 }
 
+/// Top-level JSON output emitted when `--json` is passed.
 #[derive(serde::Serialize)]
 struct JsonReport {
     files_scanned: usize,
@@ -174,6 +215,8 @@ struct JsonReport {
     matches: Vec<SerializableSummary>,
     errors: Vec<String>,
 }
+
+// ── scanner internals ─────────────────────────────────────────────────────────
 
 struct ScannerReport {
     total_files: usize,
@@ -187,26 +230,26 @@ struct SourceRoot {
     path: PathBuf,
 }
 
-impl SourceRoot {
-    fn new(label: &'static str, path: PathBuf) -> Self {
-        Self { label, path }
-    }
-}
-
 struct Scanner {
     roots: Vec<SourceRoot>,
 }
 
 impl Scanner {
     fn from_args(args: &Args) -> Self {
-        let expand = |raw: &str| tilde(raw).into_owned();
+        let expand = |raw: &str| -> PathBuf { PathBuf::from(tilde(raw).as_ref()) };
         let roots = vec![
-            SourceRoot::new("codex_session", PathBuf::from(expand(&args.codex_root))),
-            SourceRoot::new(
-                "codex_session",
-                PathBuf::from(expand("~/.codex/archived_sessions")),
-            ),
-            SourceRoot::new("claude_session", PathBuf::from(expand(&args.claude_root))),
+            SourceRoot {
+                label: "codex_session",
+                path: expand(&args.codex_root),
+            },
+            SourceRoot {
+                label: "codex_session",
+                path: expand("~/.codex/archived_sessions"),
+            },
+            SourceRoot {
+                label: "claude_session",
+                path: expand(&args.claude_root),
+            },
         ];
         Self { roots }
     }
@@ -214,16 +257,16 @@ impl Scanner {
     fn collect_work_items(&self) -> Vec<WorkItem> {
         self.roots
             .iter()
-            .filter_map(|root| {
-                if !root.path.exists() {
+            .filter(|root| {
+                if root.path.exists() {
+                    true
+                } else {
                     eprintln!(
-                        "目录不存在，跳过：{} -> {}",
+                        "Directory not found, skipping: {} -> {}",
                         root.label,
                         root.path.display()
                     );
-                    None
-                } else {
-                    Some(root)
+                    false
                 }
             })
             .flat_map(|root| {
@@ -231,11 +274,12 @@ impl Scanner {
                     .into_iter()
                     .filter_map(|entry| match entry {
                         Ok(entry)
-                            if entry.file_type().is_file() && is_valid_extension(entry.path()) =>
+                            if entry.file_type().is_file()
+                                && is_valid_extension(entry.path()) =>
                         {
                             Some(WorkItem {
                                 source: root.label,
-                                path: entry.path().to_path_buf(),
+                                path: entry.into_path(),
                             })
                         }
                         _ => None,
@@ -245,8 +289,9 @@ impl Scanner {
             .collect()
     }
 
+    /// Returns the unique set of source labels, preserving encounter order.
     fn root_labels(&self) -> Vec<&'static str> {
-        let mut labels = Vec::new();
+        let mut labels: Vec<&'static str> = Vec::new();
         for root in &self.roots {
             if !labels.contains(&root.label) {
                 labels.push(root.label);
@@ -264,16 +309,14 @@ impl Scanner {
             .par_iter()
             .map(|item| process_file(item, query))
             .collect();
-        let mut summaries = Vec::new();
+
+        let mut summaries = Vec::with_capacity(results.len());
         let mut errors = Vec::new();
         for result in results {
             match result {
                 Ok(summary) => summaries.push(summary),
-                Err(err) => {
-                    if should_report_error(&err) {
-                        errors.push(err);
-                    }
-                }
+                Err(err) if should_report_error(&err) => errors.push(err),
+                Err(_) => {}
             }
         }
         (summaries, errors)
@@ -283,14 +326,14 @@ impl Scanner {
 impl ScannerReport {
     fn write_stdout(&self, scanner: &Scanner) {
         println!(
-            "扫描完毕：{} 文件，耗时 {:.2?}。",
+            "Scan complete: {} files in {:.2?}.",
             self.total_files, self.duration
         );
         let aggregates = summarize_by_source(&self.summaries);
         for label in scanner.root_labels() {
             if let Some(aggregate) = aggregates.get(label) {
                 println!(
-                    "  {} -> {} sessions, {} 行, {} 字节",
+                    "  {} -> {} sessions, {} lines, {} bytes",
                     aggregate.label,
                     aggregate.session_count,
                     aggregate.total_lines,
@@ -298,7 +341,7 @@ impl ScannerReport {
                 );
                 if let Some(sample) = aggregate.sample {
                     println!(
-                        "    示例：{} | {} -> {} | {} | [{}]",
+                        "    sample: {} | {} -> {} | {} | [{}]",
                         sample.session_id,
                         sample.first_timestamp.as_deref().unwrap_or("?"),
                         sample.last_timestamp.as_deref().unwrap_or("?"),
@@ -308,11 +351,13 @@ impl ScannerReport {
                 }
             }
         }
-
         if !self.errors.is_empty() {
-            println!("  解析时出现 {} 个错误（仅日志输出）。", self.errors.len());
+            println!(
+                "  {} parse error(s) encountered (see stderr for details).",
+                self.errors.len()
+            );
             for err in self.errors.iter().take(5) {
-                println!("    - {}", err);
+                println!("    - {err}");
             }
         }
     }
@@ -374,6 +419,8 @@ impl ScannerReport {
     }
 }
 
+// ── source aggregation ────────────────────────────────────────────────────────
+
 struct SourceAggregate<'a> {
     label: &'static str,
     session_count: usize,
@@ -382,34 +429,38 @@ struct SourceAggregate<'a> {
     sample: Option<&'a SessionSummary>,
 }
 
-const VALID_EXTENSIONS: &[&str] = &["json", "jsonl"];
-
-fn is_valid_extension(path: &Path) -> bool {
-    let lower_path = path.to_string_lossy().to_lowercase();
-    if should_skip_path(&lower_path) {
-        return false;
+fn summarize_by_source<'a>(
+    summaries: &'a [SessionSummary],
+) -> HashMap<&'static str, SourceAggregate<'a>> {
+    let mut map: HashMap<&'static str, SourceAggregate<'a>> = HashMap::new();
+    for summary in summaries {
+        let entry = map
+            .entry(summary.source)
+            .or_insert_with(|| SourceAggregate {
+                label: summary.source,
+                session_count: 0,
+                total_lines: 0,
+                total_bytes: 0,
+                sample: None,
+            });
+        entry.session_count += 1;
+        entry.total_lines += summary.lines;
+        entry.total_bytes += summary.size_bytes;
+        if entry.sample.is_none() {
+            entry.sample = Some(summary);
+        }
     }
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| VALID_EXTENSIONS.contains(&ext))
-        .unwrap_or(false)
+    map
 }
 
-fn should_skip_path(lower_path: &str) -> bool {
-    lower_path.contains("/skills/") || lower_path.contains("skills-repo")
-}
-
-fn should_report_error(err: &anyhow::Error) -> bool {
-    let text = err.to_string();
-    text != SKIPPED_QUERY_MISS && text != SKIPPED_CURRENT_WORKDIR
-}
+// ── entry point ───────────────────────────────────────────────────────────────
 
 fn main() -> Result<()> {
     let args = Args::parse();
     rayon::ThreadPoolBuilder::new()
         .num_threads(args.threads)
         .build_global()
-        .context("配置 Rayon 线程池失败")?;
+        .context("Failed to configure Rayon thread pool")?;
 
     let start = Instant::now();
     let scanner = Scanner::from_args(&args);
@@ -428,6 +479,7 @@ fn main() -> Result<()> {
     if args.limit > 0 && summaries.len() > args.limit {
         summaries.truncate(args.limit);
     }
+
     let duration = start.elapsed();
     let report = ScannerReport {
         total_files,
@@ -435,6 +487,7 @@ fn main() -> Result<()> {
         errors,
         duration,
     };
+
     if args.json {
         let payload = report.json_payload(&scanner, &args.query);
         println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -444,17 +497,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+// ── file processing ───────────────────────────────────────────────────────────
+
 fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
     let file = File::open(&item.path)
-        .with_context(|| format!("无法打开会话文件 {}", item.path.display()))?;
+        .with_context(|| format!("Cannot open session file {}", item.path.display()))?;
     let metadata = file
         .metadata()
-        .with_context(|| format!("无法读取元数据 {}", item.path.display()))?;
+        .with_context(|| format!("Cannot read metadata for {}", item.path.display()))?;
     let modified_epoch = metadata
         .modified()
         .ok()
-        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|value| value.as_secs())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
         .unwrap_or(0);
 
     let mut session_id = item
@@ -464,20 +519,21 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
         .unwrap_or("session")
         .to_string();
 
-    let mut first_timestamp = None;
-    let mut last_timestamp = None;
+    let mut first_timestamp: Option<String> = None;
+    let mut last_timestamp: Option<String> = None;
     let mut session_cwd: Option<String> = None;
     let mut lines = 0usize;
     let query_lower = query.trim().to_lowercase();
     let mut matched = query_lower.is_empty();
     let mut best_match: Option<(i32, String, String)> = None;
     let current_workdir = active_workdir();
+
     let reader = BufReader::new(file);
-    for line in reader.lines() {
-        let line = match line {
-            Ok(line) => line,
+    for raw in reader.lines() {
+        let line = match raw {
+            Ok(l) => l,
             Err(err) => {
-                eprintln!("读取 {} 时出错：{}", item.path.display(), err);
+                eprintln!("Read error in {}: {err}", item.path.display());
                 continue;
             }
         };
@@ -485,6 +541,7 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             continue;
         }
         lines += 1;
+
         if let Ok(json) = serde_json::from_str::<Value>(&line) {
             if should_skip_record_type(&json) {
                 continue;
@@ -497,13 +554,12 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                     session_cwd = Some(cwd.clone());
                 }
                 if !query_lower.is_empty() {
-                    if let Some(current_workdir) = current_workdir.as_deref() {
-                        let normalized_session_cwd = std::path::Path::new(&cwd)
+                    if let Some(workdir) = current_workdir.as_deref() {
+                        let norm = std::path::Path::new(&cwd)
                             .canonicalize()
-                            .ok()
-                            .map(|path| path.to_string_lossy().to_string())
+                            .map(|p| p.to_string_lossy().into_owned())
                             .unwrap_or(cwd);
-                        if normalized_session_cwd == current_workdir {
+                        if norm == workdir {
                             anyhow::bail!(SKIPPED_CURRENT_WORKDIR);
                         }
                     }
@@ -526,18 +582,16 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
                         continue;
                     }
                     if let Some(candidate) = matched_snippet(&detail.text, &query_lower, 180) {
-                        if should_skip_meta_candidate(&candidate) {
-                            continue;
-                        }
-                        if is_noise_line(&candidate.to_lowercase()) {
+                        if should_skip_meta_candidate(&candidate)
+                            || is_noise_line(&candidate.to_lowercase())
+                        {
                             continue;
                         }
                         matched = true;
                         let score = candidate_score(detail.field, &detail.text, &query_lower);
                         let replace = best_match
                             .as_ref()
-                            .map(|(best_score, _, _)| score > *best_score)
-                            .unwrap_or(true);
+                            .map_or(true, |(best_score, _, _)| score > *best_score);
                         if replace {
                             best_match = Some((score, candidate, detail.field.to_string()));
                         }
@@ -546,27 +600,24 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
             }
         } else if !query_lower.is_empty() {
             if let Some(candidate) = matched_snippet(&line, &query_lower, 180) {
-                if should_skip_meta_candidate(&candidate) {
-                    continue;
-                }
-                if is_noise_line(&candidate.to_lowercase()) {
-                    continue;
-                }
-                matched = true;
-                let score = candidate_score(RAW_LINE_FIELD, &line, &query_lower);
-                let replace = best_match
-                    .as_ref()
-                    .map(|(best_score, _, _)| score > *best_score)
-                    .unwrap_or(true);
-                if replace {
-                    best_match = Some((score, candidate, RAW_LINE_FIELD.to_string()));
+                if !should_skip_meta_candidate(&candidate)
+                    && !is_noise_line(&candidate.to_lowercase())
+                {
+                    matched = true;
+                    let score = candidate_score(RAW_LINE_FIELD, &line, &query_lower);
+                    let replace = best_match
+                        .as_ref()
+                        .map_or(true, |(best_score, _, _)| score > *best_score);
+                    if replace {
+                        best_match = Some((score, candidate, RAW_LINE_FIELD.to_string()));
+                    }
                 }
             }
         }
     }
 
     if !matched {
-        anyhow::bail!(SKIPPED_QUERY_MISS)
+        anyhow::bail!(SKIPPED_QUERY_MISS);
     }
 
     Ok(SessionSummary {
@@ -577,12 +628,16 @@ fn process_file(item: &WorkItem, query: &str) -> Result<SessionSummary> {
         size_bytes: metadata.len(),
         first_timestamp,
         last_timestamp,
-        snippet: best_match.as_ref().map(|(_, snippet, _)| snippet.clone()),
+        snippet: best_match.as_ref().map(|(_, snip, _)| snip.clone()),
         match_field: best_match.as_ref().map(|(_, _, field)| field.clone()),
         match_score: best_match.as_ref().map(|(score, _, _)| *score).unwrap_or(0),
     })
 }
 
+// ── snippet helpers ───────────────────────────────────────────────────────────
+
+/// Returns a window of `limit` characters centred on the first match of
+/// `query_lower` inside `text`, or `None` when no match exists.
 fn matched_snippet(text: &str, query_lower: &str, limit: usize) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() || query_lower.is_empty() {
@@ -593,6 +648,9 @@ fn matched_snippet(text: &str, query_lower: &str, limit: usize) -> Option<String
     Some(clip_snippet(trimmed, idx, query_lower.len(), limit))
 }
 
+/// Clips `text` to at most `limit` characters, keeping the matched region
+/// centred in the window.  Operates on Unicode scalar values (chars), not
+/// bytes, to avoid splitting multi-byte sequences.
 fn clip_snippet(text: &str, index: usize, query_len: usize, limit: usize) -> String {
     let total_chars = text.chars().count();
     if limit == 0 || total_chars <= limit {
@@ -609,64 +667,72 @@ fn clip_snippet(text: &str, index: usize, query_len: usize, limit: usize) -> Str
         .collect()
 }
 
+// ── noise filtering ───────────────────────────────────────────────────────────
+
+/// Returns `true` when `line` (already lower-cased) matches any noise marker
+/// or heuristic pattern.
 fn is_noise_line(line: &str) -> bool {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return true;
     }
-    let lower = trimmed.to_lowercase();
-    if NOISE_MARKERS.iter().any(|marker| lower.contains(marker)) {
+    if NOISE_MARKERS.iter().any(|m| trimmed.contains(m)) {
         return true;
     }
-    if NOISE_PREFIXES
-        .iter()
-        .any(|prefix| lower.starts_with(prefix))
-    {
+    if NOISE_PREFIXES.iter().any(|p| trimmed.starts_with(p)) {
         return true;
     }
-    let lines = lower
+    // Heuristic: a block with many short, spaceless tokens looks like a
+    // directory listing or skill manifest.
+    let short_token_lines = trimmed
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>();
-    let short_token_lines = lines
-        .iter()
-        .filter(|line| line.len() <= 40 && !line.contains(' ') && line.matches('/').count() < 2 && line.matches('-').count() <= 3)
+        .filter(|l| {
+            !l.is_empty()
+                && l.len() <= 40
+                && !l.contains(' ')
+                && l.matches('/').count() < 2
+                && l.matches('-').count() <= 3
+        })
         .count();
     if short_token_lines >= 5 {
         return true;
     }
-    if lower.contains("drwx") || lower.contains("rwxr-xr-x") || lower.contains("\ntotal ") {
-        return true;
-    }
-    if (lower.contains("我先") || lower.contains("我继续"))
-        && (lower.contains("search") || lower.contains("native-scan") || lower.contains("session_index"))
+    if trimmed.contains("drwx")
+        || trimmed.contains("rwxr-xr-x")
+        || trimmed.contains("\ntotal ")
     {
         return true;
     }
-    lower.contains("notebooklm")
-        && lower.contains("search")
-        && lower.contains("session_index")
-        && lower.contains("native-scan")
+    // Filter active-session meta commentary that leaked into session files.
+    if (trimmed.contains("我先") || trimmed.contains("我继续"))
+        && (trimmed.contains("search")
+            || trimmed.contains("native-scan")
+            || trimmed.contains("session_index"))
+    {
+        return true;
+    }
+    trimmed.contains("notebooklm")
+        && trimmed.contains("search")
+        && trimmed.contains("session_index")
+        && trimmed.contains("native-scan")
 }
 
+/// Returns `true` when the text is project-internal meta commentary that
+/// should not surface as a search result even if it contains the query.
 fn should_skip_meta_text(
-    _current_workdir: Option<&str>,
+    current_workdir: Option<&str>,
     session_cwd: Option<&str>,
     _modified_epoch: u64,
     text: &str,
 ) -> bool {
-    let Some(current_workdir) = _current_workdir else {
+    let (Some(workdir), Some(cwd)) = (current_workdir, session_cwd) else {
         return false;
     };
-    let Some(session_cwd) = session_cwd else {
-        return false;
-    };
-    let normalized_session_cwd = std::path::Path::new(session_cwd)
+    let normalized_cwd = std::path::Path::new(cwd)
         .canonicalize()
-        .ok()
-        .map(|path| path.to_string_lossy().to_string())
-        .unwrap_or_else(|| session_cwd.to_string());
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| cwd.to_string());
     let trimmed = text.trim();
     let looks_like_meta = (trimmed.starts_with('我')
         || trimmed.starts_with("我继续")
@@ -679,35 +745,7 @@ fn should_skip_meta_text(
             || trimmed.contains("native-scan")
             || trimmed.contains("session_index")
             || trimmed.contains("索引"));
-    looks_like_meta && normalized_session_cwd == current_workdir
-}
-
-fn should_skip_record_type(value: &Value) -> bool {
-    let top_level = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    if matches!(top_level, "turn_context" | "custom_tool_call") {
-        return true;
-    }
-    if top_level == "response_item" {
-        let payload_type = value
-            .get("payload")
-            .and_then(|v| v.get("type"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if matches!(payload_type, "function_call_output" | "function_call" | "reasoning") {
-            return true;
-        }
-    }
-    if top_level == "event_msg" {
-        let payload_type = value
-            .get("payload")
-            .and_then(|v| v.get("type"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if matches!(payload_type, "token_count" | "task_started") {
-            return true;
-        }
-    }
-    false
+    looks_like_meta && normalized_cwd == workdir
 }
 
 fn should_skip_meta_candidate(text: &str) -> bool {
@@ -723,23 +761,58 @@ fn should_skip_meta_candidate(text: &str) -> bool {
             || trimmed.contains("索引"))
 }
 
+// ── record-type filtering ─────────────────────────────────────────────────────
+
+fn should_skip_record_type(value: &Value) -> bool {
+    let top_level = value.get("type").and_then(Value::as_str).unwrap_or("");
+    if matches!(top_level, "turn_context" | "custom_tool_call") {
+        return true;
+    }
+    let nested_type = |key: &str| {
+        value
+            .get(key)
+            .and_then(|v| v.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+    };
+    if top_level == "response_item" {
+        let pt = nested_type("payload");
+        if matches!(pt, "function_call_output" | "function_call" | "reasoning") {
+            return true;
+        }
+    }
+    if top_level == "event_msg" {
+        let pt = nested_type("payload");
+        if matches!(pt, "token_count" | "task_started") {
+            return true;
+        }
+    }
+    false
+}
+
+// ── scoring ───────────────────────────────────────────────────────────────────
+
 fn field_priority(field: &str) -> i32 {
     match field {
         "message.content.text" | "payload.content.text" => 120,
         "message" | "message.content" | "payload.message" | "root.text" | "payload.text" => 100,
         "root.content" | "root.display" | "payload.display" | "root.last_agent_message"
         | "payload.last_agent_message" => 70,
-        "root.prompt" | "payload.prompt" | "root.user_instructions" | "payload.user_instructions" => 20,
+        "root.prompt"
+        | "payload.prompt"
+        | "root.user_instructions"
+        | "payload.user_instructions" => 20,
         RAW_LINE_FIELD => 10,
         _ => 40,
     }
 }
 
 fn candidate_score(field: &str, text: &str, query_lower: &str) -> i32 {
-    let lower = text.to_lowercase();
-    let hits = lower.matches(query_lower).count() as i32;
+    let hits = text.to_lowercase().matches(query_lower).count() as i32;
     field_priority(field) + hits * 25
 }
+
+// ── text extraction ───────────────────────────────────────────────────────────
 
 fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
     const ROOT_FIELDS: &[(&str, &str)] = &[
@@ -768,7 +841,7 @@ fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
         for &(field, key) in PAYLOAD_FIELDS {
             collect_text_candidate(field, payload.get(key), &mut out);
         }
-        if let Some(items) = payload.get("content").and_then(|v| v.as_array()) {
+        if let Some(items) = payload.get("content").and_then(Value::as_array) {
             for item in items {
                 collect_text_candidate("payload.content.text", item.get("text"), &mut out);
             }
@@ -776,7 +849,7 @@ fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
     }
     if let Some(message) = value.get("message") {
         collect_text_candidate("message.content", message.get("content"), &mut out);
-        if let Some(items) = message.get("content").and_then(|v| v.as_array()) {
+        if let Some(items) = message.get("content").and_then(Value::as_array) {
             for item in items {
                 collect_text_candidate("message.content.text", item.get("text"), &mut out);
             }
@@ -786,7 +859,7 @@ fn extract_text_candidates(value: &Value) -> Vec<MatchDetail> {
 }
 
 fn collect_text_candidate(field: &'static str, value: Option<&Value>, out: &mut Vec<MatchDetail>) {
-    if let Some(text) = value.and_then(|v| v.as_str()) {
+    if let Some(text) = value.and_then(Value::as_str) {
         let trimmed = text.trim();
         if !trimmed.is_empty() {
             out.push(MatchDetail {
@@ -797,11 +870,13 @@ fn collect_text_candidate(field: &'static str, value: Option<&Value>, out: &mut 
     }
 }
 
+// ── field extractors ──────────────────────────────────────────────────────────
+
 fn extract_session_id(value: &Value) -> Option<String> {
     nested_str(value, &["payload", "id"])
         .or_else(|| nested_str(value, &["sessionId"]))
         .or_else(|| nested_str(value, &["session_id"]))
-        .map(|s| s.to_string())
+        .map(str::to_string)
 }
 
 fn extract_timestamp(value: &Value) -> Option<String> {
@@ -809,30 +884,32 @@ fn extract_timestamp(value: &Value) -> Option<String> {
         .or_else(|| nested_str(value, &["createdAt"]))
         .or_else(|| nested_str(value, &["created_at"]))
         .or_else(|| nested_str(value, &["time"]))
-        .map(|s| s.to_string())
+        .map(str::to_string)
 }
 
 fn extract_cwd(value: &Value) -> Option<String> {
     nested_str(value, &["payload", "cwd"])
         .or_else(|| nested_str(value, &["cwd"]))
-        .map(|s| s.to_string())
+        .map(str::to_string)
 }
 
+/// Returns the canonical path of the active working directory, preferring the
+/// `CONTEXTGO_ACTIVE_WORKDIR` environment variable when set.
 fn active_workdir() -> Option<String> {
     if let Ok(explicit) = std::env::var("CONTEXTGO_ACTIVE_WORKDIR") {
         let trimmed = explicit.trim();
         if !trimmed.is_empty() {
             return std::path::Path::new(trimmed)
                 .canonicalize()
+                .map(|p| p.to_string_lossy().into_owned())
                 .ok()
-                .map(|path| path.to_string_lossy().to_string())
                 .or_else(|| Some(trimmed.to_string()));
         }
     }
     std::env::current_dir()
         .ok()
-        .and_then(|path| path.canonicalize().ok().or(Some(path)))
-        .map(|path| path.to_string_lossy().to_string())
+        .and_then(|p| p.canonicalize().ok().or(Some(p)))
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 fn nested_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
@@ -843,11 +920,36 @@ fn nested_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     current.as_str()
 }
 
+// ── path filtering ────────────────────────────────────────────────────────────
+
+const VALID_EXTENSIONS: &[&str] = &["json", "jsonl"];
+
+fn is_valid_extension(path: &Path) -> bool {
+    let lower_path = path.to_string_lossy().to_lowercase();
+    if should_skip_path(&lower_path) {
+        return false;
+    }
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| VALID_EXTENSIONS.contains(&ext))
+        .unwrap_or(false)
+}
+
+fn should_skip_path(lower_path: &str) -> bool {
+    lower_path.contains("/skills/") || lower_path.contains("skills-repo")
+}
+
+fn should_report_error(err: &anyhow::Error) -> bool {
+    let text = err.to_string();
+    text != SKIPPED_QUERY_MISS && text != SKIPPED_CURRENT_WORKDIR
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::path::PathBuf;
 
     #[test]
     fn nested_str_navigates_nested_structures() {
@@ -893,49 +995,50 @@ mod tests {
             }
         });
         let candidates = extract_text_candidates(&value);
-        assert!(candidates.iter().any(
-            |candidate| candidate.field == "message.content.text" && candidate.text == "hello"
-        ));
-        assert!(
-            candidates
-                .iter()
-                .any(|candidate| candidate.field == "message.content.text"
-                    && candidate.text == "世界")
-        );
         assert!(candidates
             .iter()
-            .any(|candidate| candidate.field == "payload.text" && candidate.text == "payload"));
+            .any(|c| c.field == "message.content.text" && c.text == "hello"));
+        assert!(candidates
+            .iter()
+            .any(|c| c.field == "message.content.text" && c.text == "世界"));
+        assert!(candidates
+            .iter()
+            .any(|c| c.field == "payload.text" && c.text == "payload"));
     }
 
     #[test]
     fn is_noise_line_filters_known_markers() {
-        let marker = "# agents.md instructions";
-        assert!(is_noise_line(marker));
+        assert!(is_noise_line("# agents.md instructions"));
         assert!(!is_noise_line("a normal line"));
     }
 
     #[test]
-    fn is_noise_line_attack_prefixes() {
-        assert!(is_noise_line("## 目录"));
+    fn is_noise_line_blocks_noisy_prefixes() {
+        assert!(is_noise_line("## heading"));
         assert!(is_noise_line("```rust"));
     }
 
     #[test]
     fn should_skip_path_filters_skills_sources() {
-        assert!(should_skip_path("/users/dunova/.codex/skills/notebooklm/skill.md"));
-        assert!(should_skip_path("/users/dunova/.claude/projects/-users-dunova-skills-repo/a.jsonl"));
-        assert!(!should_skip_path("/users/dunova/.codex/sessions/2026/03/test.jsonl"));
-    }
-
-    #[test]
-    fn is_noise_line_filters_meta_chatter() {
-        assert!(is_noise_line(
-            "我继续沿结果质量这条线打，不回到命名层。先复看当前工作树和主链 search NotebookLM 的命中。"
+        assert!(should_skip_path(
+            "/users/dunova/.codex/skills/notebooklm/skill.md"
+        ));
+        assert!(should_skip_path(
+            "/users/dunova/.claude/projects/-users-dunova-skills-repo/a.jsonl"
+        ));
+        assert!(!should_skip_path(
+            "/users/dunova/.codex/sessions/2026/03/test.jsonl"
         ));
     }
 
     #[test]
-    fn summarize_by_source_keeps_first_sample() {
+    fn is_noise_line_filters_meta_chatter() {
+        let line = "我继续沿结果质量这条线打，不回到命名层。先复看当前工作树和主链 search NotebookLM 的命中。";
+        assert!(is_noise_line(&line.to_lowercase()));
+    }
+
+    #[test]
+    fn summarize_by_source_aggregates_correctly() {
         let summaries = vec![
             SessionSummary {
                 source: "alpha",
@@ -972,11 +1075,8 @@ mod tests {
 
     #[test]
     fn candidate_score_prefers_message_content_over_prompt() {
-        let prompt_score = candidate_score(
-            "payload.prompt",
-            "NotebookLM integration outline",
-            "notebooklm",
-        );
+        let prompt_score =
+            candidate_score("payload.prompt", "NotebookLM integration outline", "notebooklm");
         let content_score = candidate_score(
             "message.content.text",
             "NotebookLM integration outline",
@@ -987,45 +1087,31 @@ mod tests {
 
     #[test]
     fn active_workdir_prefers_explicit_env() {
+        // Use a serial-safe approach: store, set, test, restore.
+        // This test is intentionally not run in parallel with others that
+        // mutate the same env var.
         let previous = std::env::var("CONTEXTGO_ACTIVE_WORKDIR").ok();
-        std::env::set_var("CONTEXTGO_ACTIVE_WORKDIR", "/tmp/contextgo-explicit");
+        // SAFETY: single-threaded test binary; no other thread reads this var.
+        unsafe {
+            std::env::set_var("CONTEXTGO_ACTIVE_WORKDIR", "/tmp");
+        }
         let cwd = active_workdir().unwrap();
-        assert!(cwd.ends_with("/tmp/contextgo-explicit"));
-        if let Some(value) = previous {
-            std::env::set_var("CONTEXTGO_ACTIVE_WORKDIR", value);
-        } else {
-            std::env::remove_var("CONTEXTGO_ACTIVE_WORKDIR");
+        // /tmp may be a symlink on macOS; accept any path ending with "tmp".
+        assert!(cwd.ends_with("tmp"), "unexpected cwd: {cwd}");
+        unsafe {
+            match previous {
+                Some(v) => std::env::set_var("CONTEXTGO_ACTIVE_WORKDIR", v),
+                None => std::env::remove_var("CONTEXTGO_ACTIVE_WORKDIR"),
+            }
         }
     }
 
     #[test]
     fn should_report_error_suppresses_expected_skips() {
         assert!(!should_report_error(&anyhow::anyhow!(SKIPPED_QUERY_MISS)));
-        assert!(!should_report_error(&anyhow::anyhow!(SKIPPED_CURRENT_WORKDIR)));
+        assert!(!should_report_error(&anyhow::anyhow!(
+            SKIPPED_CURRENT_WORKDIR
+        )));
         assert!(should_report_error(&anyhow::anyhow!("real parse failure")));
     }
-}
-
-fn summarize_by_source<'a>(
-    summaries: &'a [SessionSummary],
-) -> HashMap<&'static str, SourceAggregate<'a>> {
-    let mut map = HashMap::new();
-    for summary in summaries {
-        let entry = map
-            .entry(summary.source)
-            .or_insert_with(|| SourceAggregate {
-                label: summary.source,
-                session_count: 0,
-                total_lines: 0,
-                total_bytes: 0,
-                sample: None,
-            });
-        entry.session_count += 1;
-        entry.total_lines += summary.lines;
-        entry.total_bytes += summary.size_bytes;
-        if entry.sample.is_none() {
-            entry.sample = Some(summary);
-        }
-    }
-    map
 }

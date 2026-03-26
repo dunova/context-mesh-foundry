@@ -1,34 +1,65 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# verify_context_first_policy.sh -- regression checks for the SCF
+# context-first policy and related skill files.
+#
+# Usage: verify_context_first_policy.sh [--help]
+#
+# Exits 0 on all checks passed, 1 on any failure.
 set -euo pipefail
 
-ok() { echo "[verify] OK  - $*"; }
-fail() { echo "[verify] FAIL - $*"; exit 1; }
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [--help]
 
-require_text() {
-  local file="$1"
-  local pattern="$2"
-  local label="$3"
-  if [ ! -f "$file" ]; then
-    fail "$label: missing file $file"
-  fi
-  if rg -n --fixed-strings "$pattern" "$file" >/dev/null 2>&1; then
-    ok "$label"
-  else
-    fail "$label: pattern not found ($pattern) in $file"
-  fi
+Verify that the SCF context-first policy has been applied to all expected
+agent entry-point files and that required skill markers are present.
+
+Exits 0 when all checks pass, 1 on the first failure.
+EOF
+    exit 0
 }
 
-require_text "$HOME/.codex/AGENTS.md" "SCF:CONTEXT-FIRST:START" "codex 入口已注入 context-first"
-require_text "$HOME/.claude/CLAUDE.md" "SCF:CONTEXT-FIRST:START" "claude 入口已注入 context-first"
-require_text "$HOME/.openclaw/workspace/AGENTS.md" "SCF:CONTEXT-FIRST:START" "openclaw 入口已注入 context-first"
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage
+fi
 
-require_text "$HOME/.codex/skills/gsd-v1/SKILL.md" "GSD 关闭时的兜底规则（新增）" "codex gsd 技能有关闭兜底"
-require_text "$HOME/.claude/skills/gsd-v1/SKILL.md" "GSD 关闭时的兜底规则（新增）" "claude gsd 技能有关闭兜底"
+ok()   { printf '[verify] OK   - %s\n' "$*"; }
+fail() { printf '[verify] FAIL - %s\n' "$*" >&2; exit 1; }
 
-if [ -f "/Volumes/AI/GitHub/ContextGO/scripts/context_cli.py" ]; then
-  ok "context_cli 入口可用"
+require_text() {
+    local file="$1"
+    local pattern="$2"
+    local label="$3"
+
+    if [ ! -f "$file" ]; then
+        fail "$label: file not found: $file"
+    fi
+    if grep -qF "$pattern" "$file" 2>/dev/null; then
+        ok "$label"
+    else
+        fail "$label: pattern not found ('$pattern') in $file"
+    fi
+}
+
+# Locate context_cli.py relative to this script, with a fallback to the
+# installed path (avoids hard-coding /Volumes/AI).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_SCRIPT="$SCRIPT_DIR/context_cli.py"
+
+# Policy injection checks
+require_text "$HOME/.codex/AGENTS.md"              "SCF:CONTEXT-FIRST:START" "codex entry has context-first policy"
+require_text "$HOME/.claude/CLAUDE.md"             "SCF:CONTEXT-FIRST:START" "claude entry has context-first policy"
+require_text "$HOME/.openclaw/workspace/AGENTS.md" "SCF:CONTEXT-FIRST:START" "openclaw entry has context-first policy"
+
+# Skill marker checks
+require_text "$HOME/.codex/skills/gsd-v1/SKILL.md"  "GSD fallback rules" "codex gsd skill has fallback rules"
+require_text "$HOME/.claude/skills/gsd-v1/SKILL.md" "GSD fallback rules" "claude gsd skill has fallback rules"
+
+# CLI availability
+if [ -f "$CLI_SCRIPT" ]; then
+    ok "context_cli entrypoint available: $CLI_SCRIPT"
 else
-  fail "context_cli 入口不可用"
+    fail "context_cli entrypoint not found: $CLI_SCRIPT"
 fi
 
 ok "context-first policy regression checks passed"

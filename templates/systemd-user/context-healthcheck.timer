@@ -1,9 +1,15 @@
 [Unit]
-Description=Run Unified Context Healthcheck every 5 minutes (user)
+Description=Run ContextGO Health Check periodically (user)
+Documentation=https://github.com/your-org/ContextGO
+# Ensure the service unit is available before activating the timer.
+Requires=context-healthcheck.service
 
 [Timer]
+# First run 2 minutes after user session boot.
 OnBootSec=2min
-OnUnitActiveSec=5min
+# Subsequent runs every 15 minutes (matching the launchd StartInterval=900).
+OnUnitActiveSec=15min
+# Re-trigger a missed run after the system was suspended.
 Persistent=true
 
 [Install]

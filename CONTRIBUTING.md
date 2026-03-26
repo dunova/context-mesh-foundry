@@ -1,45 +1,151 @@
-# 贡献指南
+# Contributing to ContextGO
 
-## 核心理念
-- 以 ContextGO 单体产品为视角，所有变更必须服务于 `scripts/context_cli.py`、`scripts/context_daemon.py`、`scripts/context_maintenance.py` 等核心入口，不再围绕历史兼容或分支架构。  
-- 默认链路面向本地运行：本地索引、健康检查与可观测性优先，远程/外部路径仅在明确开启的功能中出现。  
-- 安装态 smoke/benchmark 是健康阈值：`scripts/context_smoke.py` 与 `scripts/smoke_installed_runtime.py` 负责覆盖本地与安装态的 `context_cli`、quality gate、导入导出、viewer/serve 路径，确保默认运行链路在 smoke 下可用。Smoke 依赖 `scripts/context_config.storage_root()`（默认 `~/.contextgo`，可由 `CONTEXTGO_STORAGE_ROOT` 覆盖）可读写，并要求安装态 `INSTALL_ROOT=~/.local/share/contextgo/scripts` 下至少存在 `context_cli.py` 与 `e2e_quality_gate.py`；发布产物同时还应保留 `context_healthcheck.sh`、`benchmarks/run.py` 等运维入口，避免健康检查与 benchmark 流程失效。
-- 始终将快速恢复、静默失败与最小 surprise 作为衡量标准，避免在默认路径上引入额外依赖、网络拨测或多主机同步。  
-- 不在提交中带入 secrets、绝对主机路径或特定用户配置。  
+Thank you for considering a contribution to ContextGO. This guide covers the development setup, code style, testing requirements, and pull request process.
 
-## 工作流程
-- 所有新工作以 `main` 分支的 ContextGO 版本为目标，避免回退到 `scripts/legacy`、旧桥接层或其他历史路径；这些路径仅保留备份状态，无需主动更新。  
-- 改动前请 `git pull` 保持 workspace 与远端对齐，合并完成后通过 `git status` 确认改动范围。  
-- 任何涉及默认入口逻辑的改动（如 `context_cli`、`context_daemon`、`session_index`、`memory_index`）都应附带清晰描述、单元/集成验证命令与观察指标。  
-- 小型修复可以直接提交 PR；跨模块改动建议先开讨论 issue 以协调影响面。  
+## Contents
 
-## 本地验证与安装态 Smoke
-在提交前至少覆盖以下路径，优先在本地运行后再验证安装态：
+- [Development setup](#development-setup)
+- [Project principles](#project-principles)
+- [Code style](#code-style)
+- [Testing requirements](#testing-requirements)
+- [Pull request process](#pull-request-process)
+- [Pre-submission checklist](#pre-submission-checklist)
 
+---
+
+## Development setup
+
+**Prerequisites:** Python 3.9+, Bash, Git. Rust and Go are optional and only required if working on native hot paths.
+
+```bash
+git clone https://github.com/dunova/ContextGO.git
+cd ContextGO
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Run the deploy script to initialize the local environment
+bash scripts/unified_context_deploy.sh
+
+# Verify the setup
+python3 scripts/context_cli.py health
+python3 scripts/context_smoke.py
 ```
+
+The storage root defaults to `~/.contextgo`. This can be overridden with the `CONTEXTGO_STORAGE_ROOT` environment variable. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for all configuration options.
+
+### Optional: native hot paths
+
+```bash
+# Rust
+cd native/session_scan
+CARGO_TARGET_DIR=/tmp/context_mesh_target cargo build --release
+
+# Go
+cd native/session_scan_go
+go build .
+```
+
+---
+
+## Project principles
+
+- **All changes serve the core entry points.** Contributions must have a clear relationship to `context_cli.py`, `context_daemon.py`, `session_index.py`, `memory_index.py`, or the validation chain. Changes to legacy or bridge paths require justification.
+
+- **Local-first by default.** The default code path must not introduce external service calls, network connections, or cloud dependencies. Remote paths belong behind explicit feature flags with documentation.
+
+- **Smoke and benchmark are health thresholds.** If a change causes `context_smoke.py` or the benchmark harness to degrade, it must be addressed before merging.
+
+- **No secrets or machine-specific paths in commits.** Replace any local paths with `~` or environment variable references. See [Pre-submission checklist](#pre-submission-checklist).
+
+- **Prefer fast recovery over clever optimizations.** Silent failures, extra dependencies, and multi-host synchronization logic in the default path are not acceptable.
+
+---
+
+## Code style
+
+### Shell scripts
+
+- Begin with `#!/usr/bin/env bash` and `set -euo pipefail`.
+- Use lightweight, portable POSIX-compatible commands.
+- Avoid non-standard tools unless they are declared as dependencies.
+
+### Python
+
+- Target Python 3.9+.
+- Prefer the standard library. When a third-party package is required, add it to `requirements.txt` and ensure it passes CI.
+- Use type hints for new functions and public interfaces.
+- Write comments only to explain non-obvious runtime or operational logic. Let the code be self-explanatory where possible.
+- Format with a consistent style (the project currently uses no auto-formatter; match the surrounding code style).
+
+### Rust and Go
+
+- Keep native modules focused on a single hot-path function.
+- Validate with small prototypes before expanding scope.
+- Every native change must maintain passing benchmarks and tests.
+
+### Benchmarks
+
+- Place new benchmarks in `benchmarks/`.
+- For any hot-path or performance-sensitive change, include a before/after baseline comparison in the same directory.
+
+---
+
+## Testing requirements
+
+Run the following before submitting a pull request. All steps must pass.
+
+```bash
+# Syntax checks
 bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py
+
+# Unit and integration tests
 python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_session_index.py
+
+# End-to-end quality gate
 python3 scripts/e2e_quality_gate.py
+
+# Performance baseline
 python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
+
+# Smoke tests
 python3 scripts/context_smoke.py
 python3 scripts/smoke_installed_runtime.py
+
+# Health check
 bash scripts/context_healthcheck.sh
 ```
 
-上述命令依赖 `CONTEXTGO_STORAGE_ROOT` 默认指向 `~/.contextgo`，因此请先验证 `scripts/context_config.py` 中的 storage root 与测试用户一致，再运行 smoke/benchmark。  
-额外注意：`python3 scripts/smoke_installed_runtime.py` 默认从 `INSTALL_ROOT=~/.local/share/contextgo/scripts` 载入 `context_cli.py` 与 `e2e_quality_gate.py`；若显式设置了 `CONTEXTGO_INSTALL_ROOT`，脚本也会跟随该目录探测。发布产物还应在默认 tree 下保留 `context_healthcheck.sh`、`benchmarks/run.py` 等运维入口，并确认 smoke 启动前路径可读。
+For changes that only affect documentation or configuration, the smoke suite may be skipped. State the reason explicitly in the pull request description.
 
-如改动仅影响 docs/配置，可跳过 smoke 但需在 PR 中说明原因。  
+The smoke tests depend on `CONTEXTGO_STORAGE_ROOT` defaulting to `~/.contextgo`. Confirm `scripts/context_config.py` resolves to the correct path for your user before running.
 
-## 代码风格与习惯
-- Shell 脚本遵循 `set -euo pipefail`，优先轻量命令组合，不依赖非标准工具。  
-- Python 优先使用标准库，依赖外部包时需在 `requirements.txt` 中声明并在 CI 中验证。  
-- Rust/Go 代码应保持单一功能模块，先用小型 prototypes 证明后再扩展。  
-- 注释仅用于解释非显而易见的运维或运行时逻辑，逻辑清晰页面尽量让代码自说明。  
-- Benchmarks 放在 `benchmarks/`，调优或热点改动请在同一目录下补齐基线对比。  
+The installed runtime smoke (`smoke_installed_runtime.py`) expects `context_cli.py` and `e2e_quality_gate.py` at `~/.local/share/contextgo/scripts` (or the path in `CONTEXTGO_INSTALL_ROOT`).
 
-## 贡献前检查清单
-- 确认没引入 secrets / 绝对路径，可使用 `rg` 搜散列关键词（如 `AKIA`、`password`）。  
-- README 与文档同步更新新增环境变量或行为变化。  
-- 若改动会影响 release 流程，通知 release owner 并在 PR 中提及相关健康检查步骤。  
+---
+
+## Pull request process
+
+1. **Target `main`.** All work goes to the `main` branch. Do not target `scripts/legacy` or historical bridge paths.
+
+2. **Keep your branch up to date.** Run `git pull` before opening a PR and resolve any conflicts before requesting review.
+
+3. **Small, focused changes merge faster.** Single-module fixes can be submitted as a PR immediately. Cross-module changes should start as a discussion issue to align on impact.
+
+4. **Include verification output.** For any change affecting core entry points (`context_cli`, `context_daemon`, `session_index`, `memory_index`), include the output of the relevant test and smoke commands in the PR description.
+
+5. **Update documentation.** If you add an environment variable, change a default behavior, or modify the storage layout, update the relevant docs (`docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/TROUBLESHOOTING.md`) in the same PR.
+
+6. **Notify the release owner.** If your change affects the release pipeline or deployment steps, mention `@release-owner` in the PR.
+
+---
+
+## Pre-submission checklist
+
+- [ ] No secrets, API keys, tokens, or passwords are present in any committed file.
+- [ ] No hardcoded absolute paths (e.g., `/Users/name/`, `/home/name/`). Use `~` or environment variables.
+- [ ] `rg` scan for common secret patterns passes: `rg -i 'AKIA|password|secret|token' scripts/ docs/`
+- [ ] All test and smoke commands pass locally.
+- [ ] Documentation is updated for any new environment variables or behavior changes.
+- [ ] PR description includes the test commands run and their output (or explains why they were skipped).

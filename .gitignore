@@ -1,7 +1,22 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
 .venv/
+venv/
+env/
+dist/
+build/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.dist-info/
 
 # Local runtime/data
 .env
@@ -12,14 +27,46 @@ logs/
 data/
 .tmp/
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
 # Secrets/config
 *.secret
 ov.conf
 *.bak
+*.key
+*.pem
+*.p12
+*.pfx
 
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# Native build artifacts
+target/
+native/session_scan/target/
+native/session_scan_go/vendor/
+
+# Node / frontend (integrations)
+node_modules/
+.npm/
+
+# ContextGO session/index data (local runtime state, never commit)
+.contextgo/
+.aline/
+
+# OS-generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini

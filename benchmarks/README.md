@@ -1,38 +1,67 @@
-# 基准测试脚手架
+# Benchmarks
 
-本目录提供一个可重复执行的 Python 基准套件，用来衡量主链核心路径的性能：
+A reproducible Python benchmark suite for measuring the performance of the ContextGO core paths:
 
-- `context_cli.py health`（包含 session index 同步）
-- `context_cli.py search`（精确查找）
-- `session_index.sync_session_index`（强制重建本地索引）
+- `context_cli health` (includes session index sync)
+- `context_cli search` (exact search)
+- `session_index.sync_session_index` (forced full index rebuild)
 
-### 用法
+The harness creates temporary sample data (`~/.codex`, `~/.claude`, `~/.zsh_history`, etc.) in an isolated `HOME` environment so it does not depend on the actual user directory.
 
+## Usage
+
+```bash
+python3 -m benchmarks [--mode python|native|both] [--format text|json]
+# or equivalently:
+python3 -m benchmarks.run [--mode python|native|both] [--format text|json]
 ```
-python -m benchmarks.run [--mode python|native] [--format text|json]
-# 或
-python -m benchmarks [--mode python|native] [--format text|json]
-```
 
-可选参数：`--iterations`、`--warmup`、`--query`、`--search-limit`，均支持环境变量 `CONTEXTGO_BENCH_*` 覆盖（如 `CONTEXTGO_BENCH_QUERY`、`CONTEXTGO_BENCH_ITERATIONS`、`CONTEXTGO_BENCH_SEARCH_LIMIT`）。脚本会在一次临时的 `HOME` 环境下生成样本 `.codex`、`.claude`、`.zsh_history` 等数据，避免依赖实际用户目录。
+Optional flags:
 
-### 比较 Python/Native 路径
+| Flag | Default | Description |
+|---|---|---|
+| `--mode` | `python` | Backend to benchmark: `python`, `native`, or `both`. |
+| `--format` | `text` | Output format: `text` (human-readable summary) or `json`. |
+| `--iterations` | `3` | Number of timed iterations per benchmark. |
+| `--warmup` | `1` | Number of warmup iterations (not counted in results). |
+| `--query` | `benchmark` | Search query string used in the search benchmark. |
+| `--search-limit` | `5` | Result limit used in the search benchmark. |
 
-```
-python -m benchmarks --mode python --format json > python.json
-python -m benchmarks --mode native --format json > native.json
+All flags can also be set via environment variables with the `CONTEXTGO_BENCH_` prefix:
+
+| Environment variable | Corresponding flag |
+|---|---|
+| `CONTEXTGO_BENCH_QUERY` | `--query` |
+| `CONTEXTGO_BENCH_ITERATIONS` | `--iterations` |
+| `CONTEXTGO_BENCH_SEARCH_LIMIT` | `--search-limit` |
+
+## Comparing Python and native paths
+
+Run both backends and compare:
+
+```bash
+python3 -m benchmarks --mode python --format json > python.json
+python3 -m benchmarks --mode native --format json > native.json
 diff python.json native.json
 ```
 
-为了向后兼容，`python benchmarks/session_index_benchmark.py` 仍然可用，它只是调用了 `--mode native --format json` 的统一入口。
+Or run both in a single pass with `--mode both`:
 
-### 同步对比 Python/Native
-
-添加了 `--mode both` 选项，可以在一次运行中依次跑完 Python 和 native 路径，输出两个模式的摘要并附带平均耗时差值与比率，对比更直观。例如：
-
-```
-python -m benchmarks --mode both > both.txt
-python -m benchmarks --mode both --format json > both.json
+```bash
+python3 -m benchmarks --mode both
+python3 -m benchmarks --mode both --format json > both.json
 ```
 
-当输出 JSON 时，`benchmarks` 会变成以模式为键的字典，同时附带 `comparison` 数组（包含 `python_mean_ms`、`native_mean_ms`、`mean_diff_ms`、`mean_ratio` 等字段）供脚本或 diff 工具进一步处理。
+When `--mode both` is used, the JSON output is a dictionary keyed by mode name, with an additional `comparison` array containing `python_mean_ms`, `native_mean_ms`, `mean_diff_ms`, and `mean_ratio` fields.
+
+## Backward compatibility
+
+`python3 benchmarks/session_index_benchmark.py` still works and is equivalent to `--mode native --format json`.
+
+## Quick pre-release run
+
+```bash
+python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
+```
+
+This is the minimum benchmark run required before tagging a release. See [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) for interpretation guidance.

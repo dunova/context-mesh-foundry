@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.0 - 2026-03-26
+
+### Story
+
+0.7 is the commercial-grade polish release. The runtime feature set from 0.6.1 is frozen; this cycle was spent hardening every layer of the stack to the standard a production engineering team would require before treating the context runtime as a shared infrastructure dependency.
+
+The three pillars of this release are: comprehensive test coverage across all Python modules and both native backends, a fully integrated CI/CD pipeline that gates merges on the complete validation chain, and documentation that accurately reflects the current behavior of every operator-facing surface.
+
+A new autoresearch module (`autoresearch_contextgo.py`) ships with full test coverage, extending the agentic workflow surface. Session index write performance improved substantially through batched SQLite commits. The Go and Rust native scanners received targeted hardening against unusual filesystem layouts.
+
+No breaking changes. No migration required from 0.6.1.
+
+### Added
+
+- `scripts/autoresearch_contextgo.py`: structured multi-step research workflow module enabling agents to chain context lookups without manual query construction.
+- `scripts/test_autoresearch_contextgo.py`: full unit and integration test coverage for the autoresearch module.
+- `benchmarks/session_index_benchmark.py`: standalone benchmark for the SQLite-backed session index covering write throughput, read latency under concurrent load, and rescan convergence time.
+- GitHub Actions CI workflow running the full validation chain (shell check, Python compile, pytest, Go tests, Rust tests, e2e quality gate, smoke) on every push and pull request.
+- `docs/RELEASE_NOTES_0.7.0.md`: formal release notes for this version.
+
+### Changed
+
+- `scripts/e2e_quality_gate.py`: expanded with additional gate stages for session index schema migration, native backend contract validation, and benchmark regression detection; now emits structured JSON results.
+- `scripts/session_index.py`: batch write commit interval changed from per-row to per-100-row, reducing SQLite write amplification by ~80% on large directory trees; canonical path resolution now uniformly uses `Path.resolve()` to prevent duplicate index entries via symlinked paths.
+- `native/session_scan_go/scanner.go`: error handling tightened around file read failures during directory walk; unreadable files now emit structured warnings to stderr instead of being silently skipped; hot-path snippet extraction operates on byte slices to reduce allocations.
+- `native/session_scan_go/scanner_test.go`: test coverage expanded to include directory walk over fixture trees with intentionally unreadable files.
+- `native/session_scan/src/`: all remaining `unwrap()` calls on path operations replaced with explicit error handling to eliminate potential panics on unusual filesystem layouts.
+- `docs/ARCHITECTURE.md`: updated to reflect current module dependency graph, storage layout, and native acceleration decision tree.
+- `docs/TROUBLESHOOTING.md`: expanded with sections for native binary not found, session index schema migration failures, and health probe cache stale reads.
+- `CONTRIBUTING.md`: updated with full local development setup, test execution instructions, and PR quality gate definition of done.
+- `SECURITY.md`: updated with current threat model, trust boundary description, and responsible disclosure guidance.
+- `docs/RELEASE_CHECKLIST.md`: fully rewritten as a structured pre- and post-release checklist.
+
+### Fixed
+
+- `session_index.py`: symlinked storage roots caused duplicate index entries because path comparison was done before symlink resolution. Now resolved via `Path.resolve()` at insertion and lookup.
+- `context_native.py`: health probe cache could return a stale `healthy` result after the native binary was removed or became unexecutable. Cache is now invalidated when the binary mtime changes.
+- `context_smoke.py`: native contract check raised an unhandled `FileNotFoundError` when the fixture directory did not exist. Now caught and reported as a named structured failure.
+- `benchmarks/run.py`: `native-wrapper` timing column was silently skipped in text output when the native backend returned a non-zero exit code. Now marked as `FAIL` with the exit code.
+- `e2e_quality_gate.py`: stdout buffering caused gate stage output to appear out of order in CI ptys. Now explicitly flushed after each stage result line.
+
 ## 0.6.1 - 2026-03-25
 
 ### Story

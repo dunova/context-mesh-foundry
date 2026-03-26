@@ -35,9 +35,10 @@ def get_storage_root() -> Path:
 
 
 def get_index_db_path() -> Path:
+    """Return the path to the memory index SQLite database."""
     override = os.environ.get("MEMORY_INDEX_DB_PATH", "").strip()
     if override:
-        return Path(os.path.expanduser(override))
+        return Path(override).expanduser()
     return get_storage_root() / "index" / "memory_index.db"
 
 
@@ -54,7 +55,7 @@ def _to_epoch(ts: str, fallback: int) -> int:
         return fallback
     try:
         return int(datetime.fromisoformat(ts).timestamp())
-    except Exception:
+    except (ValueError, OverflowError):
         return fallback
 
 
@@ -74,7 +75,7 @@ class Observation:
 def _parse_markdown(path: Path) -> Observation | None:
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
-    except Exception:
+    except OSError:
         return None
 
     if not text.strip():
@@ -283,7 +284,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         loaded = json.loads(row["tags_json"] or "[]")
         if isinstance(loaded, list):
             tags = [str(x) for x in loaded]
-    except Exception:
+    except (json.JSONDecodeError, ValueError):
         tags = []
     return {
         "id": row["id"],
@@ -328,12 +329,10 @@ def search_index(
             where.append("created_at_epoch <= ?")
             args.append(date_end_epoch)
 
-        sql = """
-            SELECT * FROM observations
-            {where}
-            ORDER BY created_at_epoch DESC
-            LIMIT ? OFFSET ?
-        """.format(where=f"WHERE {' AND '.join(where)}" if where else "")
+        # Build WHERE clause from hardcoded predicate strings; user-supplied
+        # values flow exclusively through bind parameters (args).
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+        sql = f"SELECT * FROM observations {where_clause} ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
         args.extend([max(1, min(limit, 200)), max(0, offset)])
         rows = conn.execute(sql, args).fetchall()
         return [_row_to_dict(r) for r in rows]

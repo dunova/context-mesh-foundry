@@ -144,54 +144,50 @@ def _normalize_file_path(path: Path) -> str:
         return str(path)
 
 
+_NOISE_TEXT_MARKERS = (
+    "### Available skills",
+    "You are Codex",
+    "You are Claude",
+    "<environment_context>",
+    "你负责索引与基准",
+    "写集仅限",
+    "改动文件：",
+    "核心变化：",
+    "建议验证命令：",
+    "继续完成了，但这轮我做了一个重要判断",
+    "native 搜索结果质量还不够好",
+    "随后我又把本地安装态重新部署到",
+    "已查看并收口当前子 agent",
+    "我继续的话，就沿这条质量线往下打",
+    "我继续直接提主链结果质量",
+    "我先复跑主链",
+    "我现在直接复跑主链",
+    "我再强制重建一次索引",
+    "让它质量更好，能替代旧逻辑",
+)
+_NOISE_TEXT_LOWER_MARKERS = (
+    "you are an expert prompt engineer and agent skill optimizer",
+    "the following is the codex agent history whose request action you are assessing",
+    "file: /users/",  # catches any hardcoded user path under /users/
+)
+_WHITESPACE_RE_SI = re.compile(r"\s+")
+
+
 def _is_noise_text(text: str) -> bool:
-    compact = re.sub(r"\s+", " ", str(text or "")).strip()
+    """Return True if text is noise that should be excluded from the session index."""
+    compact = _WHITESPACE_RE_SI.sub(" ", str(text or "")).strip()
     if not compact:
         return True
-    noise_markers = [
-        "### Available skills",
-        "You are Codex",
-        "You are Claude",
-        "file: /Users/dunova/.codex/skills/",
-        "file: /Users/dunova/.agents/skills/",
-        "file: /Users/dunova/.claude/skills/",
-        "<environment_context>",
-    ]
-    if any(marker in compact for marker in noise_markers):
+    if any(marker in compact for marker in _NOISE_TEXT_MARKERS):
         return True
     if compact.count("SKILL.md") >= 3:
         return True
-    if "you are an expert prompt engineer and agent skill optimizer" in compact.lower():
-        return True
-    if "the following is the codex agent history whose request action you are assessing" in compact.lower():
-        return True
-    if "你负责索引与基准" in compact or "写集仅限" in compact:
-        return True
-    if "改动文件：" in compact or "核心变化：" in compact or "建议验证命令：" in compact:
-        return True
-    if "继续完成了，但这轮我做了一个重要判断" in compact:
-        return True
-    if "native 搜索结果质量还不够好" in compact:
-        return True
-    if "随后我又把本地安装态重新部署到" in compact:
+    compact_lower = compact.lower()
+    if any(marker in compact_lower for marker in _NOISE_TEXT_LOWER_MARKERS):
         return True
     if "已预热" in compact and "样本定位" in compact:
         return True
-    if "已查看并收口当前子 agent" in compact:
-        return True
     if "主链不再是瓶颈" in compact and "native 搜索结果质量" in compact:
-        return True
-    if "我继续的话，就沿这条质量线往下打" in compact:
-        return True
-    if "我继续直接提主链结果质量" in compact:
-        return True
-    if "我先复跑主链" in compact:
-        return True
-    if "我现在直接复跑主链" in compact:
-        return True
-    if "我再强制重建一次索引" in compact:
-        return True
-    if "让它质量更好，能替代旧逻辑" in compact:
         return True
     return False
 
@@ -231,7 +227,7 @@ def _is_current_repo_meta_result(title: str, content: str, file_path: str) -> bo
     current_repo = str(Path.cwd().resolve())
     if title != current_repo:
         return False
-    compact = re.sub(r"\s+", " ", str(content or "")).strip()
+    compact = _WHITESPACE_RE_SI.sub(" ", str(content or "")).strip()
     if not compact:
         return True
     meta_markers = (
@@ -281,13 +277,15 @@ def _home() -> Path:
 
 
 def get_session_db_path() -> Path:
+    """Return the path to the session index SQLite database."""
     override = os.environ.get(SESSION_DB_PATH_ENV, "").strip()
     if override:
-        return Path(os.path.expanduser(override))
+        return Path(override).expanduser()
     return get_storage_root() / "index" / "session_index.db"
 
 
 def _iso_to_epoch(value: str | None, fallback: int) -> int:
+    """Parse an ISO 8601 datetime string to a Unix epoch integer."""
     if not value:
         return fallback
     raw = str(value).strip()
@@ -295,7 +293,7 @@ def _iso_to_epoch(value: str | None, fallback: int) -> int:
         return fallback
     try:
         return int(datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp())
-    except Exception:
+    except (ValueError, OverflowError):
         return fallback
 
 
@@ -315,10 +313,11 @@ def _collect_content_text(items: Any) -> list[str]:
 
 
 def _truncate(texts: Iterable[str], max_chars: int = MAX_CONTENT_CHARS) -> str:
+    """Join texts into a single string truncated to max_chars total."""
     parts: list[str] = []
     total = 0
     for text in texts:
-        clean = re.sub(r"\s+", " ", str(text or "")).strip()
+        clean = _WHITESPACE_RE_SI.sub(" ", str(text or "")).strip()
         if not clean:
             continue
         remaining = max_chars - total
@@ -326,7 +325,6 @@ def _truncate(texts: Iterable[str], max_chars: int = MAX_CONTENT_CHARS) -> str:
             break
         if len(clean) > remaining:
             parts.append(clean[:remaining])
-            total = max_chars
             break
         parts.append(clean)
         total += len(clean) + 1
@@ -789,7 +787,7 @@ def build_query_terms(query: str) -> list[str]:
 
 
 def _build_snippet(text: str, terms: list[str], radius: int = 80) -> str:
-    compact = re.sub(r"\s+", " ", text or "").strip()
+    compact = _WHITESPACE_RE_SI.sub(" ", text or "").strip()
     if not compact:
         return ""
     lower = compact.lower()
@@ -838,8 +836,8 @@ def _build_snippet(text: str, terms: list[str], radius: int = 80) -> str:
 
 
 def _looks_like_path_only_content(title: str, content: str) -> bool:
-    title_clean = re.sub(r"\s+", " ", str(title or "")).strip()
-    content_clean = re.sub(r"\s+", " ", str(content or "")).strip()
+    title_clean = _WHITESPACE_RE_SI.sub(" ", str(title or "")).strip()
+    content_clean = _WHITESPACE_RE_SI.sub(" ", str(content or "")).strip()
     if not title_clean or not content_clean:
         return False
     if title_clean != content_clean:
@@ -862,7 +860,7 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
             release=(backend == "rust"),
             timeout=120,
         )
-    except Exception:
+    except (OSError, RuntimeError):
         return []
     if result.returncode != 0:
         return []
@@ -963,15 +961,12 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
                 like_term = f"%{term.lower()}%"
                 where_parts.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(file_path) LIKE ?)")
                 args.extend([like_term, like_term, like_term])
-            sql = """
-                SELECT * FROM session_documents
-                {where}
-                ORDER BY created_at_epoch DESC
-                LIMIT {row_limit}
-            """.format(
-                where=f"WHERE {' OR '.join(where_parts)}" if where_parts else "",
-                row_limit=row_limit,
-            )
+            # Build the WHERE clause from hardcoded predicate strings only;
+            # user-supplied terms flow exclusively through bind parameters (args).
+            # LIMIT is bound as a parameter to avoid any string interpolation in SQL.
+            where_clause = f"WHERE {' OR '.join(where_parts)}" if where_parts else ""
+            sql = f"SELECT * FROM session_documents {where_clause} ORDER BY created_at_epoch DESC LIMIT ?"
+            args.append(max(1, int(row_limit)))
             return conn.execute(sql, args).fetchall()
 
         rows = fetch_rows(terms)
@@ -1043,23 +1038,29 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
         conn.close()
 
 
+_SNIPPET_MAX_CHARS = 120
+
+
+def _compact_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
+    """Compact whitespace and truncate to max_chars with ellipsis."""
+    clean = _WHITESPACE_RE_SI.sub(" ", str(text or "")).strip()
+    if len(clean) <= max_chars:
+        return clean
+    return clean[: max_chars - 1].rstrip() + "\u2026"
+
+
 def format_search_results(query: str, *, search_type: str = "all", limit: int = 10, literal: bool = False) -> str:
+    """Format session search results as a human-readable string."""
     results = _search_rows(query, limit=limit, literal=literal)
     if not results:
         return "No matches found in local session index."
-
-    def compact_snippet(text: str, max_chars: int = 120) -> str:
-        clean = re.sub(r"\s+", " ", str(text or "")).strip()
-        if len(clean) <= max_chars:
-            return clean
-        return clean[: max_chars - 1].rstrip() + "…"
 
     lines = [f"Found {len(results)} sessions (local index):"]
     for idx, row in enumerate(results, 1):
         lines.append(f"[{idx}] {row['created_at'][:10]} | {row['session_id']} | {row['source_type']}")
         lines.append(f"    {row['title']}")
         lines.append(f"    File: {row['file_path']}")
-        lines.append(f"    > {compact_snippet(row['snippet'])}")
+        lines.append(f"    > {_compact_snippet(row['snippet'])}")
     return "\n".join(lines)
 
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Unit tests for context_core module."""
 from __future__ import annotations
 
 import tempfile

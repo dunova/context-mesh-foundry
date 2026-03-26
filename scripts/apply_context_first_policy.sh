@@ -1,65 +1,93 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# apply_context_first_policy.sh -- inject the SCF context-first policy block
+# into agent entry-point files (AGENTS.md / CLAUDE.md).
+#
+# Usage: apply_context_first_policy.sh [--help]
+#
+# Idempotent: removes any existing SCF block before appending the current one.
 set -euo pipefail
 
-log() { echo "[context-first] $*"; }
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [--help]
+
+Inject the SCF context-first policy block into agent entry-point files.
+Currently targets:
+  ~/.codex/AGENTS.md
+  ~/.claude/CLAUDE.md
+  ~/.openclaw/workspace/AGENTS.md
+
+Idempotent -- safe to run repeatedly.
+EOF
+    exit 0
+}
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage
+fi
+
+log() { printf '[context-first] %s\n' "$*"; }
 
 START_MARK="<!-- SCF:CONTEXT-FIRST:START -->"
 END_MARK="<!-- SCF:CONTEXT-FIRST:END -->"
 
 read -r -d '' POLICY_BLOCK <<'EOF' || true
 <!-- SCF:CONTEXT-FIRST:START -->
-## Unified Context First（强制）
+## Unified Context First (enforced)
 
-当任务涉及“已有代码库优化/调试、历史决策回溯、跨终端接力、量化系统定位”时，必须先做上下文预热，再做目录扫描。
+When a task involves existing codebase optimization/debugging, historical
+decision lookup, cross-terminal handoff, or quantitative system location,
+run a context prewarm BEFORE any directory scan.
 
-执行顺序（硬约束）：
-1. 先跑本仓库内置精确检索（至少一次）：
-- `python3 /path/to/ContextGO/scripts/context_cli.py search "<query>" --limit 20 --literal`
-2. 未命中再补本地语义检索（可选）：
-- `python3 /path/to/ContextGO/scripts/context_cli.py semantic "<query>" --limit 5`
-3. 基于命中结果缩小范围后，才允许 `ls`/`rg` 扫描代码目录。
-4. 禁止模式：未预热就直接穷举 `~/`、`/Volumes/*`、或其他大目录。
+Execution order (hard constraint):
+1. Run the built-in exact-match search at least once:
+   python3 /path/to/ContextGO/scripts/context_cli.py search "<query>" --limit 20 --literal
+2. If no hits, optionally follow up with semantic search:
+   python3 /path/to/ContextGO/scripts/context_cli.py semantic "<query>" --limit 5
+3. Narrow scope based on results BEFORE running ls / rg on large directories.
+4. Prohibited pattern: exhaustive scan of ~/, /Volumes/*, or other large trees
+   without a prior context prewarm.
 
-任务起步自检：
-- [ ] 已执行 context_cli 精确检索
-- [ ] 已记录命中会话或明确“无命中”
-- [ ] 扫描范围已被上下文结果约束
+Task start checklist:
+- [ ] context_cli exact search executed
+- [ ] Hits recorded, or "no hits" noted
+- [ ] Scan scope constrained by context results
 <!-- SCF:CONTEXT-FIRST:END -->
 EOF
 
 strip_old_block() {
-  local file="$1"
-  awk -v s="$START_MARK" -v e="$END_MARK" '
-    BEGIN { skip=0 }
-    index($0, s) { skip=1; next }
-    index($0, e) { skip=0; next }
-    skip==0 { print }
-  ' "$file"
+    local file="$1"
+    awk -v s="$START_MARK" -v e="$END_MARK" '
+        BEGIN { skip=0 }
+        index($0, s) { skip=1; next }
+        index($0, e) { skip=0; next }
+        skip==0 { print }
+    ' "$file"
 }
 
 ensure_policy() {
-  local file="$1"
-  if [ ! -f "$file" ]; then
-    log "skip missing: $file"
-    return 0
-  fi
+    local file="$1"
+    if [ ! -f "$file" ]; then
+        log "skip (missing): $file"
+        return 0
+    fi
 
-  local tmp
-  tmp="$(mktemp)"
-  strip_old_block "$file" >"$tmp"
-  printf '\n%s\n' "$POLICY_BLOCK" >>"$tmp"
-  mv "$tmp" "$file"
-  log "patched: $file"
+    local tmp
+    tmp="$(mktemp)"
+    strip_old_block "$file" > "$tmp"
+    printf '\n%s\n' "$POLICY_BLOCK" >> "$tmp"
+    mv "$tmp" "$file"
+    log "patched: $file"
 }
 
 FILES=(
-  "$HOME/.codex/AGENTS.md"
-  "$HOME/.claude/CLAUDE.md"
-  "$HOME/.openclaw/workspace/AGENTS.md"
+    "$HOME/.codex/AGENTS.md"
+    "$HOME/.claude/CLAUDE.md"
+    "$HOME/.openclaw/workspace/AGENTS.md"
 )
 
 for f in "${FILES[@]}"; do
-  ensure_policy "$f"
+    ensure_policy "$f"
 done
 
 log "done"
