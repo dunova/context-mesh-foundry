@@ -117,5 +117,5 @@ If producing only one set of assets, prioritize these three:
 
 当前仓库已内置两张静态 SVG 素材，可直接先用于 README：
 
-- [docs/media/cli-search.svg](/Volumes/AI/GitHub/context-mesh-foundry/docs/media/cli-search.svg)
-- [docs/media/viewer-health.svg](/Volumes/AI/GitHub/context-mesh-foundry/docs/media/viewer-health.svg)
+- [docs/media/cli-search.svg](media/cli-search.svg)
+- [docs/media/viewer-health.svg](media/viewer-health.svg)
