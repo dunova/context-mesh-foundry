@@ -428,7 +428,7 @@ class SessionIndexTests(unittest.TestCase):
             text = session_index.format_search_results("x", limit=1)
         self.assertIn("A" * 50, text)
         self.assertIn("…", text)
-        self.assertLess(len(text.split("> ", 1)[1]), 160)
+        self.assertLess(len(text.split("> ", 1)[1]), 140)
 
     def test_path_only_content_is_demoted(self) -> None:
         self.assertTrue(

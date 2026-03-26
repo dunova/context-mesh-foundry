@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-26T10:14:21",
+  "timestamp": "2026-03-26T10:17:49",
   "query": "NotebookLM",
   "dimensions": {
     "stability": 100,
@@ -11,7 +11,7 @@
     "health_ok": true,
     "smoke_ok": true,
     "search_ok": true,
-    "search_bytes": 1581,
+    "search_bytes": 1417,
     "smoke_bytes": 346,
     "native_total_bytes": 4382,
     "rust": {
@@ -32,5 +32,5 @@
   "task_name": "ContextGO AutoResearch",
   "target_score": 95,
   "max_rounds": 100,
-  "round": 10
+  "round": 12
 }

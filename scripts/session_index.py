@@ -1048,7 +1048,7 @@ def format_search_results(query: str, *, search_type: str = "all", limit: int = 
     if not results:
         return "No matches found in local session index."
 
-    def compact_snippet(text: str, max_chars: int = 140) -> str:
+    def compact_snippet(text: str, max_chars: int = 120) -> str:
         clean = re.sub(r"\s+", " ", str(text or "")).strip()
         if len(clean) <= max_chars:
             return clean

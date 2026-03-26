@@ -9,3 +9,5 @@ R007	2026-03-26T10:05:10	50	100	95	76.5	ITERATE	compact-json-cli-output
 R008	2026-03-26T10:08:51	100	100	95	99.0	KEEP	compact-json-healthcheck-fix
 R009	2026-03-26T10:10:18	100	100	95	99.0	KEEP	compact-json-cli-output-fixed
 R010	2026-03-26T10:14:21	100	100	95	99.0	KEEP	dedupe-log-and-compact-search-text
+R011	2026-03-26T10:16:40	100	100	95	99.0	KEEP	pre-snippet-120-pass
+R012	2026-03-26T10:17:49	100	100	95	99.0	KEEP	snippet-120-compaction
