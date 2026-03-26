@@ -569,6 +569,8 @@ def _parse_history_jsonl(path: Path, source_type: str) -> SessionDocument | None
                     obj = json.loads(line)
                 except (json.JSONDecodeError, ValueError):
                     continue
+                if not isinstance(obj, dict):
+                    continue
                 for key in ("display", "text", "input", "prompt", "message"):
                     value = obj.get(key)
                     if isinstance(value, str) and value.strip():

@@ -350,6 +350,23 @@ def main(argv: list[str] | None = None) -> int:
     codex_root = Path(args.codex_root).expanduser().resolve()
     claude_root = Path(args.claude_root).expanduser().resolve()
 
+    if not db_path.exists():
+        if args.dry_run:
+            local_items = collect_local_session_files(codex_root, claude_root, args.include_subagents)
+            missing_codex = sum(1 for stype, _, _ in local_items if stype == _SOURCE_CODEX)
+            missing_claude = sum(1 for stype, _, _ in local_items if stype == _SOURCE_CLAUDE)
+            print("=== Snapshot ===")
+            print("sessions=0 turns=0 turn_content=0 events=0")
+            print("session_process jobs: queued=0 processing=0 done=0")
+            print("llm_error_sessions=0")
+            print(
+                f"local_files={len(local_items)} missing_codex={missing_codex} missing_claude_main={missing_claude}"
+            )
+            print("dry_run: no DB changes applied (database missing, treated as empty)")
+            return 0
+        print(f"ERROR: cannot open database {db_path}: database file does not exist", file=sys.stderr)
+        return 1
+
     try:
         conn = sqlite3.connect(str(db_path))
     except sqlite3.OperationalError as exc:
