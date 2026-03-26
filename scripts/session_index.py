@@ -788,7 +788,7 @@ def build_query_terms(query: str) -> list[str]:
     return terms[:8]
 
 
-def _build_snippet(text: str, terms: list[str], radius: int = 100) -> str:
+def _build_snippet(text: str, terms: list[str], radius: int = 80) -> str:
     compact = re.sub(r"\s+", " ", text or "").strip()
     if not compact:
         return ""
@@ -1004,6 +1004,9 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
             return ranked_rows
 
         ranked = rank_rows(rows, terms)
+        if literal and not ranked and rows:
+            rows = fetch_rows(terms, row_limit=1000)
+            ranked = rank_rows(rows, terms)
         if literal_fallback and not ranked and rows:
             term_frequencies: list[tuple[int, str]] = []
             for term in terms:
