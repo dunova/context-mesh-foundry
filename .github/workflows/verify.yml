@@ -110,13 +110,12 @@ jobs:
             --cov-report=xml \
             -v
 
-      - name: Upload coverage report
+      - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'
-        uses: actions/upload-artifact@v7
+        uses: codecov/codecov-action@v5
         with:
-          name: coverage-xml
-          path: coverage.xml
-          retention-days: 30
+          files: coverage.xml
+          fail_ci_if_error: false
 
       - name: Benchmark smoke (sanity)
         run: python -m benchmarks --iterations 1 --warmup 0 --query benchmark
