@@ -37,9 +37,7 @@ except ImportError:  # pragma: no cover
     from .context_config import env_int, storage_root  # type: ignore[import-not-found]
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Configuration
-# ═══════════════════════════════════════════════════════════════
+# Configuration
 
 #: Env-var name for overriding the default DB path.
 SESSION_DB_PATH_ENV = "CONTEXTGO_SESSION_INDEX_DB_PATH"
@@ -57,9 +55,7 @@ SESSION_INDEX_SCHEMA_VERSION = "2026-03-26-search-noise-v5"
 _BATCH_COMMIT_SIZE: int = env_int("CONTEXTGO_INDEX_BATCH_SIZE", default=100, minimum=10)
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: SQL Constants
-# ═══════════════════════════════════════════════════════════════
+# SQL Constants
 
 _DDL_SESSION_DOCUMENTS = """
 CREATE TABLE IF NOT EXISTS session_documents (
@@ -116,9 +112,7 @@ _SQL_COUNT_DOCS = "SELECT COUNT(*) FROM session_documents"
 _SQL_MAX_EPOCH = "SELECT MAX(created_at_epoch) FROM session_documents"
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Noise configuration
-# ═══════════════════════════════════════════════════════════════
+# Noise configuration
 
 
 def _load_noise_config() -> dict[str, list[str]]:
@@ -213,9 +207,7 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _SNIPPET_MAX_CHARS = 120
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Helpers
-# ═══════════════════════════════════════════════════════════════
+# Helpers
 
 
 def _home() -> Path:
@@ -297,9 +289,7 @@ def _compact_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
     return clean[: max_chars - 1].rstrip() + "\u2026"
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Noise Filtering
-# ═══════════════════════════════════════════════════════════════
+# Noise Filtering
 
 
 def _is_noise_text(text: str) -> bool:
@@ -405,9 +395,7 @@ def _looks_like_path_only_content(title: str, content: str) -> bool:
     return "/" in content_clean and not any(ch in content_clean for ch in ("。", "，", ".", ":"))
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Document Model
-# ═══════════════════════════════════════════════════════════════
+# Document Model
 
 
 @dataclass
@@ -425,9 +413,35 @@ class SessionDocument:
     file_size: int
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Document Parsers
-# ═══════════════════════════════════════════════════════════════
+# Document Parsers
+
+
+def _finish_session_doc(
+    path: Path,
+    source_type: str,
+    session_id: str,
+    title: str,
+    created_at: str,
+    pieces: list[str],
+    mtime: int,
+) -> SessionDocument:
+    """Build a SessionDocument from already-parsed fields."""
+    content = _truncate(pieces)
+    if not title:
+        title = path.parent.as_posix()
+    if not content:
+        content = title
+    return SessionDocument(
+        file_path=str(path),
+        source_type=source_type,
+        session_id=session_id,
+        title=title[:300],
+        content=content,
+        created_at=created_at or datetime.fromtimestamp(mtime).isoformat(),
+        created_at_epoch=_iso_to_epoch(created_at, mtime),
+        file_mtime=mtime,
+        file_size=path.stat().st_size,
+    )
 
 
 def _parse_codex_session(path: Path) -> SessionDocument | None:
@@ -473,22 +487,7 @@ def _parse_codex_session(path: Path) -> SessionDocument | None:
     except (OSError, UnicodeDecodeError, ValueError):
         return None
 
-    content = _truncate(pieces)
-    if not title:
-        title = path.parent.as_posix()
-    if not content:
-        content = title
-    return SessionDocument(
-        file_path=str(path),
-        source_type="codex_session",
-        session_id=session_id,
-        title=title[:300],
-        content=content,
-        created_at=created_at or datetime.fromtimestamp(mtime).isoformat(),
-        created_at_epoch=_iso_to_epoch(created_at, mtime),
-        file_mtime=mtime,
-        file_size=path.stat().st_size,
-    )
+    return _finish_session_doc(path, "codex_session", session_id, title, created_at, pieces, mtime)
 
 
 def _parse_claude_session(path: Path) -> SessionDocument | None:
@@ -533,22 +532,7 @@ def _parse_claude_session(path: Path) -> SessionDocument | None:
     except (OSError, UnicodeDecodeError, ValueError):
         return None
 
-    content = _truncate(pieces)
-    if not title:
-        title = path.parent.as_posix()
-    if not content:
-        content = title
-    return SessionDocument(
-        file_path=str(path),
-        source_type="claude_session",
-        session_id=session_id,
-        title=title[:300],
-        content=content,
-        created_at=created_at or datetime.fromtimestamp(mtime).isoformat(),
-        created_at_epoch=_iso_to_epoch(created_at, mtime),
-        file_mtime=mtime,
-        file_size=path.stat().st_size,
-    )
+    return _finish_session_doc(path, "claude_session", session_id, title, created_at, pieces, mtime)
 
 
 def _parse_history_jsonl(path: Path, source_type: str) -> SessionDocument | None:
@@ -647,9 +631,7 @@ def _parse_source(source_type: str, path: Path) -> SessionDocument | None:
     return None
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Source Discovery
-# ═══════════════════════════════════════════════════════════════
+# Source Discovery
 
 
 def _iter_sources() -> list[tuple[str, Path]]:
@@ -721,9 +703,7 @@ def _update_source_cache(items: list[tuple[str, Path]], now: float, home: str) -
         _SOURCE_CACHE["home"] = home
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Database Schema and Initialization
-# ═══════════════════════════════════════════════════════════════
+# Database Schema and Initialization
 
 
 def get_session_db_path() -> Path:
@@ -776,9 +756,7 @@ def _meta_set(conn: sqlite3.Connection, key: str, value: str) -> None:
     conn.execute(_SQL_META_SET, (key, value))
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Index Synchronisation
-# ═══════════════════════════════════════════════════════════════
+# Index Synchronisation
 
 
 def sync_session_index(force: bool = False) -> dict[str, int]:
@@ -885,9 +863,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
     }
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Search and Ranking
-# ═══════════════════════════════════════════════════════════════
+# Search and Ranking
 
 
 def build_query_terms(query: str) -> list[str]:
@@ -1238,9 +1214,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
         ]
 
 
-# ═══════════════════════════════════════════════════════════════
-# Section: Public API
-# ═══════════════════════════════════════════════════════════════
+# Public API
 
 
 def format_search_results(

@@ -47,9 +47,7 @@ except ImportError:  # pragma: no cover - alternate import path
     from .memory_index import strip_private_blocks, sync_index_from_storage  # type: ignore[import-not-found]
 
 
-# ---------------------------------------------------------------------------
 # Env-var helpers — all daemon settings are prefixed CONTEXTGO_
-# ---------------------------------------------------------------------------
 
 
 def _cfg_bool(name: str, default: bool) -> bool:
@@ -68,9 +66,7 @@ def _cfg_str(name: str, default: str) -> str:
     return env_str(f"CONTEXTGO_{name}", default=default)
 
 
-# ---------------------------------------------------------------------------
 # Remote-sync configuration
-# ---------------------------------------------------------------------------
 
 # Optional remote sync; the default (local-only) path never contacts a server.
 REMOTE_SYNC_URL: str = _cfg_str("REMOTE_URL", default="http://127.0.0.1:8090/api/v1")
@@ -86,9 +82,7 @@ if _remote_host not in ("127.0.0.1", "localhost", "::1") and not REMOTE_SYNC_URL
     )
     raise SystemExit(1)
 
-# ---------------------------------------------------------------------------
 # Storage paths
-# ---------------------------------------------------------------------------
 
 LOCAL_STORAGE_ROOT: Path = storage_root().expanduser()
 
@@ -110,18 +104,14 @@ if LOCAL_STORAGE_ROOT.exists():
 PENDING_DIR: Path = LOCAL_STORAGE_ROOT / "resources" / "shared" / "history" / ".pending"
 LOG_DIR: Path = LOCAL_STORAGE_ROOT / "logs"
 
-# ---------------------------------------------------------------------------
 # Logging constants
-# ---------------------------------------------------------------------------
 
 _DAEMON_LOG_NAME = "contextgo_daemon.log"
 _DAEMON_LOCK_NAME = "contextgo_daemon.lock"
 _LOGGER_NAME = "contextgo.daemon"
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
-# ---------------------------------------------------------------------------
 # Logging setup (runs once at import; logger is module-scoped)
-# ---------------------------------------------------------------------------
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 with contextlib.suppress(OSError):
@@ -149,9 +139,7 @@ logger.addHandler(_sh)
 LOCK_FILE: Path = LOG_DIR / _DAEMON_LOCK_NAME
 _LOCK_FD: int | None = None
 
-# ---------------------------------------------------------------------------
 # Optional httpx (remote-sync transport)
-# ---------------------------------------------------------------------------
 
 try:
     import httpx as _httpx
@@ -162,9 +150,7 @@ except ImportError:
     _HTTPX_AVAILABLE = False
     logger.warning("httpx not installed; remote sync disabled.")
 
-# ---------------------------------------------------------------------------
 # Poll / timing configuration
-# ---------------------------------------------------------------------------
 
 # Night-mode: during off-hours (default 23:00-07:00) the daemon expands its
 # sleep interval to NIGHT_POLL_INTERVAL_SEC when no sessions are pending export.
@@ -204,9 +190,7 @@ LOOP_JITTER_SEC: float = _cfg_float("LOOP_JITTER_SEC", default=0.7, minimum=0.0)
 # Minimum gap between consecutive index-sync calls.
 INDEX_SYNC_MIN_INTERVAL_SEC: int = _cfg_int("INDEX_SYNC_MIN_INTERVAL_SEC", default=20, minimum=5)
 
-# ---------------------------------------------------------------------------
 # Capacity limits
-# ---------------------------------------------------------------------------
 
 MAX_TRACKED_SESSIONS: int = _cfg_int("MAX_TRACKED_SESSIONS", default=240)
 MAX_FILE_CURSORS: int = _cfg_int("MAX_FILE_CURSORS", default=800)
@@ -214,16 +198,12 @@ SESSION_TTL_SEC: int = _cfg_int("SESSION_TTL_SEC", default=7200)
 MAX_MESSAGES_PER_SESSION: int = _cfg_int("MAX_MESSAGES_PER_SESSION", default=500)
 MAX_PENDING_FILES: int = max(200, _cfg_int("MAX_PENDING_FILES", default=5000))
 
-# ---------------------------------------------------------------------------
 # HTTP timeouts
-# ---------------------------------------------------------------------------
 
 EXPORT_HTTP_TIMEOUT_SEC: int = _cfg_int("EXPORT_HTTP_TIMEOUT_SEC", default=30, minimum=5)
 PENDING_HTTP_TIMEOUT_SEC: int = _cfg_int("PENDING_HTTP_TIMEOUT_SEC", default=15, minimum=5)
 
-# ---------------------------------------------------------------------------
 # Feature flags
-# ---------------------------------------------------------------------------
 
 ENABLE_REMOTE_SYNC: bool = _cfg_bool("ENABLE_REMOTE_SYNC", default=False)
 ENABLE_SHELL_MONITOR: bool = _cfg_bool("ENABLE_SHELL_MONITOR", default=True)
@@ -235,9 +215,7 @@ ENABLE_CODEX_SESSION_MONITOR: bool = _cfg_bool("ENABLE_CODEX_SESSION_MONITOR", d
 ENABLE_CLAUDE_TRANSCRIPTS_MONITOR: bool = _cfg_bool("ENABLE_CLAUDE_TRANSCRIPTS_MONITOR", default=True)
 ENABLE_ANTIGRAVITY_MONITOR: bool = _cfg_bool("ENABLE_ANTIGRAVITY_MONITOR", default=True)
 
-# ---------------------------------------------------------------------------
 # Antigravity (Gemini) configuration
-# ---------------------------------------------------------------------------
 
 ANTIGRAVITY_BRAIN: Path = Path.home() / ".gemini" / "antigravity" / "brain"
 
@@ -261,17 +239,13 @@ MAX_ANTIGRAVITY_SESSIONS: int = max(100, _cfg_int("MAX_ANTIGRAVITY_SESSIONS", de
 ANTIGRAVITY_SCAN_INTERVAL_SEC: int = max(15, _cfg_int("ANTIGRAVITY_SCAN_INTERVAL_SEC", default=120))
 MAX_ANTIGRAVITY_DIRS_PER_SCAN: int = max(50, _cfg_int("MAX_ANTIGRAVITY_DIRS_PER_SCAN", default=400))
 
-# ---------------------------------------------------------------------------
 # Codex session configuration
-# ---------------------------------------------------------------------------
 
 CODEX_SESSIONS: Path = Path.home() / ".codex" / "sessions"
 CODEX_SESSION_SCAN_INTERVAL_SEC: int = max(10, _cfg_int("CODEX_SESSION_SCAN_INTERVAL_SEC", default=90))
 MAX_CODEX_SESSION_FILES_PER_SCAN: int = max(100, _cfg_int("MAX_CODEX_SESSION_FILES_PER_SCAN", default=1200))
 
-# ---------------------------------------------------------------------------
 # Claude transcript configuration
-# ---------------------------------------------------------------------------
 
 CLAUDE_TRANSCRIPTS_DIR: Path = Path.home() / ".claude" / "transcripts"
 
@@ -288,9 +262,7 @@ MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL: int = max(
     _cfg_int("MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL", default=500),
 )
 
-# ---------------------------------------------------------------------------
 # JSONL and shell source definitions
-# ---------------------------------------------------------------------------
 
 # Each entry maps a logical source name to one or more candidate Path objects.
 # The first existing path wins; sources are re-evaluated every 120 seconds.
@@ -356,9 +328,7 @@ SOURCE_MONITOR_FLAGS: dict[str, bool] = {
     "kilo": ENABLE_KILO_MONITOR,
 }
 
-# ---------------------------------------------------------------------------
 # Text sanitisation
-# ---------------------------------------------------------------------------
 
 # zsh extended_history format: ": <timestamp>:<elapsed>;<command>"
 _SHELL_LINE_RE: re.Pattern[str] = re.compile(r"^:\s*(\d+):\d+;(.*)$")
@@ -392,9 +362,7 @@ _SECRET_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
     ),
 ]
 
-# ---------------------------------------------------------------------------
 # Graceful shutdown — shared flag set by signal handlers
-# ---------------------------------------------------------------------------
 
 _shutdown: bool = False
 
@@ -409,9 +377,7 @@ signal.signal(signal.SIGTERM, _handle_signal)
 signal.signal(signal.SIGINT, _handle_signal)
 
 
-# ---------------------------------------------------------------------------
 # Single-instance lock
-# ---------------------------------------------------------------------------
 
 
 def _pid_alive(pid: int) -> bool:
@@ -475,9 +441,7 @@ def _acquire_single_instance_lock() -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
 # System helpers
-# ---------------------------------------------------------------------------
 
 
 def _count_antigravity_language_servers() -> int:
@@ -500,9 +464,7 @@ def _count_antigravity_language_servers() -> int:
         return 0
 
 
-# ---------------------------------------------------------------------------
 # Glob cache helpers
-# ---------------------------------------------------------------------------
 
 
 def _refresh_glob_cache(
@@ -524,10 +486,6 @@ def _refresh_glob_cache(
         return cached, last_refresh
 
     try:
-        from pathlib import Path as _Path
-
-        _Path(pattern.split("*")[0].rstrip("/"))
-        # Use glob on the literal pattern via subprocess-free Path.glob
         import glob as _glob
 
         results = [Path(p) for p in _glob.glob(pattern, recursive=True)]
@@ -542,9 +500,7 @@ def _refresh_glob_cache(
         return cached, last_refresh
 
 
-# ---------------------------------------------------------------------------
 # SessionTracker
-# ---------------------------------------------------------------------------
 
 
 class SessionTracker:
@@ -720,6 +676,37 @@ class SessionTracker:
         return True
 
     # ------------------------------------------------------------------
+    # Shared incremental-read helper
+    # ------------------------------------------------------------------
+
+    def _tail_file(self, cursor_key: str, path: Path, error_label: str) -> tuple[int, list[str]] | None:
+        """Return (cur_size, new_lines) if the file has grown, else None.
+
+        Handles safety check, cursor lookup, file open, and error logging.
+        Returns None when the file is safe but unchanged, or on any error.
+        """
+        if not self._is_safe_source(path):
+            return None
+        try:
+            cur_size = path.stat().st_size
+        except OSError:
+            return None
+        last = self._get_cursor(cursor_key, path)
+        if cur_size <= last:
+            self._set_cursor(cursor_key, path, cur_size)
+            return None
+        try:
+            with path.open(encoding="utf-8", errors="replace") as fh:
+                fh.seek(last)
+                lines = list(fh)
+            self._set_cursor(cursor_key, path, cur_size)
+            return cur_size, lines
+        except (OSError, UnicodeDecodeError) as exc:
+            self._error_count += 1
+            logger.error("%s: %s", error_label, exc)
+            return None
+
+    # ------------------------------------------------------------------
     # Polling — JSONL sources
     # ------------------------------------------------------------------
 
@@ -729,49 +716,22 @@ class SessionTracker:
         for source_name, source in self.active_jsonl.items():
             path: Path = source["path"]
             cursor_key = self._cursor_key("jsonl", source_name, path)
-            self._poll_jsonl_file(source_name, path, source, cursor_key, now)
-
-    def _poll_jsonl_file(
-        self,
-        source_name: str,
-        path: Path,
-        source: dict[str, Any],
-        cursor_key: str,
-        now: float,
-    ) -> None:
-        if not self._is_safe_source(path):
-            return
-        try:
-            cur_size = path.stat().st_size
-        except OSError:
-            return
-
-        last = self._get_cursor(cursor_key, path)
-        if cur_size <= last:
-            self._set_cursor(cursor_key, path, cur_size)
-            return
-
-        try:
-            with path.open(encoding="utf-8", errors="replace") as fh:
-                fh.seek(last)
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    sid = self._extract_sid(data, source.get("sid_keys", []), source_name)
-                    text = self._sanitize_text(self._extract_text(data, source.get("text_keys", [])))
-                    if text:
-                        self._upsert_session(sid, source_name, text, now)
-
-            self._set_cursor(cursor_key, path, cur_size)
-        except (OSError, UnicodeDecodeError) as exc:
-            self._error_count += 1
-            logger.error("poll_jsonl_sources(%s): %s", source_name, exc)
+            result = self._tail_file(cursor_key, path, f"poll_jsonl_sources({source_name})")
+            if result is None:
+                continue
+            _, lines = result
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                sid = self._extract_sid(data, source.get("sid_keys", []), source_name)
+                text = self._sanitize_text(self._extract_text(data, source.get("text_keys", [])))
+                if text:
+                    self._upsert_session(sid, source_name, text, now)
 
     # ------------------------------------------------------------------
     # Polling — shell history
@@ -781,34 +741,18 @@ class SessionTracker:
         """Read new lines from active shell history files."""
         if not ENABLE_SHELL_MONITOR:
             return
-
         now = time.time()
         for source_name, path in self.active_shell.items():
-            if not self._is_safe_source(path):
-                continue
             cursor_key = self._cursor_key("shell", source_name, path)
-            try:
-                cur_size = path.stat().st_size
-            except OSError:
+            result = self._tail_file(cursor_key, path, f"poll_shell_sources({source_name})")
+            if result is None:
                 continue
-
-            last = self._get_cursor(cursor_key, path)
-            if cur_size <= last:
-                self._set_cursor(cursor_key, path, cur_size)
-                continue
-
-            try:
-                with path.open(encoding="utf-8", errors="replace") as fh:
-                    fh.seek(last)
-                    for line in fh:
-                        parsed = self._parse_shell_line(source_name, line)
-                        if parsed is not None:
-                            sid, text = parsed
-                            self._upsert_session(sid, source_name, text, now)
-                self._set_cursor(cursor_key, path, cur_size)
-            except (OSError, UnicodeDecodeError) as exc:
-                self._error_count += 1
-                logger.error("poll_shell_sources(%s): %s", source_name, exc)
+            _, lines = result
+            for line in lines:
+                parsed = self._parse_shell_line(source_name, line)
+                if parsed is not None:
+                    sid, text = parsed
+                    self._upsert_session(sid, source_name, text, now)
 
     # ------------------------------------------------------------------
     # Polling — Codex session files
@@ -844,50 +788,31 @@ class SessionTracker:
                 continue
 
             cursor_key = self._cursor_key("codex_session", "codex_session", path)
-            try:
-                cur_size = path.stat().st_size
-            except OSError:
+            result = self._tail_file(cursor_key, path, f"poll_codex_sessions({path})")
+            if result is None:
                 continue
-
-            last = self._get_cursor(cursor_key, path)
-            if cur_size <= last:
-                self._set_cursor(cursor_key, path, cur_size)
-                continue
-
-            try:
-                with path.open(encoding="utf-8", errors="replace") as fh:
-                    fh.seek(last)
-                    for line in fh:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            data = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-
-                        if data.get("type") != "response_item":
-                            continue
-
-                        payload = data.get("payload", {})
-                        ptype = payload.get("type")
-                        text = ""
-                        if ptype == "message":
-                            texts = [
-                                c.get("text", "") for c in payload.get("content", []) if c.get("type") == "output_text"
-                            ]
-                            text = "\n".join(t for t in texts if t)
-                        elif ptype == "reasoning":
-                            text = payload.get("text", "")
-
-                        text = self._sanitize_text(text)
-                        if text:
-                            self._upsert_session(path.name, "codex_session", text, now)
-
-                self._set_cursor(cursor_key, path, cur_size)
-            except (OSError, UnicodeDecodeError) as exc:
-                self._error_count += 1
-                logger.error("poll_codex_sessions(%s): %s", path, exc)
+            _, lines = result
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if data.get("type") != "response_item":
+                    continue
+                payload = data.get("payload", {})
+                ptype = payload.get("type")
+                text = ""
+                if ptype == "message":
+                    texts = [c.get("text", "") for c in payload.get("content", []) if c.get("type") == "output_text"]
+                    text = "\n".join(t for t in texts if t)
+                elif ptype == "reasoning":
+                    text = payload.get("text", "")
+                text = self._sanitize_text(text)
+                if text:
+                    self._upsert_session(path.name, "codex_session", text, now)
 
     # ------------------------------------------------------------------
     # Polling — Claude transcript files
@@ -937,72 +862,53 @@ class SessionTracker:
                 except OSError:
                     fsize = 0
                 if mtime < lookback_cutoff:
-                    # File is outside the lookback window — baseline at EOF.
                     self._set_cursor(cursor_key, path, fsize)
                     continue
-                # File is within the lookback window — read from the beginning.
                 try:
                     self.file_cursors[cursor_key] = (path.stat().st_ino, 0)
                 except OSError:
                     continue
 
-            try:
-                cur_size = path.stat().st_size
-            except OSError:
+            result = self._tail_file(cursor_key, path, f"poll_claude_transcripts({path})")
+            if result is None:
                 continue
-
-            last = self._get_cursor(cursor_key, path)
-            if cur_size <= last:
-                self._set_cursor(cursor_key, path, cur_size)
-                continue
-
+            _, lines = result
             messages_added = 0
-            try:
-                with path.open(encoding="utf-8", errors="replace") as fh:
-                    fh.seek(last)
-                    for raw in fh:
-                        raw = raw.strip()
-                        if not raw:
-                            continue
-                        try:
-                            data = json.loads(raw)
-                        except json.JSONDecodeError:
-                            continue
-
-                        msg_type = data.get("type", "")
-                        if msg_type not in ("user", "assistant", "human"):
-                            continue
-
-                        content = data.get("content", "")
-                        if isinstance(content, str):
-                            text = content.strip()
-                        elif isinstance(content, list):
-                            parts = [
-                                block.get("text", "").strip()
-                                for block in content
-                                if isinstance(block, dict)
-                                and block.get("type") == "text"
-                                and isinstance(block.get("text"), str)
-                            ]
-                            text = " ".join(p for p in parts if p)
-                        elif isinstance(content, dict):
-                            raw_text = content.get("text", "")
-                            text = raw_text.strip() if isinstance(raw_text, str) else ""
-                        else:
-                            text = ""
-
-                        text = self._sanitize_text(text)
-                        if text:
-                            sid = self._build_transcript_sid(path)
-                            self._upsert_session(sid, "claude_transcripts", text, now)
-                            messages_added += 1
-
-                self._set_cursor(cursor_key, path, cur_size)
-                if messages_added:
-                    logger.debug("claude_transcripts: +%d msgs from %s", messages_added, path.name)
-            except (OSError, UnicodeDecodeError) as exc:
-                self._error_count += 1
-                logger.error("poll_claude_transcripts(%s): %s", path, exc)
+            for raw in lines:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                msg_type = data.get("type", "")
+                if msg_type not in ("user", "assistant", "human"):
+                    continue
+                content = data.get("content", "")
+                if isinstance(content, str):
+                    text = content.strip()
+                elif isinstance(content, list):
+                    parts = [
+                        block.get("text", "").strip()
+                        for block in content
+                        if isinstance(block, dict)
+                        and block.get("type") == "text"
+                        and isinstance(block.get("text"), str)
+                    ]
+                    text = " ".join(p for p in parts if p)
+                elif isinstance(content, dict):
+                    raw_text = content.get("text", "")
+                    text = raw_text.strip() if isinstance(raw_text, str) else ""
+                else:
+                    text = ""
+                text = self._sanitize_text(text)
+                if text:
+                    sid = self._build_transcript_sid(path)
+                    self._upsert_session(sid, "claude_transcripts", text, now)
+                    messages_added += 1
+            if messages_added:
+                logger.debug("claude_transcripts: +%d msgs from %s", messages_added, path.name)
 
     # ------------------------------------------------------------------
     # Polling — Antigravity (Gemini) brain
@@ -1595,9 +1501,7 @@ class SessionTracker:
         )
 
 
-# ---------------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
 
 
 def main() -> None:

@@ -39,9 +39,7 @@ except ImportError:  # pragma: no cover
     from .context_config import storage_root  # type: ignore[import-not-found]
 
 
-# ---------------------------------------------------------------------------
 # SQL constants
-# ---------------------------------------------------------------------------
 
 _DDL_OBSERVATIONS = """
 CREATE TABLE IF NOT EXISTS observations (
@@ -105,9 +103,7 @@ _SQL_BEFORE = "SELECT * FROM observations WHERE created_at_epoch <= ? ORDER BY c
 _SQL_AFTER = "SELECT * FROM observations WHERE created_at_epoch > ? ORDER BY created_at_epoch ASC LIMIT ?"
 
 
-# ---------------------------------------------------------------------------
 # Regex helpers
-# ---------------------------------------------------------------------------
 
 _PRIVATE_BLOCK_RE = re.compile(r"<private>[\s\S]*?</private>", re.IGNORECASE)
 _PRIVATE_TAG_RE = re.compile(r"</?private>", re.IGNORECASE)
@@ -122,9 +118,7 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Text sanitisation
-# ---------------------------------------------------------------------------
 
 
 def strip_private_blocks(text: str) -> str:
@@ -142,9 +136,7 @@ def _sanitize_text(text: str) -> str:
     return out.strip()
 
 
-# ---------------------------------------------------------------------------
 # Path helpers
-# ---------------------------------------------------------------------------
 
 
 def get_index_db_path() -> Path:
@@ -168,9 +160,7 @@ def _history_dirs() -> list[Path]:
     ]
 
 
-# ---------------------------------------------------------------------------
 # Internal utilities
-# ---------------------------------------------------------------------------
 
 
 def _to_epoch(ts: str, fallback: int) -> int:
@@ -197,9 +187,7 @@ def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-# ---------------------------------------------------------------------------
 # Domain model
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -217,9 +205,7 @@ class Observation:
     created_at_epoch: int
 
 
-# ---------------------------------------------------------------------------
 # Markdown parsing
-# ---------------------------------------------------------------------------
 
 
 def _parse_markdown(path: Path) -> Observation | None:
@@ -288,9 +274,7 @@ def _parse_markdown(path: Path) -> Observation | None:
     )
 
 
-# ---------------------------------------------------------------------------
 # Database schema
-# ---------------------------------------------------------------------------
 
 
 def ensure_index_db() -> Path:
@@ -309,9 +293,7 @@ def ensure_index_db() -> Path:
     return db_path
 
 
-# ---------------------------------------------------------------------------
 # Sync
-# ---------------------------------------------------------------------------
 
 
 def sync_index_from_storage() -> dict[str, int]:
@@ -399,9 +381,23 @@ def sync_index_from_storage() -> dict[str, int]:
     return {"scanned": scanned, "added": added, "updated": updated, "removed": removed}
 
 
-# ---------------------------------------------------------------------------
 # Query helpers
-# ---------------------------------------------------------------------------
+
+
+def _obs_where_clause(query: str, source_type: str) -> tuple[str, list[Any]]:
+    """Build a WHERE clause and bind args for observation queries."""
+    where: list[str] = []
+    args: list[Any] = []
+    q = strip_private_blocks(query).strip()
+    if q:
+        where.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(tags_json) LIKE ?)")
+        like_q = f"%{q.lower()}%"
+        args.extend([like_q, like_q, like_q])
+    if source_type and source_type != "all":
+        where.append("source_type = ?")
+        args.append(source_type)
+    where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+    return where_clause, args
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -453,24 +449,13 @@ def search_index(
     """
     db_path = ensure_index_db()
     with _open_db(db_path) as conn:
-        where: list[str] = []
-        args: list[Any] = []
-        q = strip_private_blocks(query).strip()
-        if q:
-            where.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(tags_json) LIKE ?)")
-            like_q = f"%{q.lower()}%"
-            args.extend([like_q, like_q, like_q])
-        if source_type and source_type != "all":
-            where.append("source_type = ?")
-            args.append(source_type)
+        where_clause, args = _obs_where_clause(query, source_type)
         if date_start_epoch is not None:
-            where.append("created_at_epoch >= ?")
+            where_clause = (where_clause + " AND" if where_clause else "WHERE") + " created_at_epoch >= ?"
             args.append(date_start_epoch)
         if date_end_epoch is not None:
-            where.append("created_at_epoch <= ?")
+            where_clause = (where_clause + " AND" if where_clause else "WHERE") + " created_at_epoch <= ?"
             args.append(date_end_epoch)
-
-        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
         sql = f"SELECT * FROM observations {where_clause} ORDER BY created_at_epoch DESC LIMIT ? OFFSET ?"
         args.extend([max(1, min(limit, 200)), max(0, offset)])
         return [_row_to_dict(r) for r in conn.execute(sql, args).fetchall()]
@@ -554,9 +539,7 @@ def index_stats() -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # Export / Import
-# ---------------------------------------------------------------------------
 
 
 def export_observations_payload(
@@ -585,17 +568,7 @@ def export_observations_payload(
     page = 200
 
     with _open_db(db_path) as conn:
-        where: list[str] = []
-        args: list[Any] = []
-        q = strip_private_blocks(query).strip()
-        if q:
-            where.append("(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(tags_json) LIKE ?)")
-            like_q = f"%{q.lower()}%"
-            args.extend([like_q, like_q, like_q])
-        if source_type and source_type != "all":
-            where.append("source_type = ?")
-            args.append(source_type)
-        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+        where_clause, args = _obs_where_clause(query, source_type)
 
         offset = 0
         while len(rows) < target:
