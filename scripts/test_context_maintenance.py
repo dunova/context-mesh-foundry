@@ -1026,13 +1026,18 @@ class TestConcurrentMaintenanceOperations(unittest.TestCase):
             codex_root.mkdir()
             (codex_root / "sess.jsonl").write_text("{}", encoding="utf-8")
             try:
-                result = context_maintenance.main([
-                    "--db", str(db_path),
-                    "--repair-queue",
-                    "--enqueue-missing",
-                    "--codex-root", str(codex_root),
-                    "--claude-root", str(Path(tmp) / "no_claude"),
-                ])
+                result = context_maintenance.main(
+                    [
+                        "--db",
+                        str(db_path),
+                        "--repair-queue",
+                        "--enqueue-missing",
+                        "--codex-root",
+                        str(codex_root),
+                        "--claude-root",
+                        str(Path(tmp) / "no_claude"),
+                    ]
+                )
             finally:
                 db_path.unlink(missing_ok=True)
         self.assertEqual(result, 0)
@@ -1045,12 +1050,17 @@ class TestConcurrentMaintenanceOperations(unittest.TestCase):
             (codex_root / "newfile.jsonl").write_text("{}", encoding="utf-8")
             db_path = self._create_temp_db()
             try:
-                result = context_maintenance.main([
-                    "--db", str(db_path),
-                    "--enqueue-missing",
-                    "--codex-root", str(codex_root),
-                    "--claude-root", str(Path(tmp) / "no_claude"),
-                ])
+                result = context_maintenance.main(
+                    [
+                        "--db",
+                        str(db_path),
+                        "--enqueue-missing",
+                        "--codex-root",
+                        str(codex_root),
+                        "--claude-root",
+                        str(Path(tmp) / "no_claude"),
+                    ]
+                )
                 # Verify the job was actually committed
                 conn = sqlite3.connect(str(db_path))
                 count = conn.execute("SELECT count(*) FROM jobs").fetchone()[0]
@@ -1068,13 +1078,18 @@ class TestConcurrentMaintenanceOperations(unittest.TestCase):
             (codex_root / "drysess.jsonl").write_text("{}", encoding="utf-8")
             db_path = self._create_temp_db()
             try:
-                result = context_maintenance.main([
-                    "--db", str(db_path),
-                    "--enqueue-missing",
-                    "--dry-run",
-                    "--codex-root", str(codex_root),
-                    "--claude-root", str(Path(tmp) / "no_claude"),
-                ])
+                result = context_maintenance.main(
+                    [
+                        "--db",
+                        str(db_path),
+                        "--enqueue-missing",
+                        "--dry-run",
+                        "--codex-root",
+                        str(codex_root),
+                        "--claude-root",
+                        str(Path(tmp) / "no_claude"),
+                    ]
+                )
                 conn = sqlite3.connect(str(db_path))
                 count = conn.execute("SELECT count(*) FROM jobs").fetchone()[0]
                 conn.close()

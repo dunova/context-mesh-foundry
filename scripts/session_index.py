@@ -215,9 +215,7 @@ _SOURCE_CACHE: dict[str, Any] = {"expires_at": 0.0, "items": [], "home": None}
 # In-process search result cache (TTL-based)
 # ---------------------------------------------------------------------------
 # Cache TTL in seconds.  Set CONTEXTGO_SESSION_SEARCH_CACHE_TTL=0 to disable.
-_SEARCH_RESULT_CACHE_TTL: int = int(
-    os.environ.get("CONTEXTGO_SESSION_SEARCH_CACHE_TTL", "5") or "5"
-)
+_SEARCH_RESULT_CACHE_TTL: int = int(os.environ.get("CONTEXTGO_SESSION_SEARCH_CACHE_TTL", "5") or "5")
 # Mapping of cache_key -> (expiry_monotonic_float, results_list)
 _SEARCH_RESULT_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
@@ -482,9 +480,7 @@ def _iter_jsonl_objects(path: Path) -> Generator[dict[str, Any], None, None]:
                 continue
 
 
-def _parse_codex_session(
-    path: Path, file_stat: os.stat_result | None = None
-) -> SessionDocument | None:
+def _parse_codex_session(path: Path, file_stat: os.stat_result | None = None) -> SessionDocument | None:
     """Parse a Codex JSONL session file into a ``SessionDocument``.
 
     *file_stat* may be a pre-fetched ``os.stat_result`` to avoid a redundant
@@ -519,14 +515,10 @@ def _parse_codex_session(
                             pieces.append(text)
     except (OSError, UnicodeDecodeError, ValueError):
         return None
-    return _finish_session_doc(
-        path, "codex_session", session_id, title, created_at, pieces, mtime, file_size
-    )
+    return _finish_session_doc(path, "codex_session", session_id, title, created_at, pieces, mtime, file_size)
 
 
-def _parse_claude_session(
-    path: Path, file_stat: os.stat_result | None = None
-) -> SessionDocument | None:
+def _parse_claude_session(path: Path, file_stat: os.stat_result | None = None) -> SessionDocument | None:
     """Parse a Claude JSONL session file into a ``SessionDocument``.
 
     *file_stat* may be a pre-fetched ``os.stat_result`` to avoid a redundant
@@ -559,9 +551,7 @@ def _parse_claude_session(
                         pieces.append(text)
     except (OSError, UnicodeDecodeError, ValueError):
         return None
-    return _finish_session_doc(
-        path, "claude_session", session_id, title, created_at, pieces, mtime, file_size
-    )
+    return _finish_session_doc(path, "claude_session", session_id, title, created_at, pieces, mtime, file_size)
 
 
 def _make_flat_doc(
@@ -647,9 +637,7 @@ def _parse_shell_history(
     return _make_flat_doc(path, source_type, texts, mtime, file_size)
 
 
-def _parse_source(
-    source_type: str, path: Path, file_stat: os.stat_result | None = None
-) -> SessionDocument | None:
+def _parse_source(source_type: str, path: Path, file_stat: os.stat_result | None = None) -> SessionDocument | None:
     """Dispatch a source file to the appropriate parser.
 
     *file_stat* is forwarded to the individual parsers so they can reuse an
@@ -910,9 +898,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
                 if len(delete_batch) >= _BATCH_COMMIT_SIZE:
                     conn.executemany(_SQL_DELETE_DOC, delete_batch)
                     conn.commit()
-                    _logger.debug(
-                        "sync_session_index: flushed %d delete rows", len(delete_batch)
-                    )
+                    _logger.debug("sync_session_index: flushed %d delete rows", len(delete_batch))
                     delete_batch.clear()
 
         if delete_batch:
@@ -1202,9 +1188,7 @@ def _fetch_rows(
     for term in active_terms:
         like_term = f"%{term.lower()}%"
         where_parts.append(
-            "(title LIKE ? COLLATE NOCASE"
-            " OR content LIKE ? COLLATE NOCASE"
-            " OR file_path LIKE ? COLLATE NOCASE)"
+            "(title LIKE ? COLLATE NOCASE OR content LIKE ? COLLATE NOCASE OR file_path LIKE ? COLLATE NOCASE)"
         )
         args.extend([like_term, like_term, like_term])
     where_clause = f"WHERE {' OR '.join(where_parts)}" if where_parts else ""

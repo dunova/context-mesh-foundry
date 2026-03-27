@@ -111,6 +111,7 @@ def _validate_startup() -> None:
                 file=sys.stderr,
             )
 
+
 PENDING_DIR: Path = LOCAL_STORAGE_ROOT / "resources" / "shared" / "history" / ".pending"
 LOG_DIR: Path = LOCAL_STORAGE_ROOT / "logs"
 
@@ -155,6 +156,7 @@ def _setup_logging() -> None:
     )
     rfh.setFormatter(logging.Formatter(_LOG_FORMAT))
     logger.addHandler(rfh)
+
 
 # Optional httpx (remote-sync transport)
 

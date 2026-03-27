@@ -51,6 +51,7 @@ SessionTracker = context_daemon.SessionTracker
 # Helper — make a tracker quickly
 # ---------------------------------------------------------------------------
 
+
 def _make_tracker() -> SessionTracker:
     with patch.object(SessionTracker, "refresh_sources"):
         return SessionTracker()
@@ -201,7 +202,7 @@ class TestExportObservationsPayloadPagination(unittest.TestCase):
             # Write 5 observations
             for i in range(5):
                 (history_dir / f"mem_{i}.md").write_text(
-                    f"# Memory {i}\nDate: 2026-01-0{i+1}\n## Content\ncontent {i}\n",
+                    f"# Memory {i}\nDate: 2026-01-0{i + 1}\n## Content\ncontent {i}\n",
                     encoding="utf-8",
                 )
             with (
@@ -264,6 +265,7 @@ class TestSetCursorEviction(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_eviction_when_over_limit(self) -> None:
@@ -295,8 +297,9 @@ class TestMaybeSyncIndexSqliteBusy(unittest.TestCase):
         self.tracker._index_dirty = True
         self.tracker._last_index_sync = 0.0
         err_before = self.tracker._error_count
-        with patch.object(context_daemon, "sync_index_from_storage",
-                          side_effect=sqlite3.OperationalError("database is locked")):
+        with patch.object(
+            context_daemon, "sync_index_from_storage", side_effect=sqlite3.OperationalError("database is locked")
+        ):
             self.tracker.maybe_sync_index()
         self.assertEqual(self.tracker._error_count, err_before + 1)
         # _index_dirty should still be True (not cleared on failure)
@@ -306,8 +309,7 @@ class TestMaybeSyncIndexSqliteBusy(unittest.TestCase):
         self.tracker._index_dirty = True
         self.tracker._last_index_sync = 0.0
         err_before = self.tracker._error_count
-        with patch.object(context_daemon, "sync_index_from_storage",
-                          side_effect=OSError("disk error")):
+        with patch.object(context_daemon, "sync_index_from_storage", side_effect=OSError("disk error")):
             self.tracker.maybe_sync_index()
         self.assertEqual(self.tracker._error_count, err_before + 1)
 
@@ -372,6 +374,7 @@ class TestRefreshSourcesNewPath(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_new_jsonl_path_resets_cursor(self) -> None:
@@ -382,14 +385,10 @@ class TestRefreshSourcesNewPath(unittest.TestCase):
         new_path.write_text("new data here\n")
 
         # Pre-populate with old path
-        self.tracker.active_jsonl["test_source"] = {
-            "path": old_path, "sid_keys": [], "text_keys": []
-        }
+        self.tracker.active_jsonl["test_source"] = {"path": old_path, "sid_keys": [], "text_keys": []}
         self.tracker._last_source_refresh = 0.0
 
-        fake_sources = {
-            "test_source": [{"path": new_path, "sid_keys": [], "text_keys": []}]
-        }
+        fake_sources = {"test_source": [{"path": new_path, "sid_keys": [], "text_keys": []}]}
         with patch.object(context_daemon, "JSONL_SOURCES", fake_sources):
             with patch.object(context_daemon, "SOURCE_MONITOR_FLAGS", {"test_source": True}):
                 with patch.object(context_daemon, "ENABLE_SHELL_MONITOR", False):
@@ -425,6 +424,7 @@ class TestPollClaudeTranscriptsBudget(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_poll_claude_transcripts_disabled_returns_early(self) -> None:
@@ -453,6 +453,7 @@ class TestPollAntigravityBranches(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_antigravity_disabled_returns_early(self) -> None:
@@ -710,7 +711,9 @@ class TestSessionIndexHealthPayload(unittest.TestCase):
             db_path = Path(tmpdir) / "si3.db"
             with (
                 patch.dict(os.environ, {_env_key: str(db_path)}, clear=False),
-                patch.object(session_index, "sync_session_index", return_value={"added": 0, "updated": 0, "removed": 0}),
+                patch.object(
+                    session_index, "sync_session_index", return_value={"added": 0, "updated": 0, "removed": 0}
+                ),
             ):
                 payload = session_index.health_payload()
             self.assertIn("session_index_db_exists", payload)
@@ -726,11 +729,13 @@ class TestSessionIndexHealthPayload(unittest.TestCase):
 class TestMemoryHitFirstRegression(unittest.TestCase):
     def test_import_works(self) -> None:
         import memory_hit_first_regression as m
+
         self.assertTrue(callable(m.check_cli_fixed_cases))
 
     def test_main_returns_int(self) -> None:
         """main() returns an integer (0 or 1)."""
         import memory_hit_first_regression as m
+
         # Mock run_cli to return plausible outputs without actually running the CLI
         mock_outputs = {
             "cli-health": (0, json.dumps({"all_ok": True}), ""),
@@ -756,7 +761,7 @@ class TestMemoryHitFirstRegression(unittest.TestCase):
 
         call_idx = [0]
         responses = [
-            (0, "not valid json", ""),   # cli-health — should fail json parse
+            (0, "not valid json", ""),  # cli-health — should fail json parse
             (0, "notebooklm result", ""),
             (0, "notebooklm found", ""),
             (0, "2026-03-06 result", ""),
@@ -775,6 +780,7 @@ class TestMemoryHitFirstRegression(unittest.TestCase):
     def test_main_entry_point(self) -> None:
         """Lines 95-96: __name__ == '__main__' path calls main() via SystemExit."""
         import memory_hit_first_regression as m
+
         with patch.object(m, "main", return_value=0):
             with self.assertRaises(SystemExit) as ctx:
                 # Simulate __main__ execution
@@ -790,11 +796,13 @@ class TestMemoryHitFirstRegression(unittest.TestCase):
 class TestContextSmokeMainGuard(unittest.TestCase):
     def test_main_callable(self) -> None:
         import context_smoke
+
         self.assertTrue(callable(context_smoke.main))
 
     def test_main_entry_point_pattern(self) -> None:
         """Simulate the __main__ guard pattern."""
         import context_smoke
+
         with patch.object(context_smoke, "main", return_value=0):
             with self.assertRaises(SystemExit) as ctx:
                 raise SystemExit(context_smoke.main())
@@ -809,12 +817,14 @@ class TestContextSmokeMainGuard(unittest.TestCase):
 class TestContextNativeLine672(unittest.TestCase):
     def test_import_context_native(self) -> None:
         import context_native
+
         # Ensure the module loaded and main() is defined
         self.assertTrue(callable(context_native.main))
 
     def test_main_entry_point(self) -> None:
         """Line 672: raise SystemExit(main()) pattern."""
         import context_native
+
         with patch.object(context_native, "main", return_value=0):
             with self.assertRaises(SystemExit) as ctx:
                 raise SystemExit(context_native.main())
@@ -823,6 +833,7 @@ class TestContextNativeLine672(unittest.TestCase):
     def test_main_runs_native_scan(self) -> None:
         """main() calls run_native_scan and returns returncode."""
         import context_native
+
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "scan output"

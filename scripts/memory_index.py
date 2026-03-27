@@ -514,9 +514,7 @@ def _obs_where_clause(query: str, source_type: str) -> tuple[str, list[Any]]:
         # potentially leverage an index with the same collation.
         like_q = f"%{q.lower()}%"
         where.append(
-            "(title LIKE ? COLLATE NOCASE"
-            " OR content LIKE ? COLLATE NOCASE"
-            " OR tags_json LIKE ? COLLATE NOCASE)"
+            "(title LIKE ? COLLATE NOCASE OR content LIKE ? COLLATE NOCASE OR tags_json LIKE ? COLLATE NOCASE)"
         )
         args.extend([like_q, like_q, like_q])
     if source_type and source_type != "all":
@@ -829,8 +827,7 @@ def import_observations_payload(
             fps = [c["fingerprint"] for c in candidates]
             qmarks = ",".join("?" for _ in fps)
             existing = {
-                row["fingerprint"]
-                for row in _retry_sqlite(conn, _SQL_FIND_BY_FPS.format(qmarks), fps).fetchall()
+                row["fingerprint"] for row in _retry_sqlite(conn, _SQL_FIND_BY_FPS.format(qmarks), fps).fetchall()
             }
 
             to_insert: list[tuple[Any, ...]] = []
