@@ -15,6 +15,31 @@ _No unreleased changes._
 
 ---
 
+## [0.9.32] — 2026-03-27
+
+### Overview
+
+Zero-bug hardening release. Resolves all code review findings: eliminates module-level side effects in the daemon, adds HTTPS enforcement to CLI remote sync, implements search_type filtering, enables SQLite WAL mode, and fixes Rust/Go code quality issues.
+
+零缺陷加固版本。修复所有代码审查发现：消除 daemon 模块级副作用，CLI 远程同步增加 HTTPS 强制，实现 search_type 过滤，启用 SQLite WAL 模式，修复 Rust/Go 代码质量问题。
+
+### Fixed
+
+- **Daemon module-level side effects** — moved `SystemExit` checks, HTTPS validation, directory creation, and file handler setup from import-time to `main()` via `_validate_startup()` / `_setup_logging()`
+- **CLI HTTPS enforcement** — `REMOTE_MEMORY_URL` now requires HTTPS for non-localhost targets, matching daemon behavior
+- **`search_type` filtering** — `format_search_results()` now filters by source type (`codex`, `claude`, etc.) instead of ignoring the parameter
+- **SQLite WAL mode** — both `session_index.py` and `memory_index.py` now use `PRAGMA journal_mode=WAL` with 30s connection timeout, preventing lock contention
+- **Rust overflow-checks** — re-enabled in release profile for safety in file-size/offset calculations
+- **Go builtin shadowing** — renamed `cap` variable to `initialCap` in `main.go`
+- **`os.getuid()` portability** — guarded with `hasattr(os, "getuid")` for non-POSIX platforms
+- **CSP documentation** — added rationale for `unsafe-inline` in viewer (loopback + auth required)
+
+### Stats / 统计
+- Tests: 1131 passed, Coverage: 98.1%, Go: all passed
+- Review findings: 0 remaining
+
+---
+
 ## [0.9.31] — 2026-03-27
 
 ### Overview
