@@ -127,8 +127,8 @@ check_cli_runtime() {
     status="fail"
 
     if [ ! -f "$cli_script" ]; then
-        report_fail "context_cli script missing: $cli_script"
-        summary="context_cli missing"
+        report_fail "context_cli script missing: $cli_script -- reinstall ContextGO or set CONTEXT_CLI_SCRIPT"
+        summary="context_cli missing: $cli_script"
         record_check_result "core.cli_runtime" "$status" "$summary"
         return 0
     fi
@@ -151,8 +151,10 @@ check_cli_runtime() {
         summary="sessions=${sessions:-0}, db=${db_path:-not returned}"
         status="ok"
     else
-        report_fail "context_cli health check failed"
-        summary="health failed"
+        local _first_line
+        _first_line="$(printf '%s\n' "$out" | head -1)"
+        report_fail "context_cli health check failed -- run 'python3 $cli_script health' for details (first line: ${_first_line:0:120})"
+        summary="health failed; first_line=${_first_line:0:80}"
     fi
 
     record_check_result "core.cli_runtime" "$status" "$summary"
@@ -184,8 +186,8 @@ check_stale_claude_hooks() {
         "$HOME/.claude/settings.local.json" \
         2>/dev/null || true)"
     if [ -n "$hit" ]; then
-        report_fail "Stale Claude hooks detected (aline/realign) -- may cause hangs"
-        summary="stale hooks detected"
+        report_fail "Stale Claude hooks detected (aline/realign) in: ${hit} -- remove or update these hooks to prevent hangs"
+        summary="stale hooks detected in: ${hit}"
         status="fail"
     else
         report_ok "Claude config: no stale aline hooks found"

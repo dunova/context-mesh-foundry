@@ -124,7 +124,13 @@ def case_health(env: dict[str, str]) -> CaseResult:
         with contextlib.suppress(json.JSONDecodeError):
             payload = json.loads(text[start : end + 1])
     ok = rc == 0 and bool(payload.get("all_ok"))
-    detail = f"rc={rc}, all_ok={payload.get('all_ok')}, mode={payload.get('remote_sync_policy', {}).get('mode')}"
+    if ok:
+        detail = f"rc={rc}, all_ok=True, mode={payload.get('remote_sync_policy', {}).get('mode')}"
+    else:
+        detail = (
+            f"health check failed rc={rc}; all_ok={payload.get('all_ok')}; "
+            f"check session_index_db_exists in health output; raw={text[:120]!r}"
+        )
     return CaseResult("health", ok, detail, time.time() - t0)
 
 
@@ -148,7 +154,14 @@ def case_save_and_readback(env: dict[str, str]) -> CaseResult:
     )
     rc_sem, out_sem, _ = run_cmd(["python3", str(CONTEXT_CLI), "semantic", marker, "--limit", "3"], env)
     ok = rc_save == 0 and rc_sem == 0 and marker in out_sem
-    detail = f"save_rc={rc_save}, semantic_rc={rc_sem}, semantic_has_marker={marker in out_sem}"
+    if ok:
+        detail = f"save_rc={rc_save}, semantic_rc={rc_sem}, semantic_has_marker=True"
+    else:
+        detail = (
+            f"save-readback failed: save_rc={rc_save}, semantic_rc={rc_sem}, "
+            f"marker_found={marker in out_sem}; "
+            f"save_out={out_save[:80]!r}; sem_out={out_sem[:80]!r}"
+        )
     return CaseResult("save-readback", ok, detail, time.time() - t0)
 
 
@@ -183,7 +196,110 @@ def case_local_search(env: dict[str, str]) -> CaseResult:
     text = (out or err).strip()
     ok = rc == 0 and "Found" in text
     detail = text[:200]
+    if not ok:
+        hint = (
+            f"search failed rc={rc}; ensure session index is populated "
+            f"(run `context_cli.py health` to verify db); raw={text[:120]!r}"
+        )
+        detail = hint
     return CaseResult("local-search", ok, detail, time.time() - t0)
+
+
+def case_export_and_import(env: dict[str, str]) -> CaseResult:
+    """Save a memory, export it to JSON, then import it back and verify round-trip."""
+    t0 = time.time()
+    marker = f"gate-export-{int(time.time())}"
+    rc_save, out_save, err_save = run_cmd(
+        [
+            "python3",
+            str(CONTEXT_CLI),
+            "save",
+            "--title",
+            "gate-export-marker",
+            "--content",
+            marker,
+            "--tags",
+            "gate,export",
+        ],
+        env,
+    )
+    if rc_save != 0:
+        return CaseResult(
+            "export-import",
+            False,
+            f"save failed rc={rc_save}; cannot proceed with export; stderr={err_save[:120]!r}",
+            time.time() - t0,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="contextgo-gate-export-") as tmpdir:
+        export_file = Path(tmpdir) / "gate_export.json"
+        rc_export, out_export, err_export = run_cmd(
+            [
+                "python3",
+                str(CONTEXT_CLI),
+                "export",
+                marker,
+                str(export_file),
+                "--limit",
+                "10",
+            ],
+            env,
+        )
+        if rc_export != 0:
+            return CaseResult(
+                "export-import",
+                False,
+                f"export failed rc={rc_export}; stderr={err_export[:120]!r}",
+                time.time() - t0,
+            )
+        if not export_file.exists():
+            return CaseResult(
+                "export-import",
+                False,
+                f"export file not created at {export_file}; stdout={out_export[:120]!r}",
+                time.time() - t0,
+            )
+
+        with contextlib.suppress(json.JSONDecodeError):
+            payload = json.loads(export_file.read_text(encoding="utf-8"))
+            total = payload.get("total_observations", 0)
+            if total < 1:
+                return CaseResult(
+                    "export-import",
+                    False,
+                    "export produced 0 observations; expected >=1 after saving marker",
+                    time.time() - t0,
+                )
+
+        rc_import, out_import, err_import = run_cmd(
+            ["python3", str(CONTEXT_CLI), "import", str(export_file), "--no-sync"],
+            env,
+        )
+        ok = rc_import == 0 and "import done" in (out_import or "")
+        detail = f"save_rc={rc_save}, export_rc={rc_export}, import_rc={rc_import}, import_out={out_import[:100]!r}"
+        if not ok:
+            detail = f"import failed rc={rc_import}; stderr={err_import[:120]!r}; stdout={out_import[:120]!r}"
+    return CaseResult("export-import", ok, detail, time.time() - t0)
+
+
+def case_maintain(env: dict[str, str]) -> CaseResult:
+    """Run maintenance in dry-run mode and confirm a snapshot line is reported."""
+    t0 = time.time()
+    rc, out, err = run_cmd(
+        ["python3", str(CONTEXT_CLI), "maintain", "--dry-run"],
+        env,
+        timeout=60,
+    )
+    text = out or err
+    ok = rc == 0 and "Snapshot" in text
+    if ok:
+        detail = f"rc={rc}, snapshot_reported=True, out={text[:120]!r}"
+    else:
+        detail = (
+            f"maintain --dry-run failed rc={rc}; expected 'Snapshot' in output; "
+            f"stdout={out[:120]!r}; stderr={err[:120]!r}"
+        )
+    return CaseResult("maintain", ok, detail, time.time() - t0)
 
 
 def main() -> int:
@@ -206,11 +322,17 @@ def main() -> int:
             case_save_and_readback(env),
             case_session_index_sources(env, storage_root),
             case_local_search(env),
+            case_export_and_import(env),
+            case_maintain(env),
         ]
     failed = [c for c in cases if not c.passed]
     for case in cases:
         status = "PASS" if case.passed else "FAIL"
         print(f"[{status}] {case.name} ({case.elapsed_sec:.2f}s) - {case.detail}")
+    if failed:
+        print(f"\n[GATE FAIL] {len(failed)}/{len(cases)} cases failed: {[c.name for c in failed]}")
+    else:
+        print(f"\n[GATE PASS] All {len(cases)} cases passed.")
     return 1 if failed else 0
 
 

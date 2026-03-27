@@ -10,7 +10,7 @@ Example::
 
     import context_server
 
-    context_server.apply_runtime_config("127.0.0.1", 38000, "secret-token")
+    context_server.apply_runtime_config("127.0.0.1", 38000, "<your-token-here>")
     context_server.main()  # blocks until KeyboardInterrupt
 """
 

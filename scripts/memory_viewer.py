@@ -316,12 +316,24 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(name, value)
 
     def _add_cors_headers(self) -> None:
-        """Emit CORS headers that permit only loopback origins."""
+        """Emit CORS headers that permit only loopback origins.
+
+        The Origin header is parsed with :func:`urllib.parse.urlparse` so that
+        only the *hostname* component is tested against the loopback allowlist.
+        This prevents bypass attempts such as
+        ``http://evil127.0.0.1.attacker.com`` that would pass a naive
+        substring check.
+        """
         origin = self.headers.get("Origin", "")
         if not origin:
             return
         self.send_header("Vary", "Origin")
-        if any(lh in origin for lh in ("127.0.0.1", "localhost", "::1")):
+        try:
+            parsed_origin = urlparse(origin)
+            origin_host = parsed_origin.hostname or ""
+        except Exception:  # noqa: BLE001
+            origin_host = ""
+        if origin_host in _LOOPBACK_HOSTS:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Context-Token")
