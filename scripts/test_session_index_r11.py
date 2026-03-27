@@ -576,7 +576,9 @@ class TestSyncSessionIndexRemovesStale(unittest.TestCase):
             # The previously indexed path should now be removed
             conn = sqlite3.connect(db_path)
             try:
-                rows = conn.execute("SELECT file_path FROM session_documents WHERE file_path = ?", (canonical,)).fetchall()
+                rows = conn.execute(
+                    "SELECT file_path FROM session_documents WHERE file_path = ?", (canonical,)
+                ).fetchall()
                 self.assertEqual(len(rows), 0)
             finally:
                 conn.close()

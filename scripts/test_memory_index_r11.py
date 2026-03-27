@@ -728,5 +728,142 @@ class TestRowToDict(unittest.TestCase):
             self.assertIsInstance(r["tags"], list)
 
 
+# ---------------------------------------------------------------------------
+# R16: target remaining uncovered lines in memory_index
+# ---------------------------------------------------------------------------
+
+
+class TestSyncIndexParsesNoneMarkdown(unittest.TestCase):
+    """Line 319: _parse_markdown returns None → continue path in sync_index."""
+
+    def test_sync_skips_unreadable_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "memory_index.db"
+            history_dir = Path(tmpdir) / "history"
+            history_dir.mkdir()
+            # Create a file that will produce empty content after strip
+            (history_dir / "empty_file.md").write_text("   \n   \n", encoding="utf-8")
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+                mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]),
+            ):
+                result = memory_index.sync_index_from_storage()
+            # scanned = 1, added = 0 (skipped due to None parse)
+            self.assertEqual(result["added"], 0)
+            self.assertEqual(result["scanned"], 1)
+
+
+class TestSyncIndexRenameByFingerprint(unittest.TestCase):
+    """Lines 352-354: reconcile by fingerprint when file was renamed."""
+
+    def test_sync_updates_path_on_rename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "memory_index.db"
+            history_dir = Path(tmpdir) / "history"
+            history_dir.mkdir()
+
+            # First sync with original file name
+            content = "# Rename Test\n\n## Content\nContent for rename detection.\n"
+            orig = history_dir / "original_name.md"
+            orig.write_text(content, encoding="utf-8")
+
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+                mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]),
+            ):
+                r1 = memory_index.sync_index_from_storage()
+
+            self.assertEqual(r1["added"], 1)
+
+            # Rename the file
+            renamed = history_dir / "renamed_file.md"
+            orig.rename(renamed)
+
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+                mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]),
+            ):
+                r2 = memory_index.sync_index_from_storage()
+
+            # The renamed file should have been recognized via fingerprint match
+            self.assertEqual(r2["updated"], 1)
+
+
+class TestRowToDictMalformedTags(unittest.TestCase):
+    """Lines 408->412, 410-411: _row_to_dict with malformed tags_json."""
+
+    def test_row_to_dict_with_malformed_tags_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "memory_index.db"
+            history_dir = Path(tmpdir) / "history"
+            history_dir.mkdir()
+            (history_dir / "good_file.md").write_text("# Good\n\n## Content\nSome content here.\n", encoding="utf-8")
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+                mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]),
+            ):
+                memory_index.sync_index_from_storage()
+
+            # Manually corrupt the tags_json in the DB to trigger the except branch
+            import sqlite3 as _sqlite3
+
+            with _sqlite3.connect(str(db_path)) as conn:
+                conn.execute("UPDATE observations SET tags_json = 'not valid json{{'")
+
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+            ):
+                results = memory_index.search_index("Some content")
+            # Should still return results even with corrupt tags
+            self.assertGreater(len(results), 0)
+            self.assertEqual(results[0]["tags"], [])
+
+
+class TestExportObservationsPayloadPagination(unittest.TestCase):
+    """Lines 574->585, 583: pagination loop (offset += len(batch) path)."""
+
+    def test_export_uses_pagination_when_many_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "memory_index.db"
+            history_dir = Path(tmpdir) / "history"
+            history_dir.mkdir()
+
+            # Create more than 200 files to trigger the pagination offset path
+            for i in range(205):
+                (history_dir / f"mem_{i:03d}.md").write_text(
+                    f"# Memory {i}\n\n## Content\nContent number {i}.\n",
+                    encoding="utf-8",
+                )
+
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+                mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]),
+            ):
+                # Export with a limit larger than one page (200)
+                payload = memory_index.export_observations_payload(limit=205)
+
+            self.assertGreaterEqual(payload["total_observations"], 205)
+
+    def test_export_pagination_stops_at_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "memory_index.db"
+            history_dir = Path(tmpdir) / "history"
+            history_dir.mkdir()
+
+            for i in range(205):
+                (history_dir / f"item_{i:03d}.md").write_text(
+                    f"# Item {i}\n\n## Content\nContent item {i}.\n",
+                    encoding="utf-8",
+                )
+
+            with (
+                mock.patch.dict(os.environ, {"MEMORY_INDEX_DB_PATH": str(db_path)}, clear=False),
+                mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]),
+            ):
+                payload = memory_index.export_observations_payload(limit=10)
+
+            self.assertEqual(payload["total_observations"], 10)
+
+
 if __name__ == "__main__":
     unittest.main()

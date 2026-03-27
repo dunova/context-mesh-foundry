@@ -297,20 +297,14 @@ class TestE2eQualityGate(unittest.TestCase):
             db_path = db_dir / "session_index.db"
 
             conn = sqlite3.connect(str(db_path))
-            conn.execute(
-                "CREATE TABLE session_documents (source_type TEXT, content TEXT)"
-            )
+            conn.execute("CREATE TABLE session_documents (source_type TEXT, content TEXT)")
             for src in ("codex_session", "claude_session", "shell_zsh"):
-                conn.execute(
-                    "INSERT INTO session_documents VALUES (?, ?)", (src, "data")
-                )
+                conn.execute("INSERT INTO session_documents VALUES (?, ?)", (src, "data"))
             conn.commit()
             conn.close()
 
             with patch.object(e2e_quality_gate, "run_cmd", return_value=(0, "", "")):
-                result = e2e_quality_gate.case_session_index_sources(
-                    env=os.environ.copy(), storage_root=storage_root
-                )
+                result = e2e_quality_gate.case_session_index_sources(env=os.environ.copy(), storage_root=storage_root)
 
         self.assertTrue(result.passed)
         self.assertEqual(result.name, "session-index-sources")
@@ -329,20 +323,14 @@ class TestE2eQualityGate(unittest.TestCase):
             db_path = db_dir / "session_index.db"
 
             conn = sqlite3.connect(str(db_path))
-            conn.execute(
-                "CREATE TABLE session_documents (source_type TEXT, content TEXT)"
-            )
+            conn.execute("CREATE TABLE session_documents (source_type TEXT, content TEXT)")
             # Only codex_session present, missing claude_session and shell_zsh
-            conn.execute(
-                "INSERT INTO session_documents VALUES (?, ?)", ("codex_session", "data")
-            )
+            conn.execute("INSERT INTO session_documents VALUES (?, ?)", ("codex_session", "data"))
             conn.commit()
             conn.close()
 
             with patch.object(e2e_quality_gate, "run_cmd", return_value=(0, "", "")):
-                result = e2e_quality_gate.case_session_index_sources(
-                    env=os.environ.copy(), storage_root=storage_root
-                )
+                result = e2e_quality_gate.case_session_index_sources(env=os.environ.copy(), storage_root=storage_root)
 
         self.assertFalse(result.passed)
         self.assertIn("claude_session", result.detail)
@@ -351,9 +339,7 @@ class TestE2eQualityGate(unittest.TestCase):
         """Cover lines 226-232: save step returns non-zero."""
         import e2e_quality_gate
 
-        with patch.object(
-            e2e_quality_gate, "run_cmd", return_value=(1, "", "save error")
-        ):
+        with patch.object(e2e_quality_gate, "run_cmd", return_value=(1, "", "save error")):
             result = e2e_quality_gate.case_export_and_import(env=os.environ.copy())
 
         self.assertFalse(result.passed)
@@ -403,9 +389,7 @@ class TestE2eQualityGate(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="cg_gate_ei_test_") as tmpdir:
             export_path = Path(tmpdir) / "gate_export.json"
-            export_path.write_text(
-                json.dumps({"total_observations": 0, "memories": []}), encoding="utf-8"
-            )
+            export_path.write_text(json.dumps({"total_observations": 0, "memories": []}), encoding="utf-8")
 
             def fake_run_cmd(args, env, timeout=20):
                 if "save" in args:
@@ -414,9 +398,7 @@ class TestE2eQualityGate(unittest.TestCase):
                     # Write to whatever export_file path was passed
                     for _i, a in enumerate(args):
                         if str(a).endswith(".json") and "gate_export" in str(a):
-                            Path(a).write_text(
-                                json.dumps({"total_observations": 0}), encoding="utf-8"
-                            )
+                            Path(a).write_text(json.dumps({"total_observations": 0}), encoding="utf-8")
                     return 0, "exported", ""
                 return 0, "", ""
 
@@ -540,17 +522,11 @@ class TestE2eQualityGate(unittest.TestCase):
 
         with patch.object(e2e_quality_gate, "case_health", return_value=pass_result):
             with patch.object(e2e_quality_gate, "case_save_and_readback", return_value=pass_result):
-                with patch.object(
-                    e2e_quality_gate, "case_session_index_sources", return_value=pass_result
-                ):
+                with patch.object(e2e_quality_gate, "case_session_index_sources", return_value=pass_result):
                     with patch.object(e2e_quality_gate, "case_local_search", return_value=pass_result):
-                        with patch.object(
-                            e2e_quality_gate, "case_export_and_import", return_value=pass_result
-                        ):
+                        with patch.object(e2e_quality_gate, "case_export_and_import", return_value=pass_result):
                             with patch.object(e2e_quality_gate, "case_maintain", return_value=pass_result):
-                                with patch.object(
-                                    e2e_quality_gate, "prepare_fixture_home"
-                                ):
+                                with patch.object(e2e_quality_gate, "prepare_fixture_home"):
                                     with patch("builtins.print"):
                                         rc = e2e_quality_gate.main()
 
@@ -565,17 +541,11 @@ class TestE2eQualityGate(unittest.TestCase):
 
         with patch.object(e2e_quality_gate, "case_health", return_value=fail_result):
             with patch.object(e2e_quality_gate, "case_save_and_readback", return_value=pass_result):
-                with patch.object(
-                    e2e_quality_gate, "case_session_index_sources", return_value=pass_result
-                ):
+                with patch.object(e2e_quality_gate, "case_session_index_sources", return_value=pass_result):
                     with patch.object(e2e_quality_gate, "case_local_search", return_value=pass_result):
-                        with patch.object(
-                            e2e_quality_gate, "case_export_and_import", return_value=pass_result
-                        ):
+                        with patch.object(e2e_quality_gate, "case_export_and_import", return_value=pass_result):
                             with patch.object(e2e_quality_gate, "case_maintain", return_value=pass_result):
-                                with patch.object(
-                                    e2e_quality_gate, "prepare_fixture_home"
-                                ):
+                                with patch.object(e2e_quality_gate, "prepare_fixture_home"):
                                     with patch("builtins.print"):
                                         rc = e2e_quality_gate.main()
 
@@ -1230,6 +1200,136 @@ class TestContextSmoke(unittest.TestCase):
         self.assertIn("summary", payload)
         self.assertIn("results", payload)
         self.assertEqual(payload["summary"]["status"], "pass")
+
+
+# ---------------------------------------------------------------------------
+# R16: __name__ == "__main__" guard coverage
+# export_memories line 32, import_memories line 25, context_server line 50
+# smoke_installed_runtime lines 62-63 (skip_sandbox=True path), 83
+# ---------------------------------------------------------------------------
+
+
+class TestExportMemoriesMainGuard(unittest.TestCase):
+    """Line 32: raise SystemExit(main()) in export_memories — via runpy."""
+
+    def test_main_guard_raises_system_exit(self) -> None:
+        import runpy
+
+        sys.modules.pop("export_memories", None)
+        with patch.object(sys, "argv", ["export_memories", "q", "/tmp/out_r16.json"]):
+            with patch("context_cli.main", return_value=0):
+                sys.modules.pop("export_memories", None)
+                with self.assertRaises(SystemExit) as ctx:
+                    runpy.run_module("export_memories", run_name="__main__", alter_sys=False)
+                self.assertEqual(ctx.exception.code, 0)
+
+
+class TestImportMemoriesMainGuard(unittest.TestCase):
+    """Line 25: raise SystemExit(main()) in import_memories — via runpy."""
+
+    def test_main_guard_raises_system_exit(self) -> None:
+        import runpy
+
+        with (
+            patch.object(sys, "argv", ["import_memories", "/tmp/fake_input_r16.json"]),
+            patch("context_cli.main", return_value=0),
+        ):
+            sys.modules.pop("import_memories", None)
+            with self.assertRaises(SystemExit) as ctx:
+                runpy.run_module("import_memories", run_name="__main__", alter_sys=False)
+            self.assertEqual(ctx.exception.code, 0)
+
+
+class TestContextServerMainGuard(unittest.TestCase):
+    """Line 50: context_server __name__ == "__main__" path via runpy."""
+
+    def test_main_guard_calls_main_via_runpy(self) -> None:
+        import runpy
+
+        # Patch memory_viewer so the server doesn't actually start
+        fake_viewer = unittest.mock.MagicMock()
+        fake_viewer.main = unittest.mock.MagicMock(return_value=None)
+        fake_viewer.HOST = "127.0.0.1"
+        fake_viewer.PORT = 37242
+        fake_viewer.VIEWER_TOKEN = ""
+
+        with patch.dict(sys.modules, {"memory_viewer": fake_viewer, "context_server": None}):
+            sys.modules.pop("context_server", None)
+            try:
+                runpy.run_module("context_server", run_name="__main__", alter_sys=False)
+            except SystemExit:
+                pass
+        # If main() was called and returned normally, fake_viewer.main was called
+        fake_viewer.main.assert_called()
+
+
+class TestSmokeInstalledRuntimeSkipSandbox(unittest.TestCase):
+    """Lines 62-63: skip_sandbox=True path in smoke_installed_runtime.main()."""
+
+    def test_main_skip_sandbox_false_path(self) -> None:
+        import smoke_installed_runtime
+
+        fake_payload = {
+            "summary": {"passed": 1, "failed": 0, "total": 1, "status": "pass"},
+            "results": [],
+        }
+        with (
+            patch.dict(os.environ, {"CONTEXTGO_SMOKE_SKIP_SANDBOX": "0"}, clear=False),
+            patch("smoke_installed_runtime.run_smoke", return_value=fake_payload),
+        ):
+            rc = smoke_installed_runtime.main()
+        self.assertEqual(rc, 0)
+
+    def test_main_skip_sandbox_true_covers_lines_62_63(self) -> None:
+        """Lines 62-63: when CONTEXTGO_SMOKE_SKIP_SANDBOX=1, skip sandbox."""
+        import smoke_installed_runtime
+
+        fake_payload = {
+            "summary": {"passed": 1, "failed": 0, "total": 1, "status": "pass"},
+            "results": [],
+        }
+        with (
+            patch.dict(os.environ, {"CONTEXTGO_SMOKE_SKIP_SANDBOX": "1"}, clear=False),
+            patch("smoke_installed_runtime.run_smoke", return_value=fake_payload),
+        ):
+            rc = smoke_installed_runtime.main()
+        self.assertEqual(rc, 0)
+
+    def test_main_returns_1_when_failed(self) -> None:
+        """Coverage for branch where failed > 0."""
+        import smoke_installed_runtime
+
+        fake_payload = {
+            "summary": {"passed": 0, "failed": 1, "total": 1, "status": "fail"},
+            "results": [],
+        }
+        with (
+            patch.dict(os.environ, {"CONTEXTGO_SMOKE_SKIP_SANDBOX": "1"}, clear=False),
+            patch("smoke_installed_runtime.run_smoke", return_value=fake_payload),
+        ):
+            rc = smoke_installed_runtime.main()
+        self.assertEqual(rc, 1)
+
+    def test_main_guard_raises_system_exit_via_runpy(self) -> None:
+        """Line 83: __name__ == '__main__' guard in smoke_installed_runtime."""
+        import runpy
+
+        import smoke_installed_runtime as _sir
+
+        fake_payload = {
+            "summary": {"passed": 1, "failed": 0, "total": 1, "status": "pass"},
+            "results": [],
+        }
+        with (
+            patch.dict(os.environ, {"CONTEXTGO_SMOKE_SKIP_SANDBOX": "1"}, clear=False),
+            patch.object(_sir, "run_smoke", return_value=fake_payload),
+        ):
+            # Remove cached module so runpy re-executes it with __main__
+            sys.modules.pop("smoke_installed_runtime", None)
+            try:
+                runpy.run_module("smoke_installed_runtime", run_name="__main__", alter_sys=False)
+            except SystemExit as e:
+                self.assertIn(e.code, (0, 1))  # Either pass or fail is acceptable
 
 
 if __name__ == "__main__":

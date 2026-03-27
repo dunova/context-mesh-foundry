@@ -280,8 +280,16 @@ def _execute_mode(mode: str, args: argparse.Namespace) -> list[BenchmarkStats]:
 
     results: list[BenchmarkStats] = []
     for case in cases:
-        durations = _benchmark(case.action, args.warmup, args.iterations)
-        sample = case.sample()
+        try:
+            durations = _benchmark(case.action, args.warmup, args.iterations)
+        except Exception as exc:
+            raise RuntimeError(f"Benchmark case '{case.name}' failed during timing: {exc}") from exc
+        try:
+            sample = case.sample()
+        except Exception as exc:
+            # Sample is best-effort; don't abort the whole run.
+            print(f"  [warning] sample() for '{case.name}' raised: {exc}", file=sys.stderr)
+            sample = None
         results.append(_summarize_stats(case.name, durations, sample))
     return results
 
@@ -434,12 +442,14 @@ def main(argv: list[str] | None = None) -> int:
             "CONTEXTGO_SESSION_SYNC_MIN_INTERVAL_SEC": "0",
             "CONTEXTGO_SOURCE_CACHE_TTL_SEC": DEFAULT_SOURCE_CACHE_TTL,
         }
+        # Preserve original env values so they can be restored after the benchmark.
+        _original_env: dict[str, str | None] = {k: os.environ.get(k) for k in env_vars}
         os.environ.update(env_vars)
 
         print("Benchmark environment:")
         print(f"  fake HOME: {fake_home}")
         print(f"  storage root: {storage_root}")
-        print(f"  mode: {args.mode}")
+        print(f"  mode: {args.mode}  format: {args.format}")
         print(f"  iterations: {args.iterations} warmup: {args.warmup}")
         print(f"  search limit: {args.search_limit}")
         print("  source cache TTL:", env_vars["CONTEXTGO_SOURCE_CACHE_TTL_SEC"], "sec")
@@ -454,6 +464,13 @@ def main(argv: list[str] | None = None) -> int:
             results_by_mode.append((mode, stats_list))
             if args.mode == "both" and index < len(mode_sequence) - 1:
                 shutil.rmtree(storage_root, ignore_errors=True)
+
+        # Restore original environment variables to avoid polluting the caller's process.
+        for key, original_value in _original_env.items():
+            if original_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original_value
 
         if args.format == "json":
             base_payload: dict[str, object] = {

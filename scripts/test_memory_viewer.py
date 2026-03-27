@@ -732,7 +732,7 @@ class TestHandlerSse(unittest.TestCase):
         content = wfile.read().decode()
         lines = [l for l in content.split("\n") if l.startswith("data:")]
         self.assertEqual(len(lines), 2)
-        parsed = json.loads(lines[0][len("data: "):])
+        parsed = json.loads(lines[0][len("data: ") :])
         self.assertIn("total_observations", parsed)
         self.assertIn("at", parsed)
 

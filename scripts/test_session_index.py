@@ -669,21 +669,25 @@ class SessionIndexParserTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "claude_session.jsonl"
             p.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "claude-abc",
-                        "cwd": "/tmp/claude-project",
-                        "timestamp": "2026-03-25T10:00:00Z",
-                        "message": {"content": "research claude integration"},
-                    }),
-                    json.dumps({
-                        "type": "assistant",
-                        "message": {
-                            "content": [{"type": "text", "text": "Here is the answer."}]
-                        },
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "claude-abc",
+                                "cwd": "/tmp/claude-project",
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "message": {"content": "research claude integration"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "message": {"content": [{"type": "text", "text": "Here is the answer."}]},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(p)
@@ -696,13 +700,13 @@ class SessionIndexParserTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "claude_assistant.jsonl"
             p.write_text(
-                json.dumps({
-                    "type": "assistant",
-                    "sessionId": "assist-session",
-                    "message": {
-                        "content": [{"type": "output_text", "text": "important context about project"}]
-                    },
-                }),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": "assist-session",
+                        "message": {"content": [{"type": "output_text", "text": "important context about project"}]},
+                    }
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(p)
@@ -718,11 +722,13 @@ class SessionIndexParserTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "history.jsonl"
             p.write_text(
-                "\n".join([
-                    json.dumps({"display": "ls -la"}),
-                    json.dumps({"text": "git status"}),
-                    json.dumps({"input": "python3 test.py"}),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps({"display": "ls -la"}),
+                        json.dumps({"text": "git status"}),
+                        json.dumps({"input": "python3 test.py"}),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_history_jsonl(p, "codex_history")
@@ -799,14 +805,16 @@ class SessionIndexParserTests(unittest.TestCase):
             # Use a fake path that we control via _iter_sources mock
             fake_file = root / "stale.jsonl"
             fake_file.write_text(
-                json.dumps({
-                    "type": "session_meta",
-                    "payload": {
-                        "id": "stale-session",
-                        "cwd": "/tmp/old",
-                        "timestamp": "2026-01-01T00:00:00Z",
-                    },
-                }),
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "stale-session",
+                            "cwd": "/tmp/old",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                        },
+                    }
+                ),
                 encoding="utf-8",
             )
             with (
@@ -815,7 +823,8 @@ class SessionIndexParserTests(unittest.TestCase):
             ):
                 # First sync: inject the fake file via _iter_sources
                 with mock.patch.object(
-                    session_index, "_iter_sources",
+                    session_index,
+                    "_iter_sources",
                     return_value=[("codex_session", fake_file)],
                 ):
                     stats1 = session_index.sync_session_index(force=True)
@@ -836,14 +845,16 @@ class SessionIndexParserTests(unittest.TestCase):
             codex_root.mkdir(parents=True)
             session_file = codex_root / "update.jsonl"
             session_file.write_text(
-                json.dumps({
-                    "type": "session_meta",
-                    "payload": {
-                        "id": "update-session",
-                        "cwd": "/tmp/project",
-                        "timestamp": "2026-01-01T00:00:00Z",
-                    },
-                }),
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "update-session",
+                            "cwd": "/tmp/project",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                        },
+                    }
+                ),
                 encoding="utf-8",
             )
             db_path = root / "session_index.db"
@@ -855,20 +866,26 @@ class SessionIndexParserTests(unittest.TestCase):
                 self.assertEqual(stats1["added"], 1)
                 # Change the file content to simulate an update.
                 session_file.write_text(
-                    "\n".join([
-                        json.dumps({
-                            "type": "session_meta",
-                            "payload": {
-                                "id": "update-session",
-                                "cwd": "/tmp/project-v2",
-                                "timestamp": "2026-01-02T00:00:00Z",
-                            },
-                        }),
-                        json.dumps({
-                            "type": "event_msg",
-                            "payload": {"type": "user_message", "message": "new content added"},
-                        }),
-                    ]),
+                    "\n".join(
+                        [
+                            json.dumps(
+                                {
+                                    "type": "session_meta",
+                                    "payload": {
+                                        "id": "update-session",
+                                        "cwd": "/tmp/project-v2",
+                                        "timestamp": "2026-01-02T00:00:00Z",
+                                    },
+                                }
+                            ),
+                            json.dumps(
+                                {
+                                    "type": "event_msg",
+                                    "payload": {"type": "user_message", "message": "new content added"},
+                                }
+                            ),
+                        ]
+                    ),
                     encoding="utf-8",
                 )
                 stats2 = session_index.sync_session_index(force=True)
@@ -951,7 +968,9 @@ class SessionIndexParserTests(unittest.TestCase):
             p.parent.mkdir(parents=True)
             p.write_text("hello", encoding="utf-8")
             mtime = int(p.stat().st_mtime)
-            doc = session_index._finish_session_doc(p, "codex_session", "sid", "", "2026-03-25T00:00:00Z", ["content"], mtime)
+            doc = session_index._finish_session_doc(
+                p, "codex_session", "sid", "", "2026-03-25T00:00:00Z", ["content"], mtime
+            )
         self.assertIn("sub", doc.title)
 
     def test_finish_session_doc_no_content_uses_title(self) -> None:
@@ -959,7 +978,9 @@ class SessionIndexParserTests(unittest.TestCase):
             p = Path(tmpdir) / "session.jsonl"
             p.write_text("hello", encoding="utf-8")
             mtime = int(p.stat().st_mtime)
-            doc = session_index._finish_session_doc(p, "codex_session", "sid", "my title", "2026-03-25T00:00:00Z", [], mtime)
+            doc = session_index._finish_session_doc(
+                p, "codex_session", "sid", "my title", "2026-03-25T00:00:00Z", [], mtime
+            )
         self.assertEqual(doc.content, "my title")
 
     # ------------------------------------------------------------------
@@ -1037,6 +1058,7 @@ class MemoryIndexTests(unittest.TestCase):
     def setUp(self) -> None:
         # Import memory_index in setUp to avoid import-time side effects
         import memory_index
+
         self.memory_index = memory_index
 
     def _make_db_env(self, tmpdir: str) -> dict[str, str]:
@@ -1195,9 +1217,7 @@ class MemoryIndexTests(unittest.TestCase):
                     "file_path": "/home/user/secret/path.md",
                     "created_at_epoch": 1742860800,
                 }
-                result = self.memory_index.import_observations_payload(
-                    {"observations": [obs]}, sync_from_storage=False
-                )
+                result = self.memory_index.import_observations_payload({"observations": [obs]}, sync_from_storage=False)
                 self.assertEqual(result["inserted"], 1)
                 found = self.memory_index.search_index("valid content")
                 self.assertEqual(found[0]["file_path"], "import://local-path-redacted")
@@ -1208,8 +1228,9 @@ class MemoryIndexTests(unittest.TestCase):
             with (
                 mock.patch.dict(os.environ, self._make_db_env(tmpdir), clear=False),
                 mock.patch.object(
-                    self.memory_index, "sync_index_from_storage",
-                    return_value={"scanned": 0, "added": 0, "updated": 0, "removed": 0}
+                    self.memory_index,
+                    "sync_index_from_storage",
+                    return_value={"scanned": 0, "added": 0, "updated": 0, "removed": 0},
                 ),
             ):
                 payload = self.memory_index.export_observations_payload()
@@ -1318,13 +1339,15 @@ class MemoryIndexTests(unittest.TestCase):
             with mock.patch.dict(os.environ, self._make_db_env(tmpdir), clear=False):
                 # Insert an observation first
                 payload = {
-                    "observations": [{
-                        "source_type": "import",
-                        "session_id": "id-test",
-                        "title": "ID Fetch Test",
-                        "content": "content for id fetch test",
-                        "created_at_epoch": 1742860800,
-                    }]
+                    "observations": [
+                        {
+                            "source_type": "import",
+                            "session_id": "id-test",
+                            "title": "ID Fetch Test",
+                            "content": "content for id fetch test",
+                            "created_at_epoch": 1742860800,
+                        }
+                    ]
                 }
                 self.memory_index.import_observations_payload(payload, sync_from_storage=False)
                 all_results = self.memory_index.search_index("id fetch test")
@@ -1340,13 +1363,15 @@ class MemoryIndexTests(unittest.TestCase):
                 # Insert multiple observations
                 for i in range(5):
                     payload = {
-                        "observations": [{
-                            "source_type": "import",
-                            "session_id": f"timeline-{i}",
-                            "title": f"Timeline Obs {i}",
-                            "content": f"content for timeline test {i}",
-                            "created_at_epoch": 1742860800 + i * 100,
-                        }]
+                        "observations": [
+                            {
+                                "source_type": "import",
+                                "session_id": f"timeline-{i}",
+                                "title": f"Timeline Obs {i}",
+                                "content": f"content for timeline test {i}",
+                                "created_at_epoch": 1742860800 + i * 100,
+                            }
+                        ]
                     }
                     self.memory_index.import_observations_payload(payload, sync_from_storage=False)
                 all_results = self.memory_index.search_index("timeline test")
@@ -1373,8 +1398,13 @@ class TestLoadNoiseConfigFallback(unittest.TestCase):
     def test_returns_empty_dicts_when_config_missing(self) -> None:
         with mock.patch("pathlib.Path.exists", return_value=False):
             result = session_index._load_noise_config()
-        for key in ("search_noise_markers", "native_noise_markers", "text_noise_markers",
-                    "text_noise_lower_markers", "noise_prefixes"):
+        for key in (
+            "search_noise_markers",
+            "native_noise_markers",
+            "text_noise_markers",
+            "text_noise_lower_markers",
+            "noise_prefixes",
+        ):
             self.assertIn(key, result)
             self.assertEqual(result[key], [])
 
@@ -1452,24 +1482,30 @@ class TestParseCodexSessionResponseItem(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "codex_response.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "session_meta",
-                        "payload": {
-                            "id": "resp-session",
-                            "cwd": "/tmp/resp-project",
-                            "timestamp": "2026-03-25T00:00:00Z",
-                        },
-                    }),
-                    json.dumps({
-                        "type": "response_item",
-                        "payload": {
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": "Assistant response via response_item"}],
-                        },
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "resp-session",
+                                    "cwd": "/tmp/resp-project",
+                                    "timestamp": "2026-03-25T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "message",
+                                    "role": "assistant",
+                                    "content": [{"type": "text", "text": "Assistant response via response_item"}],
+                                },
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_codex_session(path)
@@ -1481,17 +1517,26 @@ class TestParseCodexSessionResponseItem(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "codex_user_resp.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "session_meta",
-                        "payload": {"id": "s1", "cwd": "/tmp/x", "timestamp": "2026-03-25T00:00:00Z"},
-                    }),
-                    json.dumps({
-                        "type": "response_item",
-                        "payload": {"type": "message", "role": "user",
-                                    "content": [{"type": "text", "text": "user content"}]},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "s1", "cwd": "/tmp/x", "timestamp": "2026-03-25T00:00:00Z"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "message",
+                                    "role": "user",
+                                    "content": [{"type": "text", "text": "user content"}],
+                                },
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_codex_session(path)
@@ -1505,24 +1550,32 @@ class TestParseCodexSessionResponseItem(unittest.TestCase):
             path = Path(tmpdir) / "codex_noise_resp.jsonl"
             noise_text = "SKILL.md SKILL.md SKILL.md noise content"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "session_meta",
-                        "payload": {"id": "s-noise", "cwd": "/tmp/x", "timestamp": "2026-03-25T00:00:00Z"},
-                    }),
-                    json.dumps({
-                        "type": "event_msg",
-                        "payload": {"type": "user_message", "message": "valid user message"},
-                    }),
-                    json.dumps({
-                        "type": "response_item",
-                        "payload": {
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": noise_text}],
-                        },
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "s-noise", "cwd": "/tmp/x", "timestamp": "2026-03-25T00:00:00Z"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "valid user message"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "message",
+                                    "role": "assistant",
+                                    "content": [{"type": "text", "text": noise_text}],
+                                },
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_codex_session(path)
@@ -1539,15 +1592,19 @@ class TestParseClaudeSessionStrContent(unittest.TestCase):
             path = Path(tmpdir) / "claude_noise.jsonl"
             noise_text = "SKILL.md SKILL.md SKILL.md noise"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "cn1",
-                        "cwd": "/tmp/p",
-                        "timestamp": "2026-03-25T10:00:00Z",
-                        "message": {"content": noise_text},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "cn1",
+                                "cwd": "/tmp/p",
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "message": {"content": noise_text},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(path)
@@ -1561,20 +1618,26 @@ class TestParseClaudeSessionStrContent(unittest.TestCase):
             path = Path(tmpdir) / "claude_asst_noise.jsonl"
             noise_text = "SKILL.md SKILL.md SKILL.md assistant noise"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "assistant",
-                        "sessionId": "ca1",
-                        "cwd": "/tmp/p",
-                        "timestamp": "2026-03-25T10:00:00Z",
-                        "message": {"content": [{"type": "text", "text": noise_text}]},
-                    }),
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "ca1",
-                        "message": {"content": "valid user message content"},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "sessionId": "ca1",
+                                "cwd": "/tmp/p",
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "message": {"content": [{"type": "text", "text": noise_text}]},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "ca1",
+                                "message": {"content": "valid user message content"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(path)
@@ -1590,11 +1653,13 @@ class TestParseHistoryJsonlNonDict(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "history_mixed.jsonl"
             path.write_text(
-                "\n".join([
-                    '["list", "item"]',  # non-dict
-                    '"string_item"',     # non-dict
-                    json.dumps({"display": "valid display text"}),
-                ]),
+                "\n".join(
+                    [
+                        '["list", "item"]',  # non-dict
+                        '"string_item"',  # non-dict
+                        json.dumps({"display": "valid display text"}),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_history_jsonl(path, "codex_history")
@@ -1728,8 +1793,7 @@ class TestSyncFileNotFound(unittest.TestCase):
             # Return a path that does NOT exist on disk
             with (
                 mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False),
-                mock.patch.object(session_index, "_iter_sources",
-                                  return_value=[("codex_session", ghost_path)]),
+                mock.patch.object(session_index, "_iter_sources", return_value=[("codex_session", ghost_path)]),
             ):
                 result = session_index.sync_session_index(force=True)
         self.assertEqual(result["added"], 0)
@@ -1750,20 +1814,26 @@ class TestSyncBatchCommit(unittest.TestCase):
             for i in range(batch_size + 2):
                 p = sessions_dir / f"session_{i}.jsonl"
                 p.write_text(
-                    "\n".join([
-                        json.dumps({
-                            "type": "session_meta",
-                            "payload": {
-                                "id": f"s{i}",
-                                "cwd": f"/tmp/proj{i}",
-                                "timestamp": "2026-03-25T00:00:00Z",
-                            },
-                        }),
-                        json.dumps({
-                            "type": "event_msg",
-                            "payload": {"type": "user_message", "message": f"batch test content {i}"},
-                        }),
-                    ]),
+                    "\n".join(
+                        [
+                            json.dumps(
+                                {
+                                    "type": "session_meta",
+                                    "payload": {
+                                        "id": f"s{i}",
+                                        "cwd": f"/tmp/proj{i}",
+                                        "timestamp": "2026-03-25T00:00:00Z",
+                                    },
+                                }
+                            ),
+                            json.dumps(
+                                {
+                                    "type": "event_msg",
+                                    "payload": {"type": "user_message", "message": f"batch test content {i}"},
+                                }
+                            ),
+                        ]
+                    ),
                     encoding="utf-8",
                 )
                 paths.append(p)
@@ -1883,8 +1953,18 @@ class TestSearchRowsLiteralFallback(unittest.TestCase):
                 file_path, source_type, session_id, title, content,
                 created_at, created_at_epoch, file_mtime, file_size, updated_at_epoch
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (file_path, "codex_session", "s1", title, content,
-             "2026-03-25T00:00:00Z", 1742860800, 100, 200, 1742860800),
+            (
+                file_path,
+                "codex_session",
+                "s1",
+                title,
+                content,
+                "2026-03-25T00:00:00Z",
+                1742860800,
+                100,
+                200,
+                1742860800,
+            ),
         )
         conn.commit()
         conn.close()
@@ -1895,8 +1975,7 @@ class TestSearchRowsLiteralFallback(unittest.TestCase):
             db_path = Path(tmpdir) / "session_index.db"
             with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
                 self._make_db_with_doc(
-                    tmpdir, "/tmp/lit.jsonl", "/tmp/project",
-                    "literal search target content for test"
+                    tmpdir, "/tmp/lit.jsonl", "/tmp/project", "literal search target content for test"
                 )
                 with mock.patch.object(session_index, "_iter_sources", return_value=[]):
                     results = session_index._search_rows("literal search target", literal=True)
@@ -1908,8 +1987,7 @@ class TestSearchRowsLiteralFallback(unittest.TestCase):
             db_path = Path(tmpdir) / "session_index.db"
             with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
                 self._make_db_with_doc(
-                    tmpdir, "/tmp/expand.jsonl", "/tmp/project",
-                    "expanded term search notebooklm integration"
+                    tmpdir, "/tmp/expand.jsonl", "/tmp/project", "expanded term search notebooklm integration"
                 )
                 with mock.patch.object(session_index, "_iter_sources", return_value=[]):
                     # Use a literal query that won't match directly but
@@ -1959,20 +2037,28 @@ class TestParseCodexSessionBranchMisses(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "codex_branch.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "session_meta",
-                        "payload": {"id": "b1", "cwd": "/tmp/b", "timestamp": "2026-03-25T00:00:00Z"},
-                    }),
-                    json.dumps({
-                        "type": "event_msg",
-                        "payload": {"type": "system_notification", "message": "system msg"},
-                    }),
-                    json.dumps({
-                        "type": "event_msg",
-                        "payload": {"type": "user_message", "message": "real user message"},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "b1", "cwd": "/tmp/b", "timestamp": "2026-03-25T00:00:00Z"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "system_notification", "message": "system msg"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "real user message"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_codex_session(path)
@@ -1986,20 +2072,28 @@ class TestParseCodexSessionBranchMisses(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "codex_empty_msg.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "session_meta",
-                        "payload": {"id": "b2", "cwd": "/tmp/b", "timestamp": "2026-03-25T00:00:00Z"},
-                    }),
-                    json.dumps({
-                        "type": "event_msg",
-                        "payload": {"type": "user_message", "message": ""},
-                    }),
-                    json.dumps({
-                        "type": "event_msg",
-                        "payload": {"type": "user_message", "message": "non-empty message"},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "b2", "cwd": "/tmp/b", "timestamp": "2026-03-25T00:00:00Z"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": ""},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "non-empty message"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_codex_session(path)
@@ -2012,17 +2106,23 @@ class TestParseCodexSessionBranchMisses(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "codex_unknown.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "session_meta",
-                        "payload": {"id": "b3", "cwd": "/tmp/b", "timestamp": "2026-03-25T00:00:00Z"},
-                    }),
-                    json.dumps({"type": "unknown_type", "data": "ignored"}),
-                    json.dumps({
-                        "type": "event_msg",
-                        "payload": {"type": "user_message", "message": "after unknown"},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "b3", "cwd": "/tmp/b", "timestamp": "2026-03-25T00:00:00Z"},
+                            }
+                        ),
+                        json.dumps({"type": "unknown_type", "data": "ignored"}),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "after unknown"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_codex_session(path)
@@ -2050,20 +2150,26 @@ class TestParseClaudeSessionBranchMisses(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "claude_empty_asst.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "assistant",
-                        "sessionId": "ca-empty",
-                        "cwd": "/tmp/p",
-                        "timestamp": "2026-03-25T10:00:00Z",
-                        "message": {"content": []},  # empty content list
-                    }),
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "ca-empty",
-                        "message": {"content": "user fallback content"},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "sessionId": "ca-empty",
+                                "cwd": "/tmp/p",
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "message": {"content": []},  # empty content list
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "ca-empty",
+                                "message": {"content": "user fallback content"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(path)
@@ -2076,15 +2182,19 @@ class TestParseClaudeSessionBranchMisses(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "claude_list_content.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "ca-list",
-                        "cwd": "/tmp/p",
-                        "timestamp": "2026-03-25T10:00:00Z",
-                        "message": {"content": [{"type": "text", "text": "list content"}]},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "ca-list",
+                                "cwd": "/tmp/p",
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "message": {"content": [{"type": "text", "text": "list content"}]},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(path)
@@ -2101,10 +2211,12 @@ class TestParseHistoryJsonlBreakBranch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "history_no_keys.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({"unknown_key": "value1"}),  # no display/text/input/prompt/message
-                    json.dumps({"display": "valid text here"}),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps({"unknown_key": "value1"}),  # no display/text/input/prompt/message
+                        json.dumps({"display": "valid text here"}),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_history_jsonl(path, "codex_history")
@@ -2177,15 +2289,15 @@ class TestNativeSearchRowsEmptySnippet(unittest.TestCase):
 class TestRankRowsBranchMisses(unittest.TestCase):
     """Lines 1048, 1052->1051, 1055, 1057->1044: _rank_rows branch coverage."""
 
-    def _insert_doc(self, conn: sqlite3.Connection, file_path: str, title: str, content: str,
-                    source_type: str = "codex_session") -> None:
+    def _insert_doc(
+        self, conn: sqlite3.Connection, file_path: str, title: str, content: str, source_type: str = "codex_session"
+    ) -> None:
         conn.execute(
             """INSERT OR REPLACE INTO session_documents(
                 file_path, source_type, session_id, title, content,
                 created_at, created_at_epoch, file_mtime, file_size, updated_at_epoch
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (file_path, source_type, "s1", title, content,
-             "2026-03-25T00:00:00Z", 1742860800, 100, 200, 1742860800),
+            (file_path, source_type, "s1", title, content, "2026-03-25T00:00:00Z", 1742860800, 100, 200, 1742860800),
         )
         conn.commit()
 
@@ -2206,9 +2318,7 @@ class TestRankRowsBranchMisses(unittest.TestCase):
                     # The meta result should be filtered out
                     for _, row in ranked:
                         self.assertFalse(
-                            session_index._is_current_repo_meta_result(
-                                row["title"], row["content"], row["file_path"]
-                            )
+                            session_index._is_current_repo_meta_result(row["title"], row["content"], row["file_path"])
                         )
                 finally:
                     conn.close()
@@ -2264,8 +2374,9 @@ class TestRankRowsBranchMisses(unittest.TestCase):
                 try:
                     # Path-only with source_type not in SOURCE_WEIGHT → base score = 1
                     # then -180 for path-only → score = -179 → excluded
-                    self._insert_doc(conn, "/tmp/neg.jsonl", "/tmp/neg/path", "/tmp/neg/path",
-                                     source_type="unknown_source")
+                    self._insert_doc(
+                        conn, "/tmp/neg.jsonl", "/tmp/neg/path", "/tmp/neg/path", source_type="unknown_source"
+                    )
                     rows = session_index._fetch_rows(conn, [])
                     ranked = session_index._rank_rows(rows, [])
                     # The path-only item with unknown source (score=1) -180 = -179 → excluded
@@ -2279,15 +2390,17 @@ class TestSearchRowsNativeRowsPath(unittest.TestCase):
     """Line 1074: _search_rows uses native rows when available."""
 
     def test_native_rows_used_when_available(self) -> None:
-        native_rows = [{
-            "source_type": "native_session",
-            "session_id": "native-s1",
-            "title": "/tmp/native",
-            "file_path": "/tmp/native.jsonl",
-            "created_at": "",
-            "created_at_epoch": 0,
-            "snippet": "native result snippet",
-        }]
+        native_rows = [
+            {
+                "source_type": "native_session",
+                "session_id": "native-s1",
+                "title": "/tmp/native",
+                "file_path": "/tmp/native.jsonl",
+                "created_at": "",
+                "created_at_epoch": 0,
+                "snippet": "native result snippet",
+            }
+        ]
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "session_index.db"
             with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
@@ -2316,9 +2429,18 @@ class TestSearchRowsLiteralSecondRanked(unittest.TestCase):
                         file_path, source_type, session_id, title, content,
                         created_at, created_at_epoch, file_mtime, file_size, updated_at_epoch
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    ("/tmp/lit2.jsonl", "codex_session", "s-lit2", "/tmp/proj",
-                     "literal target phrase content here",
-                     "2026-03-25T00:00:00Z", 1742860800, 100, 200, 1742860800),
+                    (
+                        "/tmp/lit2.jsonl",
+                        "codex_session",
+                        "s-lit2",
+                        "/tmp/proj",
+                        "literal target phrase content here",
+                        "2026-03-25T00:00:00Z",
+                        1742860800,
+                        100,
+                        200,
+                        1742860800,
+                    ),
                 )
                 conn.commit()
                 conn.close()
@@ -2336,20 +2458,26 @@ class TestParseClaudeSessionUserEmptyStrip(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "claude_empty_str.jsonl"
             path.write_text(
-                "\n".join([
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "ca-estr",
-                        "cwd": "/tmp/p",
-                        "timestamp": "2026-03-25T10:00:00Z",
-                        "message": {"content": "   "},  # str but empty after strip
-                    }),
-                    json.dumps({
-                        "type": "user",
-                        "sessionId": "ca-estr",
-                        "message": {"content": "valid non-empty content"},
-                    }),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "ca-estr",
+                                "cwd": "/tmp/p",
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "message": {"content": "   "},  # str but empty after strip
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "ca-estr",
+                                "message": {"content": "valid non-empty content"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             doc = session_index._parse_claude_session(path)
@@ -2421,20 +2549,26 @@ class TestSyncRemovalBatchCommit(unittest.TestCase):
             for i in range(batch_size + 1):
                 p = sessions_dir / f"rem_{i}.jsonl"
                 p.write_text(
-                    "\n".join([
-                        json.dumps({
-                            "type": "session_meta",
-                            "payload": {
-                                "id": f"rm{i}",
-                                "cwd": f"/tmp/rm{i}",
-                                "timestamp": "2026-03-25T00:00:00Z",
-                            },
-                        }),
-                        json.dumps({
-                            "type": "event_msg",
-                            "payload": {"type": "user_message", "message": f"removal test {i}"},
-                        }),
-                    ]),
+                    "\n".join(
+                        [
+                            json.dumps(
+                                {
+                                    "type": "session_meta",
+                                    "payload": {
+                                        "id": f"rm{i}",
+                                        "cwd": f"/tmp/rm{i}",
+                                        "timestamp": "2026-03-25T00:00:00Z",
+                                    },
+                                }
+                            ),
+                            json.dumps(
+                                {
+                                    "type": "event_msg",
+                                    "payload": {"type": "user_message", "message": f"removal test {i}"},
+                                }
+                            ),
+                        ]
+                    ),
                     encoding="utf-8",
                 )
                 paths.append(p)
@@ -2461,6 +2595,7 @@ class TestSearchRowsSecondRankAttempt(unittest.TestCase):
     def _setup_db_with_doc(self, db_path: Path, file_path: str, content: str) -> None:
         """Insert a doc with correct schema version and recent sync to prevent wipe."""
         import time as _time
+
         session_index.ensure_session_db()
         conn = sqlite3.connect(db_path)
         conn.execute(
@@ -2468,8 +2603,18 @@ class TestSearchRowsSecondRankAttempt(unittest.TestCase):
                 file_path, source_type, session_id, title, content,
                 created_at, created_at_epoch, file_mtime, file_size, updated_at_epoch
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (file_path, "codex_session", "sr2", "/tmp/proj", content,
-             "2026-03-25T00:00:00Z", 1742860800, 100, 200, 1742860800),
+            (
+                file_path,
+                "codex_session",
+                "sr2",
+                "/tmp/proj",
+                content,
+                "2026-03-25T00:00:00Z",
+                1742860800,
+                100,
+                200,
+                1742860800,
+            ),
         )
         # Prevent sync from wiping by setting current schema version and recent epoch
         conn.execute(
@@ -2513,6 +2658,7 @@ class TestSearchRowsAnchorTermFallback(unittest.TestCase):
     def _setup_db_with_doc(self, db_path: Path, file_path: str, content: str) -> None:
         """Insert a doc with correct schema version and recent sync to prevent wipe."""
         import time as _time
+
         session_index.ensure_session_db()
         conn = sqlite3.connect(db_path)
         conn.execute(
@@ -2520,8 +2666,18 @@ class TestSearchRowsAnchorTermFallback(unittest.TestCase):
                 file_path, source_type, session_id, title, content,
                 created_at, created_at_epoch, file_mtime, file_size, updated_at_epoch
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (file_path, "codex_session", "anch", "/tmp/proj", content,
-             "2026-03-25T00:00:00Z", 1742860800, 100, 200, 1742860800),
+            (
+                file_path,
+                "codex_session",
+                "anch",
+                "/tmp/proj",
+                content,
+                "2026-03-25T00:00:00Z",
+                1742860800,
+                100,
+                200,
+                1742860800,
+            ),
         )
         conn.execute(
             "INSERT OR REPLACE INTO session_index_meta(key, value) VALUES(?, ?)",
@@ -2539,10 +2695,7 @@ class TestSearchRowsAnchorTermFallback(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "session_index.db"
             with mock.patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db_path)}, clear=False):
-                self._setup_db_with_doc(
-                    db_path, "/tmp/anchor.jsonl",
-                    "anchor testing content with keywords"
-                )
+                self._setup_db_with_doc(db_path, "/tmp/anchor.jsonl", "anchor testing content with keywords")
 
                 call_count = [0]
                 original_rank = session_index._rank_rows
@@ -2555,9 +2708,7 @@ class TestSearchRowsAnchorTermFallback(unittest.TestCase):
 
                 with mock.patch.object(session_index, "_iter_sources", return_value=[]):
                     with mock.patch.object(session_index, "_rank_rows", side_effect=patched_rank_anchor):
-                        results = session_index._search_rows(
-                            "anchor testing content keywords", literal=True
-                        )
+                        results = session_index._search_rows("anchor testing content keywords", literal=True)
         # Verify anchor fallback was triggered (3+ rank calls) and result is a list
         self.assertIsInstance(results, list)
         self.assertGreaterEqual(call_count[0], 3)

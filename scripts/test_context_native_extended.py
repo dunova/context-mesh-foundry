@@ -833,5 +833,122 @@ class TestMain(unittest.TestCase):
         mock_stderr.write.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# R16: target remaining uncovered lines in context_native
+# ---------------------------------------------------------------------------
+
+
+class TestParseNativeMatchesNoneFromDict(unittest.TestCase):
+    """Line 197->193: NativeMatch.from_dict returns None for invalid entry."""
+
+    def test_parse_native_matches_skips_none_from_dict(self) -> None:
+        # An entry missing 'source' will cause from_dict to return None
+        fake_result = context_native.NativeRunResult(
+            backend="go",
+            returncode=0,
+            stdout='{"matches":[{"path":"/some/path.md"},{"source":"s","path":"/p.md"}]}',
+            stderr="",
+            command=[],
+        )
+        matches = context_native.parse_native_matches(fake_result)
+        # Only the second entry (with source) should be returned
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].source, "s")
+
+    def test_parse_native_matches_skips_non_dict_entries(self) -> None:
+        # Non-dict items in the list are skipped at line 194 (continue)
+        fake_result = context_native.NativeRunResult(
+            backend="go",
+            returncode=0,
+            stdout='{"matches":["not_a_dict", null, {"source":"s","path":"/p.md"}]}',
+            stderr="",
+            command=[],
+        )
+        matches = context_native.parse_native_matches(fake_result)
+        self.assertEqual(len(matches), 1)
+
+
+class TestLoadHealthCacheTypeValueError(unittest.TestCase):
+    """Lines 555-556: TypeError/ValueError when cached_at is invalid type."""
+
+    def test_load_health_cache_type_error_in_cached_at(self) -> None:
+        import json as _json
+        import tempfile
+
+        # Write a cache file with cached_at being a list (causes TypeError in float())
+        bad_cache = _json.dumps({"cached_at": [1, 2, 3], "payload": {"ok": True}})
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            fh.write(bad_cache)
+            fh_path = fh.name
+        try:
+            import os as _os
+
+            with mock.patch.object(
+                context_native,
+                "NATIVE_HEALTH_CACHE_PATH",
+                mock.MagicMock(__str__=lambda s: fh_path, read_text=lambda **kw: bad_cache),
+            ):
+                # Patch the path object itself
+                with mock.patch.object(
+                    context_native.NATIVE_HEALTH_CACHE_PATH.__class__,
+                    "read_text",
+                    return_value=bad_cache,
+                    create=True,
+                ):
+                    pass
+            # Direct test: call _load_health_cache with a mock path
+            from pathlib import Path
+
+            cache_path = Path(fh_path)
+            with mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_PATH", cache_path):
+                result = context_native._load_health_cache()
+            # Should return None because float([1,2,3]) raises TypeError
+            self.assertIsNone(result)
+        finally:
+            import os as _os
+
+            _os.unlink(fh_path)
+
+    def test_load_health_cache_value_error_in_cached_at(self) -> None:
+        import json as _json
+        import tempfile
+
+        # cached_at = "not-a-number" causes ValueError in float()
+        bad_cache = _json.dumps({"cached_at": "not-a-number", "payload": {"ok": True}})
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            fh.write(bad_cache)
+            fh_path = fh.name
+        try:
+            from pathlib import Path
+
+            cache_path = Path(fh_path)
+            with mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_PATH", cache_path):
+                result = context_native._load_health_cache()
+            self.assertIsNone(result)
+        finally:
+            import os as _os
+
+            _os.unlink(fh_path)
+
+
+class TestStoreHealthCacheOSError(unittest.TestCase):
+    """Lines 596-597: OSError from os.open in _store_health_cache."""
+
+    def test_store_health_cache_handles_oserror_on_open(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from pathlib import Path
+
+            cache_path = Path(tmpdir) / "health_cache.json"
+            with (
+                mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_PATH", cache_path),
+                mock.patch.object(context_native, "NATIVE_HEALTH_CACHE_TTL_SEC", 300),
+                mock.patch("os.open", side_effect=OSError("permission denied")),
+            ):
+                # Should not raise; OSError is caught and silently skipped
+                context_native._store_health_cache({"ok": True})
+
+
 if __name__ == "__main__":
     unittest.main()

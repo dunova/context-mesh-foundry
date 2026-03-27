@@ -1487,7 +1487,6 @@ class TestCheckAndExportIdleExtended(unittest.TestCase):
         self.assertLessEqual(len(self.tracker.sessions["big_sid"]["messages"]), 200)
 
 
-
 # ---------------------------------------------------------------------------
 # poll_antigravity — detailed coverage of lines 816-917
 # ---------------------------------------------------------------------------
@@ -1502,6 +1501,7 @@ class TestPollAntigravityDetailed(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _setup_brain(self, ingest_mode: str = "live") -> Path:
@@ -1752,6 +1752,7 @@ class TestExportWithHttpClient(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _make_data(self) -> dict:
@@ -1841,6 +1842,7 @@ class TestRetryPending(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_no_op_when_no_http_client(self) -> None:
@@ -1973,6 +1975,7 @@ class TestMain(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         # Reset global shutdown flag
         context_daemon._shutdown = False
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -2205,6 +2208,7 @@ class TestRefreshSourcesEdgeCases(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_source_path_removed_from_active_when_offline(self) -> None:
@@ -2218,9 +2222,7 @@ class TestRefreshSourcesEdgeCases(unittest.TestCase):
         original_sources = context_daemon.JSONL_SOURCES.copy()
         original_flags = context_daemon.SOURCE_MONITOR_FLAGS.copy()
         try:
-            context_daemon.JSONL_SOURCES = {
-                "vanished_src": [{"path": nonexistent, "sid_keys": [], "text_keys": []}]
-            }
+            context_daemon.JSONL_SOURCES = {"vanished_src": [{"path": nonexistent, "sid_keys": [], "text_keys": []}]}
             context_daemon.SOURCE_MONITOR_FLAGS = {"vanished_src": True}
             context_daemon.ENABLE_SHELL_MONITOR = False
             self.tracker._last_source_refresh = 0
@@ -2270,9 +2272,7 @@ class TestRefreshSourcesEdgeCases(unittest.TestCase):
         original_sources = context_daemon.JSONL_SOURCES.copy()
         original_flags = context_daemon.SOURCE_MONITOR_FLAGS.copy()
         try:
-            context_daemon.JSONL_SOURCES = {
-                "switch_src": [{"path": new_path, "sid_keys": [], "text_keys": []}]
-            }
+            context_daemon.JSONL_SOURCES = {"switch_src": [{"path": new_path, "sid_keys": [], "text_keys": []}]}
             context_daemon.SOURCE_MONITOR_FLAGS = {"switch_src": True}
             context_daemon.ENABLE_SHELL_MONITOR = False
             self.tracker._last_source_refresh = 0
@@ -2358,6 +2358,7 @@ class TestSignalAndLockHelpers(unittest.TestCase):
             context_daemon.LOCK_FILE = original_lock
             context_daemon._LOCK_FD = original_fd
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -2423,6 +2424,7 @@ class TestNextSleepIntervalEdgeCases(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_night_wraps_around_midnight(self) -> None:
@@ -2512,6 +2514,7 @@ class TestHeartbeatResourceModule(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_heartbeat_with_resource_module_linux(self) -> None:
@@ -2976,7 +2979,15 @@ class TestPollCodexSessionsEdgeCases(unittest.TestCase):
     def test_old_file_skipped(self) -> None:
         d = self._make_codex_dir()
         p = d / "session.jsonl"
-        line = json.dumps({"type": "response_item", "payload": {"type": "message", "content": [{"type": "output_text", "text": "hello"}]}}) + "\n"
+        line = (
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "payload": {"type": "message", "content": [{"type": "output_text", "text": "hello"}]},
+                }
+            )
+            + "\n"
+        )
         p.write_text(line)
         # Set mtime to > 1 hour ago
         old_time = time.time() - 7200
@@ -3683,10 +3694,15 @@ class TestPollCodexSessionsMoreEdgeCases(unittest.TestCase):
         d = Path(self.tmp) / "codex3"
         d.mkdir()
         p = d / "empty_msg.jsonl"
-        line = json.dumps({
-            "type": "response_item",
-            "payload": {"type": "message", "content": [{"type": "other_type", "text": "hidden"}]}
-        }) + "\n"
+        line = (
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "payload": {"type": "message", "content": [{"type": "other_type", "text": "hidden"}]},
+                }
+            )
+            + "\n"
+        )
         p.write_text(line)
         key = self.tracker._cursor_key("codex_session", "codex_session", p)
         self.tracker.file_cursors[key] = (p.stat().st_ino, 0)
@@ -3903,7 +3919,9 @@ class TestPollAntigravityFinalOnlyChecks(unittest.TestCase):
                     with patch.object(context_daemon, "ANTIGRAVITY_INGEST_MODE", "final_only"):
                         with patch.object(context_daemon, "ANTIGRAVITY_QUIET_SEC", 30):
                             with patch.object(context_daemon, "ANTIGRAVITY_MIN_DOC_BYTES", 500):
-                                with patch("context_daemon._refresh_glob_cache", return_value=([sdir], time.time(), False)):
+                                with patch(
+                                    "context_daemon._refresh_glob_cache", return_value=([sdir], time.time(), False)
+                                ):
                                     with patch.object(self.tracker, "_export") as mock_export:
                                         self.tracker.poll_antigravity()
         mock_export.assert_not_called()
@@ -3928,7 +3946,9 @@ class TestPollAntigravityFinalOnlyChecks(unittest.TestCase):
                     with patch.object(context_daemon, "ANTIGRAVITY_INGEST_MODE", "final_only"):
                         with patch.object(context_daemon, "ANTIGRAVITY_QUIET_SEC", 30):
                             with patch.object(context_daemon, "ANTIGRAVITY_MIN_DOC_BYTES", 100):
-                                with patch("context_daemon._refresh_glob_cache", return_value=([sdir], time.time(), False)):
+                                with patch(
+                                    "context_daemon._refresh_glob_cache", return_value=([sdir], time.time(), False)
+                                ):
                                     # Make wt.stat() raise OSError for size check
                                     # We need the path in meta to be doc, and doc.stat() to raise
                                     with patch.object(SessionTracker, "_export"):
@@ -3989,9 +4009,7 @@ class TestRefreshSourcesBranches(unittest.TestCase):
         self.tracker._last_source_refresh = 0.0
 
         # Patch JSONL_SOURCES to only contain our nonexistent path
-        fake_sources = {
-            "claude_code": [{"path": nonexist, "sid_keys": [], "text_keys": []}]
-        }
+        fake_sources = {"claude_code": [{"path": nonexist, "sid_keys": [], "text_keys": []}]}
         with patch.object(context_daemon, "JSONL_SOURCES", fake_sources):
             with patch.object(context_daemon, "SOURCE_MONITOR_FLAGS", {"claude_code": True}):
                 with patch.object(context_daemon, "ENABLE_SHELL_MONITOR", False):

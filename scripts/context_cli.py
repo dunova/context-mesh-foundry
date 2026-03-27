@@ -342,15 +342,24 @@ def cmd_import(args: argparse.Namespace) -> int:
     try:
         payload = json.loads(input_path.read_text(encoding="utf-8"))
     except OSError as exc:
-        print(f"Error reading import file '{input_path}': {exc}. Check that the file exists and is readable.", file=sys.stderr)
+        print(
+            f"Error reading import file '{input_path}': {exc}. Check that the file exists and is readable.",
+            file=sys.stderr,
+        )
         return 1
     except json.JSONDecodeError as exc:
-        print(f"Error parsing JSON from '{input_path}': {exc}. Ensure the file is a valid JSON export produced by 'contextgo export'.", file=sys.stderr)
+        print(
+            f"Error parsing JSON from '{input_path}': {exc}. Ensure the file is a valid JSON export produced by 'contextgo export'.",
+            file=sys.stderr,
+        )
         return 1
     try:
         result = import_observations_payload(payload, sync_from_storage=not args.no_sync)
     except ValueError as exc:
-        print(f"Invalid import payload from '{input_path}': {exc}. Ensure the file was created by 'contextgo export'.", file=sys.stderr)
+        print(
+            f"Invalid import payload from '{input_path}': {exc}. Ensure the file was created by 'contextgo export'.",
+            file=sys.stderr,
+        )
         return 1
     print(f"import done inserted={result['inserted']} skipped={result['skipped']} db={result['db_path']}")
     return 0

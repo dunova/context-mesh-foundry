@@ -437,11 +437,15 @@ class TestMainDryRunNoDB(unittest.TestCase):
             (codex_root / "s1.jsonl").write_text("{}", encoding="utf-8")
             (codex_root / "s2.jsonl").write_text("{}", encoding="utf-8")
             with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                result = context_maintenance.main([
-                    "--db", "/nonexistent/db.db",
-                    "--dry-run",
-                    "--codex-root", str(codex_root),
-                ])
+                result = context_maintenance.main(
+                    [
+                        "--db",
+                        "/nonexistent/db.db",
+                        "--dry-run",
+                        "--codex-root",
+                        str(codex_root),
+                    ]
+                )
             output = mock_out.getvalue()
         self.assertEqual(result, 0)
         self.assertIn("missing_codex=2", output)
@@ -453,11 +457,15 @@ class TestMainDryRunNoDB(unittest.TestCase):
             claude_root.mkdir()
             (claude_root / "sess.jsonl").write_text("{}", encoding="utf-8")
             with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                result = context_maintenance.main([
-                    "--db", "/nonexistent/db.db",
-                    "--dry-run",
-                    "--claude-root", str(claude_root),
-                ])
+                result = context_maintenance.main(
+                    [
+                        "--db",
+                        "/nonexistent/db.db",
+                        "--dry-run",
+                        "--claude-root",
+                        str(claude_root),
+                    ]
+                )
             output = mock_out.getvalue()
         self.assertEqual(result, 0)
         self.assertIn("missing_claude_main=1", output)
@@ -472,12 +480,17 @@ class TestMainDryRunNoDB(unittest.TestCase):
             claude_root.mkdir()
             (claude_root / "b.jsonl").write_text("{}", encoding="utf-8")
             with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                result = context_maintenance.main([
-                    "--db", "/nonexistent/db.db",
-                    "--dry-run",
-                    "--codex-root", str(codex_root),
-                    "--claude-root", str(claude_root),
-                ])
+                result = context_maintenance.main(
+                    [
+                        "--db",
+                        "/nonexistent/db.db",
+                        "--dry-run",
+                        "--codex-root",
+                        str(codex_root),
+                        "--claude-root",
+                        str(claude_root),
+                    ]
+                )
             output = mock_out.getvalue()
         self.assertEqual(result, 0)
         self.assertIn("local_files=2", output)
@@ -544,10 +557,13 @@ class TestMainDatabaseError(unittest.TestCase):
         """When a DatabaseError occurs, the error message is printed to stderr."""
         db_path = self._create_temp_db()
         try:
-            with unittest.mock.patch(
-                "context_maintenance.fetch_existing_session_paths",
-                side_effect=sqlite3.DatabaseError("simulated db error"),
-            ), unittest.mock.patch("sys.stderr", new_callable=io.StringIO) as mock_err:
+            with (
+                unittest.mock.patch(
+                    "context_maintenance.fetch_existing_session_paths",
+                    side_effect=sqlite3.DatabaseError("simulated db error"),
+                ),
+                unittest.mock.patch("sys.stderr", new_callable=io.StringIO) as mock_err,
+            ):
                 context_maintenance.main(["--db", str(db_path)])
                 err_output = mock_err.getvalue()
         finally:
@@ -588,12 +604,17 @@ class TestMainWithExistingPaths(unittest.TestCase):
                 conn.close()
 
                 with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                    result = context_maintenance.main([
-                        "--db", str(db_path),
-                        "--enqueue-missing",
-                        "--codex-root", str(codex_root),
-                        "--claude-root", str(claude_root),
-                    ])
+                    result = context_maintenance.main(
+                        [
+                            "--db",
+                            str(db_path),
+                            "--enqueue-missing",
+                            "--codex-root",
+                            str(codex_root),
+                            "--claude-root",
+                            str(claude_root),
+                        ]
+                    )
                 output = mock_out.getvalue()
             finally:
                 db_path.unlink(missing_ok=True)
@@ -614,11 +635,16 @@ class TestMainWithExistingPaths(unittest.TestCase):
             db_path = self._create_temp_db()
             try:
                 with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                    result = context_maintenance.main([
-                        "--db", str(db_path),
-                        "--claude-root", str(claude_root),
-                        "--codex-root", str(codex_root),
-                    ])
+                    result = context_maintenance.main(
+                        [
+                            "--db",
+                            str(db_path),
+                            "--claude-root",
+                            str(claude_root),
+                            "--codex-root",
+                            str(codex_root),
+                        ]
+                    )
                 output = mock_out.getvalue()
             finally:
                 db_path.unlink(missing_ok=True)
@@ -689,11 +715,16 @@ class TestMainClaudeMissingCount(unittest.TestCase):
             db_path = self._create_temp_db()
             try:
                 with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                    result = context_maintenance.main([
-                        "--db", str(db_path),
-                        "--codex-root", str(codex_root),
-                        "--claude-root", str(claude_root),
-                    ])
+                    result = context_maintenance.main(
+                        [
+                            "--db",
+                            str(db_path),
+                            "--codex-root",
+                            str(codex_root),
+                            "--claude-root",
+                            str(claude_root),
+                        ]
+                    )
                 output = mock_out.getvalue()
             finally:
                 db_path.unlink(missing_ok=True)
@@ -712,15 +743,23 @@ class TestMainClaudeMissingCount(unittest.TestCase):
 
             db_path = self._create_temp_db()
             try:
-                with unittest.mock.patch(
-                    "context_maintenance.collect_local_session_files",
-                    return_value=fake_item,
-                ), unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-                    result = context_maintenance.main([
-                        "--db", str(db_path),
-                        "--codex-root", str(codex_root),
-                        "--claude-root", str(claude_root),
-                    ])
+                with (
+                    unittest.mock.patch(
+                        "context_maintenance.collect_local_session_files",
+                        return_value=fake_item,
+                    ),
+                    unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out,
+                ):
+                    result = context_maintenance.main(
+                        [
+                            "--db",
+                            str(db_path),
+                            "--codex-root",
+                            str(codex_root),
+                            "--claude-root",
+                            str(claude_root),
+                        ]
+                    )
                 output = mock_out.getvalue()
             finally:
                 db_path.unlink(missing_ok=True)
@@ -738,18 +777,14 @@ class TestMainEntryPoint(unittest.TestCase):
         """Verify __name__ == '__main__' path raises SystemExit wrapping main()."""
         # We simulate what happens when the module is run directly.
         # Import the module's main, confirm SystemExit is raised with int code.
-        with unittest.mock.patch(
-            "context_maintenance.main", return_value=0
-        ) as mock_main:
+        with unittest.mock.patch("context_maintenance.main", return_value=0) as mock_main:
             with self.assertRaises(SystemExit) as ctx:
                 raise SystemExit(mock_main())
         self.assertEqual(ctx.exception.code, 0)
 
     def test_main_entry_point_error_code(self) -> None:
         """SystemExit propagates a non-zero return code from main()."""
-        with unittest.mock.patch(
-            "context_maintenance.main", return_value=1
-        ) as mock_main:
+        with unittest.mock.patch("context_maintenance.main", return_value=1) as mock_main:
             with self.assertRaises(SystemExit) as ctx:
                 raise SystemExit(mock_main())
         self.assertEqual(ctx.exception.code, 1)

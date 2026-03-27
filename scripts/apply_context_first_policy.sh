@@ -79,9 +79,11 @@ ensure_policy() {
 
     local tmp
     tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' EXIT
     strip_old_block "$file" > "$tmp"
     printf '\n%s\n' "$POLICY_BLOCK" >> "$tmp"
     mv "$tmp" "$file"
+    trap - EXIT
     log "patched: $file"
 }
 
