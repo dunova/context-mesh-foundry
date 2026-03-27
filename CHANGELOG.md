@@ -15,6 +15,38 @@ _No unreleased changes._
 
 ---
 
+## [0.9.3] — 2026-03-27
+
+### Overview
+
+Production-grade quality release. 20-round AutoResearch optimization achieving 98.3% test coverage with 1131 tests, lazy CLI imports for 37% faster startup, and comprehensive edge-case hardening across all modules.
+
+生产级质量版本。20 轮 AutoResearch 优化，实现 98.3% 测试覆盖率、1131 个测试、CLI 懒加载提速 37%，全模块边缘场景加固。
+
+### Added
+
+- 348 new tests across all modules (daemon, smoke, viewer, session_index, memory_index, CLI, e2e, config, core, native, autoresearch)
+- Lazy import system for CLI startup optimization (80ms -> 50ms)
+- CLI edge-case guards: empty query, invalid port, bad thread count
+- Go scanner: 27 new edge-case tests (Unicode, boundary, noise filter)
+- Shell script mktemp trap for cleanup on failure
+
+### Fixed
+
+- Benchmark environment leak (os.environ restored after runs)
+- ARCHITECTURE.md stale subcommand count (8 -> 10)
+- ruff format aligned across all 42 Python files
+- subprocess.run explicit check=False on all 8 call sites
+
+### Changed
+
+- Test coverage: 84.5% -> 98.3%
+- Test count: 783 -> 1131
+- CLI startup: 80ms -> 50ms (lazy imports)
+- All Python scripts now have executable bit set
+
+---
+
 ## [0.9.2] — 2026-03-27
 
 ### Overview
