@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <strong>Local-first context &amp; memory runtime for multi-agent AI coding teams.</strong><br>
-  <em>面向多 Agent AI 编码团队的多终端上下文与记忆系统</em>
+  <strong>Local-first context & memory runtime for multi-agent AI coding teams.</strong><br>
+  <em>面向多 Agent AI 编码团队的本地优先上下文与记忆运行时。</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dunova/ContextGO/releases/tag/v0.9.0"><img src="https://img.shields.io/badge/version-v0.9.0-2563eb?style=flat" alt="Version"></a>
+  <a href="https://pypi.org/project/contextgo/"><img src="https://img.shields.io/pypi/v/contextgo?color=2563eb&style=flat" alt="PyPI"></a>
   <a href="https://github.com/dunova/ContextGO/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-6d28d9?style=flat" alt="License"></a>
   <a href="https://github.com/dunova/ContextGO/actions/workflows/verify.yml"><img src="https://github.com/dunova/ContextGO/actions/workflows/verify.yml/badge.svg" alt="Build"></a>
   <a href="https://codecov.io/gh/dunova/ContextGO"><img src="https://codecov.io/gh/dunova/ContextGO/branch/main/graph/badge.svg" alt="Coverage"></a>
@@ -16,14 +16,14 @@
 
 ---
 
-ContextGO unifies Codex, Claude, and shell session histories into one **searchable, auditable index** stored entirely on your machine. No Docker. No MCP broker. No external vector database. Deploy in under five minutes on a bare machine.
+ContextGO unifies Codex, Claude, and shell session histories into one **searchable, auditable index** stored entirely on your machine. No Docker. No MCP broker. No external vector database. Deploy in under five minutes.
 
 ---
 
 ## Quick Start
 
 ```bash
-python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
+pip install contextgo
 contextgo health
 contextgo search "auth root cause" --limit 10
 ```
@@ -34,12 +34,12 @@ contextgo search "auth root cause" --limit 10
 
 | | ContextGO | Cursor Context | Continue.dev | Mem0 |
 |---|:---:|:---:|:---:|:---:|
-| Local-first by default | ✓ | Partial | Partial | ✗ |
-| Docker-free | ✓ | ✓ | Partial | ✗ |
-| Multi-agent session index | ✓ | ✗ | ✗ | Partial |
-| Native Rust/Go scan | ✓ | ✗ | ✗ | ✗ |
-| MCP-free by default | ✓ | ✗ | ✗ | ✗ |
-| Built-in delivery validation | ✓ | ✗ | ✗ | ✗ |
+| Local-first by default | Yes | Partial | Partial | No |
+| Docker-free | Yes | Yes | Partial | No |
+| Multi-agent session index | Yes | No | No | Partial |
+| Native Rust/Go scan | Yes | No | No | No |
+| MCP-free by default | Yes | No | No | No |
+| Built-in delivery validation | Yes | No | No | No |
 
 ---
 
@@ -112,15 +112,15 @@ contextgo serve --port 37677        # start local viewer at 127.0.0.1:37677
 ### Step 1: Install
 
 ```bash
-python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
+pip install contextgo
 contextgo health
 ```
 
-If you prefer a local editable install, install from source:
+If `pip` is not available, install from source:
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git
-cd ContextGO && python3 -m pip install -e . && contextgo health
+cd ContextGO && pip install -e . && contextgo health
 ```
 
 ### Step 2: Build initial index
@@ -148,11 +148,11 @@ Tell your user: "I need to add ContextGO instructions to [config file]. This let
 
 After setup, these behaviors activate automatically:
 
-- **You don't know the project history** → `contextgo search "topic" --limit 5` before answering
-- **User says "continue", "what was I doing"** → `contextgo semantic "topic" --limit 3` and summarize
-- **User asks about past decisions** → search and summarize in 2-3 sentences
-- **Hard problem solved** → suggest `contextgo save` to persist the conclusion
-- **Session ends** → save handoff notes for the next session
+- **You don't know the project history** -> `contextgo search "topic" --limit 5` before answering
+- **User says "continue", "what was I doing"** -> `contextgo semantic "topic" --limit 3` and summarize
+- **User asks about past decisions** -> search and summarize in 2-3 sentences
+- **Hard problem solved** -> suggest `contextgo save` to persist the conclusion
+- **Session ends** -> save handoff notes for the next session
 
 Full behavioral spec: [AGENTS.md](AGENTS.md)
 
@@ -201,16 +201,16 @@ ContextGO/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local dev setup, test commands, and PR quality gates.
 
-- [SECURITY.md](SECURITY.md) — threat model and responsible disclosure
-- [CHANGELOG.md](CHANGELOG.md) — full version history
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component breakdown and design principles
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common failure modes
+- [SECURITY.md](SECURITY.md) -- threat model and responsible disclosure
+- [CHANGELOG.md](CHANGELOG.md) -- full version history
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) -- component breakdown and design principles
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) -- common failure modes
 
 ---
 
 ## License
 
-Licensed under [AGPL-3.0](LICENSE). You may use, modify, and distribute ContextGO freely — any modifications distributed as a service must also be open-sourced under AGPL-3.0. Commercial licensing available; contact the maintainers.
+Licensed under [AGPL-3.0](LICENSE). You may use, modify, and distribute ContextGO freely -- any modifications distributed as a service must also be open-sourced under AGPL-3.0. Commercial licensing available; contact the maintainers.
 
 Copyright 2025-2026 Dunova.
 
@@ -219,14 +219,14 @@ Copyright 2025-2026 Dunova.
 
 # 中文版
 
-ContextGO 将 Codex、Claude 和 shell 的会话历史统一到一条**可检索、可追溯的索引**中，全部存储在本机。无需 Docker，无需 MCP 代理，无需外部向量数据库。裸机上五分钟内完成部署。
+ContextGO 将 Codex、Claude 和 Shell 的会话历史统一到一条**可检索、可追溯的索引**中，全部存储在本机。无需 Docker，无需 MCP 代理，无需外部向量数据库。五分钟内完成部署。
 
 ---
 
 ## 快速上手
 
 ```bash
-python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
+pip install contextgo
 contextgo health
 contextgo search "认证根因" --limit 10
 ```
@@ -237,12 +237,12 @@ contextgo search "认证根因" --limit 10
 
 | | ContextGO | Cursor Context | Continue.dev | Mem0 |
 |---|:---:|:---:|:---:|:---:|
-| 默认本地优先 | ✓ | 部分 | 部分 | ✗ |
-| 无需 Docker | ✓ | ✓ | 部分 | ✗ |
-| 多 Agent 会话索引 | ✓ | ✗ | ✗ | 部分 |
-| Rust/Go 原生扫描 | ✓ | ✗ | ✗ | ✗ |
-| 默认无 MCP | ✓ | ✗ | ✗ | ✗ |
-| 内置交付验证链 | ✓ | ✗ | ✗ | ✗ |
+| 默认本地优先 | 是 | 部分 | 部分 | 否 |
+| 无需 Docker | 是 | 是 | 部分 | 否 |
+| 多 Agent 会话索引 | 是 | 否 | 否 | 部分 |
+| Rust/Go 原生扫描 | 是 | 否 | 否 | 否 |
+| 默认无 MCP | 是 | 否 | 否 | 否 |
+| 内置交付验证链 | 是 | 否 | 否 | 否 |
 
 ---
 
@@ -315,15 +315,15 @@ contextgo serve --port 37677           # 在 127.0.0.1:37677 启动本地 Viewer
 ### 第一步：安装
 
 ```bash
-python3 -m pip install "git+https://github.com/dunova/ContextGO.git@v0.9.0"
+pip install contextgo
 contextgo health
 ```
 
-如果你更偏好本地可编辑安装，可直接从源码安装：
+如果 `pip` 不可用，可从源码安装：
 
 ```bash
 git clone https://github.com/dunova/ContextGO.git
-cd ContextGO && python3 -m pip install -e . && contextgo health
+cd ContextGO && pip install -e . && contextgo health
 ```
 
 ### 第二步：构建初始索引
@@ -351,11 +351,11 @@ contextgo search "test" --limit 1       # 验证索引正常工作
 
 配置完成后，以下行为自动激活：
 
-- **不了解项目历史** → 回答前先执行 `contextgo search "topic" --limit 5`
-- **用户说"继续"、"我在做什么"** → 执行 `contextgo semantic "topic" --limit 3` 并总结
-- **用户询问过往决策** → 检索并用 2-3 句话总结
-- **解决了复杂问题** → 建议执行 `contextgo save` 持久化结论
-- **会话结束** → 保存交接备注供下一个会话使用
+- **不了解项目历史** -> 回答前先执行 `contextgo search "topic" --limit 5`
+- **用户说"继续"、"我在做什么"** -> 执行 `contextgo semantic "topic" --limit 3` 并总结
+- **用户询问过往决策** -> 检索并用 2-3 句话总结
+- **解决了复杂问题** -> 建议执行 `contextgo save` 持久化结论
+- **会话结束** -> 保存交接备注供下一个会话使用
 
 完整行为规范：[AGENTS.md](AGENTS.md)
 
@@ -404,15 +404,15 @@ ContextGO/
 
 见 [CONTRIBUTING.md](CONTRIBUTING.md) 了解本地开发环境、测试命令和 PR 质量门。
 
-- [SECURITY.md](SECURITY.md) — 威胁模型与负责任披露
-- [CHANGELOG.md](CHANGELOG.md) — 完整版本变更记录
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 组件概览与设计原则
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — 常见故障与排查步骤
+- [SECURITY.md](SECURITY.md) -- 威胁模型与负责任披露
+- [CHANGELOG.md](CHANGELOG.md) -- 完整版本变更记录
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) -- 组件概览与设计原则
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) -- 常见故障与排查步骤
 
 ---
 
 ## 许可证
 
-采用 [AGPL-3.0](LICENSE) 许可证。你可以自由使用、修改和分发 ContextGO——以服务形式分发修改版本时，需以同等条款开源。如需商业授权，请联系维护者。
+采用 [AGPL-3.0](LICENSE) 许可证。你可以自由使用、修改和分发 ContextGO -- 以服务形式分发修改版本时，需以同等条款开源。如需商业授权，请联系维护者。
 
-Copyright 2025-2026 Dunova。
+Copyright 2025-2026 Dunova.
