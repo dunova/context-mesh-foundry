@@ -1118,8 +1118,11 @@ class SessionTracker:
         )
 
         try:
-            file_path.write_text(formatted, encoding="utf-8")
-            os.chmod(file_path, 0o600)
+            fd = os.open(str(file_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                os.write(fd, formatted.encode("utf-8"))
+            finally:
+                os.close(fd)
             self._index_dirty = True
             self.maybe_sync_index()
         except OSError as exc:
@@ -1167,8 +1170,11 @@ class SessionTracker:
         pending_path = PENDING_DIR / file_path.name
         try:
             self._prune_pending_files()
-            pending_path.write_text(formatted, encoding="utf-8")
-            os.chmod(pending_path, 0o600)
+            fd = os.open(str(pending_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                os.write(fd, formatted.encode("utf-8"))
+            finally:
+                os.close(fd)
             logger.info("Queued pending export: %s", pending_path.name)
         except OSError as exc:
             logger.error("Failed to write pending export: %s", exc)

@@ -19,23 +19,31 @@ _No unreleased changes._
 
 ### Overview
 
-Bugfix and quality release. Fixes `contextgo serve` under pipx installation, improves Chinese short-query recall, and resolves 4 platform-specific test failures on macOS.
+Bugfix, security, and quality release. Fixes `contextgo serve` under pipx, improves Chinese short-query recall, resolves macOS test failures, eliminates file write race conditions, and corrects documentation.
 
-修复版本。修复 pipx 安装下 `contextgo serve` 模块导入问题，改善中文短查询召回率，修复 macOS 平台上 4 个测试用例的兼容性问题。
+修复、安全和质量版本。修复 pipx 下 `contextgo serve`，改善中文短查询召回率，修复 macOS 测试问题，消除文件写入竞争条件，修正文档。
 
 ### Fixed
 
-- **`contextgo serve` ModuleNotFoundError under pipx** — `_load_module()` now falls back to package-relative import (`scripts.context_server`) when the top-level import fails, fixing the `contextgo serve` command in pipx-installed environments
+- **`contextgo serve` ModuleNotFoundError under pipx** — `_load_module()` now falls back to package-relative import (`scripts.context_server`) when the top-level import fails
 - **`test_too_short_path_raises_value_error`** — use `/x` instead of `/tmp` as test input; macOS resolves `/tmp` to `/private/tmp` (4 components), bypassing the `< 3` guard
-- **`test_valid_deep_path_accepted`** — use `Path.home()` based path instead of hard-coded `/home/user/.contextgo` which macOS resolves to `/System/Volumes/Data/home/...`
+- **`test_valid_deep_path_accepted`** — use `Path.home()` based path instead of hard-coded `/home/user/.contextgo`
 - **`test_zsh_extended_history_format`** — accept both `20240325` and `20240326` in session id to handle UTC+N timezone rollover
-- **`test_skips_paths_already_in_db`** — resolve temp directory paths before inserting into DB, matching the resolved paths from `collect_local_session_files()`
-- **`cli-health` regression test** — parse health output as JSON instead of string-matching `"all_ok": true`, avoiding compact-vs-pretty JSON format mismatch
+- **`test_skips_paths_already_in_db`** — resolve temp directory paths before inserting into DB
+- **`cli-health` regression test** — parse health output as JSON instead of string-matching
+- **Security**: Atomic file writes in `context_daemon.py` — eliminated race condition between `write_text()` and `chmod()` by using `os.open()` with `0o600` mode
+- **Docs**: Corrected all FTS5 references to reflect actual LIKE-based search implementation
+- **CI**: Raised `--cov-fail-under` from 50% to 95% to match actual 98.3% coverage
+- **Metadata**: Updated OS classifier from `OS Independent` to `POSIX`/`MacOS`
+- **Code**: Removed hardcoded `/tmp/contextgo-gate` path in `e2e_quality_gate.py`
 
 ### Improved
 
-- **Chinese short-query recall** — split CJK stopwords into a separate set (`CJK_STOPWORDS`); when all query terms are CJK stopwords (e.g. "搜索方案"), they are preserved as search terms instead of being discarded. Longer queries with mixed content still filter CJK stopwords normally
-- **Daemon httpx warning** — downgraded "httpx not installed" from `WARNING` to `INFO` level, reducing noise in daemon logs and launchd journals
+- **Chinese short-query recall** — split CJK stopwords into a separate set (`CJK_STOPWORDS`); when all query terms are CJK stopwords, they are preserved as search terms
+- **Daemon httpx warning** — downgraded "httpx not installed" from `WARNING` to `INFO` level
+
+### Stats / 统计
+- Tests: 1131 passed, Coverage: 98.3%
 
 ---
 
@@ -266,7 +274,7 @@ Foundational release of the local-first `contextgo` runtime. All context capture
 
 - Standalone `contextgo` runtime with unified CLI:
   `search`, `semantic`, `save`, `export`, `import`, `serve`, `maintain`, `health`
-- Built-in session index backed by local SQLite (FTS5).
+- Built-in session index backed by local SQLite.
 - Benchmark harness under `benchmarks/`.
 - Rust session-scan prototype under `native/session_scan/`.
 - Platform installation matrix, validation checklist, and native migration narrative in docs.

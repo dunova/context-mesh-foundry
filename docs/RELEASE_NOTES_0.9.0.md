@@ -331,7 +331,7 @@ contextgo health
 ContextGO 0.9.0 是面向多 agent AI 编码团队的本地优先上下文运行时的里程碑版本：
 
 - **本地优先**：默认无 MCP、无 Docker、无云向量依赖
-- **零成本上下文**：本地 SQLite FTS5，token 开销极低
+- **零成本上下文**：本地 SQLite，token 开销极低
 - **Native 热路径**：Rust / Go 渐进式替换，性能递增无需修改 CLI
 - **生产就绪**：完整 CI/CD、pytest-cov、strict mode shell 入口、可发布打包链路
 - **CJK 安全**：Go 与 Rust 均以码点安全方式处理多字节 session 内容

@@ -120,9 +120,9 @@ Returns the current health status of the memory index.
 
 ### GET /api/search
 
-Search indexed memory observations using SQLite FTS5.
+Search indexed memory observations using SQLite.
 
-使用 SQLite FTS5 搜索已索引的记忆观测。
+使用 SQLite 搜索已索引的记忆观测。
 
 **Query parameters / 查询参数**
 

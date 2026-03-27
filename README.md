@@ -55,7 +55,7 @@ flowchart LR
 
     subgraph Core
         B[Daemon\nCapture · Sanitize]
-        C[(SQLite FTS5\n+ Files)]
+        C[(SQLite\n+ Files)]
         F[Native Backends\nRust · Go]
     end
 
@@ -71,7 +71,7 @@ flowchart LR
     D --> E
 ```
 
-**Stack:** Python (control plane) · Rust (`native/session_scan/`) · Go (`native/session_scan_go/`) · SQLite FTS5 (index)
+**Stack:** Python (control plane) · Rust (`native/session_scan/`) · Go (`native/session_scan_go/`) · SQLite (index)
 
 ---
 
@@ -183,7 +183,7 @@ ContextGO/
 ├── scripts/                   # Python control plane
 │   ├── context_cli.py         # Single entry point for all commands
 │   ├── context_daemon.py      # Session capture and sanitization
-│   ├── session_index.py       # SQLite FTS5 session index
+│   ├── session_index.py       # SQLite session index
 │   ├── memory_index.py        # Memory and observation index
 │   ├── context_server.py      # Local viewer API server
 │   └── context_smoke.py       # Smoke test suite
@@ -274,7 +274,7 @@ flowchart LR
     D --> E
 ```
 
-**技术栈：** Python（控制层）· Rust（`native/session_scan/`）· Go（`native/session_scan_go/`）· SQLite FTS5（索引）
+**技术栈：** Python（控制层）· Rust（`native/session_scan/`）· Go（`native/session_scan_go/`）· SQLite（索引）
 
 ---
 
@@ -386,7 +386,7 @@ ContextGO/
 ├── scripts/                   # Python 控制层
 │   ├── context_cli.py         # 所有命令的统一入口
 │   ├── context_daemon.py      # 会话采集与脱敏
-│   ├── session_index.py       # SQLite FTS5 会话索引
+│   ├── session_index.py       # SQLite 会话索引
 │   ├── memory_index.py        # 记忆与观察索引
 │   ├── context_server.py      # 本地 Viewer API 服务器
 │   └── context_smoke.py       # Smoke 测试套件

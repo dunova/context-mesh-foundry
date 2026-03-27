@@ -35,10 +35,10 @@ contextgo search "<keyword>" --limit 5
 contextgo search "<exact phrase>" --limit 5 --literal
 ```
 
-`semantic` checks saved memory files first, then falls back to FTS5 session history.
+`semantic` checks saved memory files first, then falls back to session history index.
 `search` queries the index directly.
 
-`semantic` 优先检查已保存记忆，再回退到 FTS5 会话历史索引。
+`semantic` 优先检查已保存记忆，再回退到会话历史索引。
 `search` 直接查询索引。
 
 **Deliver results as:** "You were working on X. Last session you decided Y. Next step was Z."

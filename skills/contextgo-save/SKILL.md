@@ -39,7 +39,7 @@ contextgo save \
 
 | Situation / 场景 | Example Title / 标题示例 |
 |---|---|
-| Architectural decision / 架构决策 | `Decision: chose SQLite FTS5 over Elasticsearch` |
+| Architectural decision / 架构决策 | `Decision: chose SQLite over Elasticsearch` |
 | Bug root cause found / 发现 bug 根因 | `Bug: OOM in daemon — unbounded cursor dict` |
 | Config/env choice / 配置选择 | `Config: POLL_INTERVAL_SEC=180 optimal for battery` |
 | Warning for future self / 对未来的警告 | `Warning: do not use mmap on NFS storage roots` |

@@ -16,7 +16,7 @@ Auto-behaviors (search on uncertainty, save on milestones) are defined in `AGENT
 scripts/           Python core
   context_cli.py       CLI entry point (all commands)
   context_config.py    Env var resolution, storage root
-  session_index.py     SQLite FTS5 session index
+  session_index.py     SQLite session index (LIKE-based search)
   memory_index.py      Memory index, export/import
   context_daemon.py    Session capture and sanitization
   context_server.py    Local viewer API

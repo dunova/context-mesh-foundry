@@ -42,7 +42,7 @@ def prepare_fixture_home(home: Path) -> None:
                         "type": "session_meta",
                         "payload": {
                             "id": "gate-codex",
-                            "cwd": "/tmp/contextgo-gate",
+                            "cwd": str(home),
                             "timestamp": "2026-03-25T00:00:00Z",
                         },
                     }
@@ -67,7 +67,7 @@ def prepare_fixture_home(home: Path) -> None:
                     {
                         "type": "session_meta",
                         "sessionId": "gate-claude",
-                        "cwd": "/tmp/contextgo-gate",
+                        "cwd": str(home),
                         "timestamp": "2026-03-25T01:00:00Z",
                     }
                 ),

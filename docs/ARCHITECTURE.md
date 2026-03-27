@@ -23,8 +23,8 @@ flowchart LR
 
     subgraph Core
         D["context_daemon<br/>capture · sanitize · write"]
-        SI["session_index<br/>SQLite FTS5"]
-        MI["memory_index<br/>SQLite FTS5"]
+        SI["session_index<br/>SQLite"]
+        MI["memory_index<br/>SQLite"]
     end
 
     subgraph Interface
@@ -61,7 +61,7 @@ ContextGO/
 │   ├── context_cli.py         # Single canonical entry point
 │   ├── context_daemon.py      # Session capture and sanitization
 │   ├── context_config.py      # Env var resolution and storage root
-│   ├── session_index.py       # SQLite FTS5 session index
+│   ├── session_index.py       # SQLite session index
 │   ├── memory_index.py        # Memory / observation index
 │   ├── context_core.py        # Shared helpers
 │   ├── context_native.py      # Rust / Go backend orchestration
@@ -92,9 +92,9 @@ ContextGO/
 
 ### 2. Index layer / 索引层
 
-`session_index.py` and `memory_index.py` maintain two independent SQLite FTS5 databases under the storage root (`~/.contextgo/index/`). Session entries and memory observations are indexed separately to keep query paths clean.
+`session_index.py` and `memory_index.py` maintain two independent SQLite databases under the storage root (`~/.contextgo/index/`). Session entries and memory observations are indexed separately to keep query paths clean. Search uses LIKE-based queries.
 
-`session_index.py` 与 `memory_index.py` 在存储根目录下分别维护两个独立的 SQLite FTS5 数据库。会话条目与记忆观测分库存储，保持查询路径清晰。
+`session_index.py` 与 `memory_index.py` 在存储根目录下分别维护两个独立的 SQLite 数据库。会话条目与记忆观测分库存储，保持查询路径清晰。搜索使用基于 LIKE 的查询。
 
 ### 3. Interface layer / 接口层
 
@@ -105,7 +105,7 @@ ContextGO/
 | Subcommand | Purpose / 用途 |
 |---|---|
 | `health` | Index status and sync / 索引状态与同步 |
-| `search` | FTS5 keyword search / 关键词全文搜索 |
+| `search` | Keyword search / 关键词全文搜索 |
 | `semantic` | Semantic / embedding-backed search / 语义搜索 |
 | `save` | Write a memory observation / 写入记忆观测 |
 | `export` | Export observations to JSON / 导出观测为 JSON |

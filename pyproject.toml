@@ -35,7 +35,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU Affero General Public License v3",
     "Natural Language :: English",
-    "Operating System :: OS Independent",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -134,7 +135,7 @@ addopts = [
     "--cov=scripts",
     "--cov-report=term-missing",
     "--cov-report=xml",
-    "--cov-fail-under=50",
+    "--cov-fail-under=95",
     "-v",
 ]
 

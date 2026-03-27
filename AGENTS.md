@@ -48,7 +48,7 @@ python3 scripts/context_cli.py smoke --sandbox
 # Semantic search over memories and session history / 语义搜索记忆与历史
 python3 scripts/context_cli.py semantic "database design decision" --limit 5
 
-# Keyword search (FTS5) / 关键词全文搜索
+# Keyword search / 关键词全文搜索
 python3 scripts/context_cli.py search "auth root cause" --limit 10
 
 # Save a durable memory / 保存持久记忆
@@ -91,7 +91,7 @@ As an AI agent, execute these behaviors **proactively** — do not wait to be as
 
 ```bash
 contextgo save \
-  --title "Decision: chose SQLite FTS5 over Elasticsearch" \
+  --title "Decision: chose SQLite over Elasticsearch" \
   --content "Rationale, file paths, gotchas, next steps" \
   --tags "project,topic,decision"
 ```
@@ -107,7 +107,7 @@ Save only **durable knowledge** (decisions, root causes, warnings). The daemon a
 |---|---|
 | `scripts/context_cli.py` | CLI entry point / 命令入口 |
 | `scripts/context_config.py` | Storage root, env resolution / 存储配置 |
-| `scripts/session_index.py` | SQLite FTS5 session index / 会话索引 |
+| `scripts/session_index.py` | SQLite session index / 会话索引 |
 | `scripts/memory_index.py` | Memory index, export/import / 记忆索引 |
 | `scripts/context_daemon.py` | Session capture daemon / 会话捕获守护进程 |
 | `scripts/context_server.py` | Local viewer API / 本地查看器 |

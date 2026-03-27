@@ -19,10 +19,10 @@ Two search modes against the local session index.
 
 ## Semantic Search / 语义搜索
 
-Checks saved memory files first, then falls back to FTS5 session history.
+Checks saved memory files first, then falls back to session history index.
 Best for broad questions and topic exploration.
 
-优先检查已保存记忆文件，再回退到 FTS5 会话历史。
+优先检查已保存记忆文件，再回退到会话历史索引。
 适合宽泛问题和主题探索。
 
 ```bash
@@ -33,10 +33,10 @@ contextgo semantic "<natural language query>" --limit 5
 
 ## Keyword Search / 关键词搜索
 
-Direct FTS5 query against indexed session transcripts.
+Direct keyword query against indexed session transcripts.
 Best for function names, file paths, error messages, CLI commands.
 
-直接对会话索引执行 FTS5 全文查询。
+直接对会话索引执行关键词查询。
 适合函数名、文件路径、错误信息、CLI 命令。
 
 ```bash

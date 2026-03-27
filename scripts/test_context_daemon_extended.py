@@ -736,7 +736,7 @@ class TestExport(unittest.TestCase):
                 "messages": ["test"],
                 "last_seen": time.time(),
             }
-            with patch("pathlib.Path.write_text", side_effect=OSError("disk full")):
+            with patch("os.open", side_effect=OSError("disk full")):
                 result = self.tracker._export("fail_sid", data)
         finally:
             context_daemon.LOCAL_STORAGE_ROOT = original_root
