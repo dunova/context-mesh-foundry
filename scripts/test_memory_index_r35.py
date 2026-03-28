@@ -34,15 +34,22 @@ import memory_index
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_db(tmp_path: Path) -> Path:
     """Create a fresh isolated memory index DB and return its path."""
     return tmp_path / "memory_index.db"
 
 
-def _insert_obs(db_path: Path, fingerprint: str, title: str, content: str,
-                source_type: str = "history", session_id: str = "s1",
-                file_path: str = "import://test",
-                created_at_epoch: int = 1_700_000_000) -> int:
+def _insert_obs(
+    db_path: Path,
+    fingerprint: str,
+    title: str,
+    content: str,
+    source_type: str = "history",
+    session_id: str = "s1",
+    file_path: str = "import://test",
+    created_at_epoch: int = 1_700_000_000,
+) -> int:
     """Directly insert a row and return its rowid."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -53,8 +60,13 @@ def _insert_obs(db_path: Path, fingerprint: str, title: str, content: str,
             tags_json, file_path, created_at, created_at_epoch, updated_at_epoch
            ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (
-            fingerprint, source_type, session_id, title, content,
-            "[]", file_path,
+            fingerprint,
+            source_type,
+            session_id,
+            title,
+            content,
+            "[]",
+            file_path,
             datetime.fromtimestamp(created_at_epoch).isoformat(),
             created_at_epoch,
             created_at_epoch,
@@ -69,6 +81,7 @@ def _insert_obs(db_path: Path, fingerprint: str, title: str, content: str,
 # ---------------------------------------------------------------------------
 # Line 288: _escape_fts5_query returns "" when all tokens stripped
 # ---------------------------------------------------------------------------
+
 
 class TestEscapeFts5QueryEmpty:
     def test_empty_string_returns_empty(self) -> None:
@@ -92,6 +105,7 @@ class TestEscapeFts5QueryEmpty:
 # ---------------------------------------------------------------------------
 # Lines 495-498: ensure_index_db catches FTS5 OperationalError
 # ---------------------------------------------------------------------------
+
 
 class TestEnsureIndexDbFts5Failure:
     def test_fts5_operationalerror_sets_cache_false(self, tmp_path: Path) -> None:
@@ -144,6 +158,7 @@ class TestEnsureIndexDbFts5Failure:
 # Line 560->521: sync rename path (fingerprint found, file_path differs)
 # ---------------------------------------------------------------------------
 
+
 class TestSyncRenameDetection:
     def test_rename_updates_file_path(self, tmp_path: Path) -> None:
         """When file is renamed, sync detects fp match and updates file_path."""
@@ -175,6 +190,7 @@ class TestSyncRenameDetection:
 # ---------------------------------------------------------------------------
 # Lines 592->597, 594-595: sync FTS5 rebuild + OperationalError on rebuild
 # ---------------------------------------------------------------------------
+
 
 class _RebuildRaisingConn:
     """Proxy around a real sqlite3.Connection that raises OperationalError on FTS rebuild."""
@@ -254,9 +270,7 @@ class TestSyncFts5Rebuild:
 
             with mock.patch.object(memory_index, "_fts5_available", return_value=True):
                 with mock.patch.object(memory_index, "_open_db", patched_open_db):
-                    with mock.patch.object(
-                        memory_index, "_history_dirs", return_value=[history_dir]
-                    ):
+                    with mock.patch.object(memory_index, "_history_dirs", return_value=[history_dir]):
                         # Should not raise even though FTS5 rebuild fails
                         result = memory_index.sync_index_from_storage()
 
@@ -267,6 +281,7 @@ class TestSyncFts5Rebuild:
 # ---------------------------------------------------------------------------
 # Lines 759->775, 770-772: _search_with_fts5_or_like FTS5 failure -> LIKE
 # ---------------------------------------------------------------------------
+
 
 class TestSearchFts5OperationalErrorFallback:
     def test_fts5_query_error_falls_back_to_like(self, tmp_path: Path) -> None:
@@ -315,6 +330,7 @@ class TestSearchFts5OperationalErrorFallback:
 # Lines 950->961: export_observations_payload multi-page pagination
 # ---------------------------------------------------------------------------
 
+
 class TestExportPagination:
     def test_export_fetches_multiple_pages(self, tmp_path: Path) -> None:
         """export_observations_payload paginates when rows > page size (200)."""
@@ -330,12 +346,20 @@ class TestExportPagination:
             for i in range(250):
                 fp = hashlib.sha256(f"export_pagination_{i}".encode()).hexdigest()
                 epoch = 1_700_000_000 + i
-                rows.append((
-                    fp, "history", f"sess_{i}", f"Title {i}", f"Content {i}",
-                    "[]", f"import://test_{i}",
-                    datetime.fromtimestamp(epoch).isoformat(),
-                    epoch, epoch,
-                ))
+                rows.append(
+                    (
+                        fp,
+                        "history",
+                        f"sess_{i}",
+                        f"Title {i}",
+                        f"Content {i}",
+                        "[]",
+                        f"import://test_{i}",
+                        datetime.fromtimestamp(epoch).isoformat(),
+                        epoch,
+                        epoch,
+                    )
+                )
             conn.executemany(
                 """INSERT OR IGNORE INTO observations(
                     fingerprint, source_type, session_id, title, content,
@@ -366,12 +390,20 @@ class TestExportPagination:
             for i in range(5):
                 fp = hashlib.sha256(f"export_small_{i}".encode()).hexdigest()
                 epoch = 1_700_001_000 + i
-                rows.append((
-                    fp, "history", f"s_{i}", f"Small {i}", f"Small content {i}",
-                    "[]", f"import://small_{i}",
-                    datetime.fromtimestamp(epoch).isoformat(),
-                    epoch, epoch,
-                ))
+                rows.append(
+                    (
+                        fp,
+                        "history",
+                        f"s_{i}",
+                        f"Small {i}",
+                        f"Small content {i}",
+                        "[]",
+                        f"import://small_{i}",
+                        datetime.fromtimestamp(epoch).isoformat(),
+                        epoch,
+                        epoch,
+                    )
+                )
             conn.executemany(
                 """INSERT OR IGNORE INTO observations(
                     fingerprint, source_type, session_id, title, content,
@@ -405,6 +437,7 @@ class TestExportPagination:
 # ---------------------------------------------------------------------------
 # Lines 1089-1090: import_observations_payload FTS5 OperationalError suppressed
 # ---------------------------------------------------------------------------
+
 
 class TestImportFts5OperationalError:
     def test_import_fts5_rebuild_error_suppressed(self, tmp_path: Path) -> None:
@@ -443,12 +476,8 @@ class TestImportFts5OperationalError:
             # but raise OperationalError when the rebuild SQL runs via proxy conn
             with mock.patch.object(memory_index, "_fts5_available", return_value=True):
                 with mock.patch.object(memory_index, "_open_db", patched_open_db):
-                    with mock.patch.object(
-                        memory_index, "sync_index_from_storage", return_value={}
-                    ):
-                        result = memory_index.import_observations_payload(
-                            payload, sync_from_storage=False
-                        )
+                    with mock.patch.object(memory_index, "sync_index_from_storage", return_value={}):
+                        result = memory_index.import_observations_payload(payload, sync_from_storage=False)
 
         assert result["inserted"] == 1
         assert result["skipped"] == 0
@@ -488,17 +517,13 @@ class TestImportFts5OperationalError:
 
             with mock.patch.object(memory_index, "_fts5_available", return_value=True):
                 with mock.patch.object(memory_index, "_open_db", patched_open_db):
-                    with mock.patch.object(
-                        memory_index, "sync_index_from_storage", return_value={}
-                    ):
+                    with mock.patch.object(memory_index, "sync_index_from_storage", return_value={}):
                         memory_index.import_observations_payload(payload, sync_from_storage=False)
 
             # Verify the row was actually committed
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM observations WHERE fingerprint = ?", (fp,)
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM observations WHERE fingerprint = ?", (fp,)).fetchall()
             conn.close()
 
         assert len(rows) == 1

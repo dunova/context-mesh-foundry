@@ -76,6 +76,7 @@ class TestFileWatcherPollFallback(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _make_watcher_no_inotify(self, dirs=None) -> _FileWatcher:
@@ -221,6 +222,7 @@ class TestFileWatcherInotifyInitFailures(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_inotify_init1_failure_falls_back_to_poll(self) -> None:
@@ -261,6 +263,7 @@ class TestFileWatcherInotifyInitFailures(unittest.TestCase):
             self.assertIn(1, watcher._wd_to_dir)
         finally:
             import shutil
+
             shutil.rmtree(dir2, ignore_errors=True)
 
     def test_inotify_fd_closed_on_all_watches_fail(self) -> None:
@@ -289,6 +292,7 @@ class TestFileWatcherDrainInotify(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _make_inotify_watcher(self, fd: int = 3) -> _FileWatcher:
@@ -476,6 +480,7 @@ class TestFileWatcherAddDirectoryInotify(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_add_directory_registers_new_watch(self) -> None:
@@ -518,6 +523,7 @@ class TestFileWatcherCloseInotify(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _make_inotify_watcher_with_fd(self, fd: int) -> _FileWatcher:
@@ -614,11 +620,10 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         sleep_s = base_sleep
 
         if (
-            not had_error
-            and inotify_active
-            and not watcher_has_changes
-            and not has_active_sources
-        ) and not has_pending_sessions and not has_pending_files:
+            (not had_error and inotify_active and not watcher_has_changes and not has_active_sources)
+            and not has_pending_sessions
+            and not has_pending_files
+        ):
             sleep_s = min(float(IDLE_SLEEP_CAP_SEC), sleep_s * 2)
 
         if consecutive_errors > 0:
@@ -635,15 +640,23 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """consecutive_errors > 0 must add an exponential term to sleep."""
         base = 5.0
         sleep_no_error = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=True,
-            watcher_has_changes=True, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=True,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
             consecutive_errors=0,
         )
         sleep_one_error = self._compute_adaptive_sleep(
-            base, had_error=True, inotify_active=False,
-            watcher_has_changes=True, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=True,
+            inotify_active=False,
+            watcher_has_changes=True,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
             consecutive_errors=1,
         )
         self.assertGreater(sleep_one_error, sleep_no_error)
@@ -651,9 +664,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
     def test_error_backoff_capped_at_max(self) -> None:
         """Error back-off is capped at ERROR_BACKOFF_MAX_SEC."""
         sleep = self._compute_adaptive_sleep(
-            5.0, had_error=True, inotify_active=False,
-            watcher_has_changes=True, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            5.0,
+            had_error=True,
+            inotify_active=False,
+            watcher_has_changes=True,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
             consecutive_errors=100,
         )
         self.assertLessEqual(sleep, 5.0 + ERROR_BACKOFF_MAX_SEC + 1)
@@ -661,9 +678,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
     def test_no_error_no_backoff(self) -> None:
         """With consecutive_errors=0 no extra back-off is added."""
         sleep = self._compute_adaptive_sleep(
-            10.0, had_error=False, inotify_active=True,
-            watcher_has_changes=True, has_active_sources=True,
-            has_pending_sessions=True, has_pending_files=True,
+            10.0,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=True,
+            has_active_sources=True,
+            has_pending_sessions=True,
+            has_pending_files=True,
             consecutive_errors=0,
         )
         self.assertEqual(sleep, 10.0)
@@ -676,9 +697,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """When all quiet conditions are met, sleep is doubled (up to IDLE_SLEEP_CAP_SEC)."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=True,
-            watcher_has_changes=False, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=False,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
         )
         self.assertAlmostEqual(sleep, min(float(IDLE_SLEEP_CAP_SEC), base * 2))
 
@@ -686,9 +711,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """Sleep is never doubled beyond IDLE_SLEEP_CAP_SEC."""
         large_base = float(IDLE_SLEEP_CAP_SEC) * 10
         sleep = self._compute_adaptive_sleep(
-            large_base, had_error=False, inotify_active=True,
-            watcher_has_changes=False, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            large_base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=False,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
         )
         self.assertEqual(sleep, float(IDLE_SLEEP_CAP_SEC))
 
@@ -696,9 +725,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """had_error=True prevents idle doubling."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=True, inotify_active=True,
-            watcher_has_changes=False, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=True,
+            inotify_active=True,
+            watcher_has_changes=False,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
             consecutive_errors=0,
         )
         # No doubling because had_error=True; consecutive_errors=0 so no backoff
@@ -708,9 +741,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """inotify_active=False prevents idle doubling (fallback mode)."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=False,
-            watcher_has_changes=False, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=False,
+            inotify_active=False,
+            watcher_has_changes=False,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
         )
         self.assertEqual(sleep, base)
 
@@ -718,9 +755,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """watcher_has_changes=True prevents idle doubling."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=True,
-            watcher_has_changes=True, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=True,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
         )
         self.assertEqual(sleep, base)
 
@@ -728,9 +769,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """has_active_sources=True prevents idle doubling."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=True,
-            watcher_has_changes=False, has_active_sources=True,
-            has_pending_sessions=False, has_pending_files=False,
+            base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=False,
+            has_active_sources=True,
+            has_pending_sessions=False,
+            has_pending_files=False,
         )
         self.assertEqual(sleep, base)
 
@@ -738,9 +783,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """has_pending_sessions=True prevents idle doubling."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=True,
-            watcher_has_changes=False, has_active_sources=False,
-            has_pending_sessions=True, has_pending_files=False,
+            base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=False,
+            has_active_sources=False,
+            has_pending_sessions=True,
+            has_pending_files=False,
         )
         self.assertEqual(sleep, base)
 
@@ -748,9 +797,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """has_pending_files=True prevents idle doubling."""
         base = 5.0
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=True,
-            watcher_has_changes=False, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=True,
+            base,
+            had_error=False,
+            inotify_active=True,
+            watcher_has_changes=False,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=True,
         )
         self.assertEqual(sleep, base)
 
@@ -762,9 +815,13 @@ class TestAdaptivePollingLogic(unittest.TestCase):
         """max(1.0, sleep_s) ensures the sleep is at least 1 second."""
         base = 0.1
         sleep = self._compute_adaptive_sleep(
-            base, had_error=False, inotify_active=False,
-            watcher_has_changes=True, has_active_sources=True,
-            has_pending_sessions=True, has_pending_files=True,
+            base,
+            had_error=False,
+            inotify_active=False,
+            watcher_has_changes=True,
+            has_active_sources=True,
+            has_pending_sessions=True,
+            has_pending_files=True,
         )
         self.assertGreaterEqual(sleep, 1.0)
 
@@ -775,15 +832,23 @@ class TestAdaptivePollingLogic(unittest.TestCase):
     def test_error_exponent_clamped_at_6(self) -> None:
         """Exponent is clamped at 6 so 2**min(errors, 6) never overflows."""
         sleep_6 = self._compute_adaptive_sleep(
-            5.0, had_error=True, inotify_active=False,
-            watcher_has_changes=True, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            5.0,
+            had_error=True,
+            inotify_active=False,
+            watcher_has_changes=True,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
             consecutive_errors=6,
         )
         sleep_100 = self._compute_adaptive_sleep(
-            5.0, had_error=True, inotify_active=False,
-            watcher_has_changes=True, has_active_sources=False,
-            has_pending_sessions=False, has_pending_files=False,
+            5.0,
+            had_error=True,
+            inotify_active=False,
+            watcher_has_changes=True,
+            has_active_sources=False,
+            has_pending_sessions=False,
+            has_pending_files=False,
             consecutive_errors=100,
         )
         self.assertEqual(sleep_6, sleep_100)
@@ -802,6 +867,7 @@ class TestFileWatcherEdgeCases(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_empty_dirs_list_no_inotify(self) -> None:
@@ -867,6 +933,7 @@ class TestFileWatcherThreadSafety(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_changed_paths_protected_by_lock(self) -> None:
@@ -928,6 +995,7 @@ class TestAdaptivePollPendingDir(unittest.TestCase):
     def test_pending_dir_with_md_files_counts_as_pending(self, tmp_path=None) -> None:
         """PENDING_DIR.exists() and *.md files -> has_pending_files=True."""
         import tempfile
+
         tmpdir = Path(tempfile.mkdtemp(prefix="cg_pending_"))
         pending = tmpdir / "pending"
         pending.mkdir()
@@ -937,11 +1005,13 @@ class TestAdaptivePollPendingDir(unittest.TestCase):
         self.assertTrue(has_pending_files)
 
         import shutil
+
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_pending_dir_no_md_files_not_pending(self) -> None:
         """PENDING_DIR with no *.md files -> has_pending_files=False."""
         import tempfile
+
         tmpdir = Path(tempfile.mkdtemp(prefix="cg_pending2_"))
         pending = tmpdir / "pending"
         pending.mkdir()
@@ -951,11 +1021,13 @@ class TestAdaptivePollPendingDir(unittest.TestCase):
         self.assertFalse(has_pending_files)
 
         import shutil
+
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_pending_dir_missing_not_pending(self) -> None:
         """Non-existent PENDING_DIR -> has_pending_files=False."""
         import tempfile
+
         tmpdir = Path(tempfile.mkdtemp(prefix="cg_pending3_"))
         pending = tmpdir / "no_pending_dir"
 
@@ -963,6 +1035,7 @@ class TestAdaptivePollPendingDir(unittest.TestCase):
         self.assertFalse(has_pending_files)
 
         import shutil
+
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_has_pending_sessions_computation(self) -> None:

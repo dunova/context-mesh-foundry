@@ -49,6 +49,7 @@ class ScandirFilesOSErrorTests(unittest.TestCase):
         entry so that _scandir_files simply returns [].
         """
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             locked = Path(tmpdir) / "locked"
             locked.mkdir()
@@ -110,6 +111,7 @@ class ScandirFilesOSErrorTests(unittest.TestCase):
         returned.
         """
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "visible.md").write_text("hello", encoding="utf-8")
@@ -147,10 +149,10 @@ class MmapContainsOSErrorTests(unittest.TestCase):
         When the fallback read finds the query, _mmap_contains returns True.
         """
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("hello world FINDME content here", encoding="utf-8")
-
 
             def mmap_oserror(*args, **kwargs):
                 raise OSError("mmap not supported")
@@ -163,6 +165,7 @@ class MmapContainsOSErrorTests(unittest.TestCase):
     def test_mmap_contains_mmap_oserror_falls_back_to_read_not_found(self) -> None:
         """_mmap_contains falls back to regular read and returns False when not found (lines 165-170)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("hello world content here", encoding="utf-8")
@@ -175,6 +178,7 @@ class MmapContainsOSErrorTests(unittest.TestCase):
     def test_mmap_contains_open_oserror_returns_false(self) -> None:
         """_mmap_contains returns False when open() raises OSError (line 177 path)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("content here FINDME", encoding="utf-8")
@@ -209,6 +213,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_empty_file_returns_empty(self) -> None:
         """_mmap_snippet returns '' when the file is empty (line 206, size == 0)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "empty.md"
             f.write_bytes(b"")
@@ -218,6 +223,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_mmap_oserror_falls_back_to_read(self) -> None:
         """_mmap_snippet falls back to regular read when mmap.mmap() raises OSError (lines 214-216)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("before FINDTOKEN after", encoding="utf-8")
@@ -231,6 +237,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_open_oserror_returns_empty(self) -> None:
         """_mmap_snippet returns '' when open() raises OSError (lines 222-223)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("content FINDME here", encoding="utf-8")
@@ -250,6 +257,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_query_not_found_returns_empty(self) -> None:
         """_mmap_snippet returns '' when query_str is not found in file text (line 229)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("hello world no match here", encoding="utf-8")
@@ -259,6 +267,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_found_returns_nonempty(self) -> None:
         """_mmap_snippet returns a non-empty snippet when the query is found."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("prefix content MYTOKEN suffix content", encoding="utf-8")
@@ -268,6 +277,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_query_at_start_of_file(self) -> None:
         """_mmap_snippet works when the query appears at the very start of the file."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("STARTTOKEN middle end", encoding="utf-8")
@@ -277,6 +287,7 @@ class MmapSnippetTests(unittest.TestCase):
     def test_mmap_snippet_query_at_end_of_file(self) -> None:
         """_mmap_snippet works when the query appears at the very end of the file."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "note.md"
             f.write_text("beginning middle ENDTOKEN", encoding="utf-8")
@@ -299,6 +310,7 @@ class MmapFallbackIntegrationTests(unittest.TestCase):
     def test_local_memory_matches_with_mmap_disabled(self) -> None:
         """local_memory_matches finds content matches even when mmap raises OSError."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             f = root / "data.md"
@@ -319,6 +331,7 @@ class MmapFallbackIntegrationTests(unittest.TestCase):
     def test_local_memory_matches_mmap_disabled_no_match(self) -> None:
         """local_memory_matches returns [] when mmap fails and content doesn't match."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             f = root / "data.md"
@@ -364,6 +377,7 @@ class ScandirFilesEdgeCaseTests(unittest.TestCase):
     def test_scandir_files_dir_entry_added_to_stack(self) -> None:
         """_scandir_files appends directory entries to the stack (line 77 / 78->72 loop branch)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             sub = root / "subdir"

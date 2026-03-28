@@ -38,6 +38,7 @@ import context_cli  # noqa: E402
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _make_session_index_mock(
     *,
     db_exists: bool = True,
@@ -73,6 +74,7 @@ def _make_native_mock() -> mock.MagicMock:
 # and the relative fallback import succeeds via sys.modules lookup.
 # ---------------------------------------------------------------------------
 
+
 class TestLazyGetterImportErrorFallbacks(unittest.TestCase):
     """Force the except-ImportError branch in each _get_* helper."""
 
@@ -85,6 +87,7 @@ class TestLazyGetterImportErrorFallbacks(unittest.TestCase):
         falls back to the relative import path by pre-seeding sys.modules for it.
         """
         import builtins as _builtins
+
         original_import = _builtins.__import__
 
         # Pre-seeded fake module returned when the fallback import resolves
@@ -140,6 +143,7 @@ class TestLazyGetterImportErrorFallbacks(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 2. _save_local_memory HTTPS enforcement (line 185)
 # ---------------------------------------------------------------------------
+
 
 class TestSaveLocalMemoryHttpsEnforcement(unittest.TestCase):
     """_save_local_memory must skip remote indexing when URL is non-HTTPS non-localhost."""
@@ -211,6 +215,7 @@ class TestSaveLocalMemoryHttpsEnforcement(unittest.TestCase):
 # 3. _load_module ModuleNotFoundError fallback (lines 222-227)
 # ---------------------------------------------------------------------------
 
+
 class TestLoadModuleFallback(unittest.TestCase):
     """_load_module must fall back to package-relative import when bare import fails."""
 
@@ -223,6 +228,7 @@ class TestLoadModuleFallback(unittest.TestCase):
         """Lines 222-227: ModuleNotFoundError branch is entered and fallback attempted."""
 
         import context_core as _real_context_core
+
         attempts: list[tuple] = []
 
         def _patched(name: str, package=None):  # type: ignore[no-untyped-def]
@@ -250,6 +256,7 @@ class TestLoadModuleFallback(unittest.TestCase):
 # functions submitted to it can be controlled via mock patches.
 # ---------------------------------------------------------------------------
 
+
 def _build_real_pool() -> ThreadPoolExecutor:
     """Return a real ThreadPoolExecutor (passes isinstance check)."""
     return ThreadPoolExecutor(max_workers=3, thread_name_prefix="r34_test")
@@ -258,6 +265,7 @@ def _build_real_pool() -> ThreadPoolExecutor:
 # ---------------------------------------------------------------------------
 # 4. cmd_semantic FuturesTimeoutError on memory future (line 386)
 # ---------------------------------------------------------------------------
+
 
 class TestCmdSemanticMemoryTimeout(unittest.TestCase):
     """FuturesTimeoutError on future_memory.result() must set matches=[] (line 386)."""
@@ -344,9 +352,9 @@ class TestCmdSemanticMemoryTimeout(unittest.TestCase):
                 def result(self, timeout=None):  # type: ignore[no-untyped-def]
                     return ""  # empty session text
 
-
             class _FakePool:
                 """Passes isinstance(pool, ThreadPoolExecutor) by inheriting it."""
+
                 # We inherit from ThreadPoolExecutor but override submit
 
             ThreadPoolExecutor.__new__(ThreadPoolExecutor)
@@ -375,6 +383,7 @@ class TestCmdSemanticMemoryTimeout(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 5. cmd_semantic FuturesTimeoutError on session future (line 404)
 # ---------------------------------------------------------------------------
+
 
 class TestCmdSemanticSessionTimeout(unittest.TestCase):
     """FuturesTimeoutError on future_session.result() must set session_text='' (line 404)."""
@@ -423,6 +432,7 @@ class TestCmdSemanticSessionTimeout(unittest.TestCase):
 # 6. cmd_health FuturesTimeoutError on session future (line 594)
 # ---------------------------------------------------------------------------
 
+
 class TestCmdHealthSessionTimeout(unittest.TestCase):
     """FuturesTimeoutError on session future must set recall={} (line 594)."""
 
@@ -469,6 +479,7 @@ class TestCmdHealthSessionTimeout(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 7. cmd_health exception on memory_root future (lines 603-604)
 # ---------------------------------------------------------------------------
+
 
 class TestCmdHealthMemoryRootException(unittest.TestCase):
     """Exception on memory_root future must fall back to LOCAL_SHARED_ROOT.exists()."""
@@ -521,6 +532,7 @@ class TestCmdHealthMemoryRootException(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 8. cmd_health FuturesTimeoutError on native future (line 610)
 # ---------------------------------------------------------------------------
+
 
 class TestCmdHealthNativeTimeout(unittest.TestCase):
     """FuturesTimeoutError on native future must set native_health={} (line 610)."""
@@ -577,6 +589,7 @@ class TestCmdHealthNativeTimeout(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 9. __main__ guard (line 834)
 # ---------------------------------------------------------------------------
+
 
 class TestMainGuard(unittest.TestCase):
     """The if __name__ == '__main__': block must call main() and raise SystemExit."""

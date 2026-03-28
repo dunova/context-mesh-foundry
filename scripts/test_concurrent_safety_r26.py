@@ -133,9 +133,7 @@ class TestRetrySqlite:
     def test_raises_after_max_retries(self) -> None:
         """Re-raises after exhausting retries."""
         mock_conn = MagicMock()
-        mock_conn.execute = MagicMock(
-            side_effect=sqlite3.OperationalError("database is locked")
-        )
+        mock_conn.execute = MagicMock(side_effect=sqlite3.OperationalError("database is locked"))
 
         with patch("memory_index.time.sleep"):
             with pytest.raises(sqlite3.OperationalError, match="database is locked"):
@@ -205,9 +203,7 @@ class TestRetryCommit:
     def test_raises_after_max_retries(self) -> None:
         """Raises after exhausting retries."""
         mock_conn = MagicMock()
-        mock_conn.commit = MagicMock(
-            side_effect=sqlite3.OperationalError("database is locked")
-        )
+        mock_conn.commit = MagicMock(side_effect=sqlite3.OperationalError("database is locked"))
 
         with patch("memory_index.time.sleep"):
             with pytest.raises(sqlite3.OperationalError, match="database is locked"):

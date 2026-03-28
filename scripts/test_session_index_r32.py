@@ -17,6 +17,7 @@ Targets:
   1537->1532: _score_term_frequency term with count=0
   1597->1595: _rank_rows CJK bigrams deduplication
 """
+
 from __future__ import annotations
 
 import os
@@ -36,6 +37,7 @@ import session_index
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_db(tmp_path: Path) -> Path:
     """Create a minimal session_index database in *tmp_path* and return path."""
     db = tmp_path / "session.db"
@@ -48,12 +50,14 @@ def _make_db(tmp_path: Path) -> Path:
 # Lines 791-792: ensure_session_db — FTS5 OperationalError during setup
 # ---------------------------------------------------------------------------
 
+
 class TestEnsureSessionDbFts5Error(unittest.TestCase):
     """Cover the except block (lines 791-792) in ensure_session_db."""
 
     def test_fts5_setup_operationalerror_is_swallowed(self):
         """When _retry_sqlite raises OperationalError for FTS5 DDL, it is swallowed."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             db = Path(tmpdir) / "si.db"
             # Reset the module-level cache so _check_fts5_available probes again.
@@ -85,6 +89,7 @@ class TestEnsureSessionDbFts5Error(unittest.TestCase):
 # Lines 855-866: _retry_sqlite — exhausted retries on locked DB
 # ---------------------------------------------------------------------------
 
+
 class TestRetrySquliteExhausted(unittest.TestCase):
     def test_raises_after_max_retries(self):
         """_retry_sqlite raises after all retries are exhausted."""
@@ -114,6 +119,7 @@ class TestRetrySquliteExhausted(unittest.TestCase):
 # Lines 894-908: _retry_sqlite_many — exhausted retries on locked DB
 # ---------------------------------------------------------------------------
 
+
 class TestRetrySqliteManyExhausted(unittest.TestCase):
     def test_raises_after_max_retries(self):
         """_retry_sqlite_many raises after all retries on locked."""
@@ -139,6 +145,7 @@ class TestRetrySqliteManyExhausted(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Lines 930-944: _retry_commit — exhausted retries on locked DB
 # ---------------------------------------------------------------------------
+
 
 class TestRetryCommitExhausted(unittest.TestCase):
     def test_raises_after_max_retries(self):
@@ -166,24 +173,30 @@ class TestRetryCommitExhausted(unittest.TestCase):
 # Lines 1094-1099: sync_session_index FTS5 rebuild error path
 # ---------------------------------------------------------------------------
 
+
 class TestSyncFts5Rebuild(unittest.TestCase):
     """Cover lines 1094-1101 including the OperationalError branch (1098-1099)."""
 
     def _make_populated_db(self, tmp_path: Path) -> Path:
         """Create a DB with at least one document."""
         import json
+
         root = tmp_path
         codex_root = root / ".codex" / "sessions" / "2026" / "03" / "01"
         codex_root.mkdir(parents=True)
         sf = codex_root / "test.jsonl"
         sf.write_text(
-            "\n".join([
-                json.dumps({"type": "session_meta", "payload": {
-                    "id": "rebuild-session", "cwd": "/tmp/x",
-                    "timestamp": "2026-03-01T00:00:00Z"}}),
-                json.dumps({"type": "event_msg", "payload": {
-                    "type": "user_message", "message": "hello rebuild"}}),
-            ]),
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session_meta",
+                            "payload": {"id": "rebuild-session", "cwd": "/tmp/x", "timestamp": "2026-03-01T00:00:00Z"},
+                        }
+                    ),
+                    json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello rebuild"}}),
+                ]
+            ),
             encoding="utf-8",
         )
         db = root / "si.db"
@@ -196,6 +209,7 @@ class TestSyncFts5Rebuild(unittest.TestCase):
     def test_fts5_rebuild_operationalerror_swallowed(self):
         """OperationalError during FTS5 rebuild is swallowed (lines 1098-1099)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             db = self._make_populated_db(tmp_path)
@@ -219,6 +233,7 @@ class TestSyncFts5Rebuild(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Lines 1160-1163: build_query_terms CJK stopword branch
 # ---------------------------------------------------------------------------
+
 
 class TestBuildQueryTermsCjkStopword(unittest.TestCase):
     """Cover lines 1159-1163: a CJK token that is in CJK_STOPWORDS gets parked."""
@@ -248,6 +263,7 @@ class TestBuildQueryTermsCjkStopword(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Lines 1214-1223: _cjk_safe_boundary loop
 # ---------------------------------------------------------------------------
+
 
 class TestCjkSafeBoundary(unittest.TestCase):
     """Cover the inner loop of _cjk_safe_boundary (lines 1214-1223)."""
@@ -290,6 +306,7 @@ class TestCjkSafeBoundary(unittest.TestCase):
 # Lines 1429-1436: _check_fts5_available fallback probe table
 # ---------------------------------------------------------------------------
 
+
 class TestCheckFts5Available(unittest.TestCase):
     """Cover lines 1429-1436: fallback probe path when SELECT fts5() fails."""
 
@@ -321,7 +338,7 @@ class TestCheckFts5Available(unittest.TestCase):
         conn = MagicMock(spec=sqlite3.Connection)
         conn.execute.side_effect = [
             sqlite3.OperationalError("no such function: fts5"),  # SELECT fts5(?)
-            sqlite3.OperationalError("no such module: fts5"),    # CREATE VIRTUAL TABLE
+            sqlite3.OperationalError("no such module: fts5"),  # CREATE VIRTUAL TABLE
         ]
         result = session_index._check_fts5_available(conn)
         self.assertFalse(result)
@@ -339,6 +356,7 @@ class TestCheckFts5Available(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Line 1456: _fts5_search_rows with empty query
 # ---------------------------------------------------------------------------
+
 
 class TestFts5SearchRowsEmptyQuery(unittest.TestCase):
     def test_empty_query_returns_empty_list(self):
@@ -359,10 +377,12 @@ class TestFts5SearchRowsEmptyQuery(unittest.TestCase):
 # _fts5_search_rows with a query containing multiple spaces.
 # ---------------------------------------------------------------------------
 
+
 class TestFts5SearchBuildFtsQueryEmptyToken(unittest.TestCase):
     def test_multiple_spaces_query_skips_empty_tokens(self):
         """Query with extra spaces produces valid FTS5 expression (line 1471 skip)."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             db = Path(tmpdir) / "fts_tok.db"
             with patch.dict(os.environ, {session_index.SESSION_DB_PATH_ENV: str(db)}):
@@ -379,6 +399,7 @@ class TestFts5SearchBuildFtsQueryEmptyToken(unittest.TestCase):
 # Line 1534-1535: empty term_lower skip
 # Line 1537: term with zero count
 # ---------------------------------------------------------------------------
+
 
 class TestScoreTermFrequency(unittest.TestCase):
     def test_empty_text_returns_zero(self):
@@ -422,11 +443,20 @@ class TestScoreTermFrequency(unittest.TestCase):
 # Lines 1597->1595: _rank_rows CJK bigrams deduplication
 # ---------------------------------------------------------------------------
 
+
 class TestRankRowsCjkBigrams(unittest.TestCase):
     """Cover the CJK bigram construction including deduplication (lines 1592-1598)."""
 
-    def _make_mock_row(self, title="", content="", file_path="", source_type="codex",
-                       created_at_epoch=0, created_at="", session_id="sid"):
+    def _make_mock_row(
+        self,
+        title="",
+        content="",
+        file_path="",
+        source_type="codex",
+        created_at_epoch=0,
+        created_at="",
+        session_id="sid",
+    ):
         row = MagicMock(spec=sqlite3.Row)
         row.__getitem__ = lambda self, key: {
             "title": title,
@@ -485,6 +515,7 @@ class TestRankRowsCjkBigrams(unittest.TestCase):
 # Integration: lines 1094-1101 via full sync with FTS5 available
 # ---------------------------------------------------------------------------
 
+
 class TestSyncFts5RebuildIntegration(unittest.TestCase):
     """When FTS5 is available, sync_session_index should rebuild FTS index."""
 
@@ -492,19 +523,33 @@ class TestSyncFts5RebuildIntegration(unittest.TestCase):
         """sync_session_index triggers FTS5 rebuild when docs are added (line 1094-1097)."""
         import json
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             codex_root = root / ".codex" / "sessions" / "2026" / "03" / "02"
             codex_root.mkdir(parents=True)
             sf = codex_root / "fts_test.jsonl"
             sf.write_text(
-                "\n".join([
-                    json.dumps({"type": "session_meta", "payload": {
-                        "id": "fts-rebuild-test", "cwd": "/tmp/fts",
-                        "timestamp": "2026-03-02T00:00:00Z"}}),
-                    json.dumps({"type": "event_msg", "payload": {
-                        "type": "user_message", "message": "fts rebuild integration"}}),
-                ]),
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "fts-rebuild-test",
+                                    "cwd": "/tmp/fts",
+                                    "timestamp": "2026-03-02T00:00:00Z",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "fts rebuild integration"},
+                            }
+                        ),
+                    ]
+                ),
                 encoding="utf-8",
             )
             db = root / "fts_rebuild.db"

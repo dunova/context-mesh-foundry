@@ -279,6 +279,7 @@ class LocalMemoryMatchesTests(unittest.TestCase):
             mtime = matches[0]["mtime"]
             # Should be parseable ISO-8601
             from datetime import datetime
+
             dt = datetime.fromisoformat(mtime)
             self.assertIsInstance(dt, datetime)
 

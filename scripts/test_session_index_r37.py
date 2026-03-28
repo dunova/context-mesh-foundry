@@ -27,6 +27,7 @@ import session_index  # noqa: E402
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _make_db(tmp_path: Path) -> Path:
     """Create a fresh session-index DB under tmp_path and return its path."""
     db_path = tmp_path / "session_index.db"
@@ -79,6 +80,7 @@ def _insert_doc(
 
 
 # ── Wrapper connection for testing locked DB behaviour ──────────────────────
+
 
 class _LockedExecuteConn:
     """Wraps sqlite3.Connection to simulate 'database is locked' on execute."""
@@ -152,6 +154,7 @@ class _NonLockErrorCommitConn:
 
 # ── Tests: _retry_sqlite (lines 855-866) ────────────────────────────────────
 
+
 class TestRetrysqlite:
     """Tests for _retry_sqlite lock-retry logic."""
 
@@ -169,6 +172,7 @@ class TestRetrysqlite:
         conn = sqlite3.connect(db_path)
         try:
             import pytest
+
             with pytest.raises(sqlite3.OperationalError, match="no such table"):
                 session_index._retry_sqlite(conn, "SELECT * FROM nonexistent_table_xyz")
         finally:
@@ -177,6 +181,7 @@ class TestRetrysqlite:
     def test_raises_after_all_retries_exhausted(self, tmp_path):
         """When the DB stays locked for all attempts, _retry_sqlite re-raises."""
         import pytest
+
         db_path = tmp_path / "locked.db"
         real_conn = sqlite3.connect(db_path)
         # fail_count=999 means always locked; max_retries=0 => 1 attempt
@@ -206,6 +211,7 @@ class TestRetrysqlite:
     def test_retry_delays_index_clamped_to_last_element(self, tmp_path):
         """Ensure delay index is clamped when attempt > len(delays)."""
         import pytest
+
         db_path = tmp_path / "clamp.db"
         real_conn = sqlite3.connect(db_path)
         # Always locked
@@ -222,6 +228,7 @@ class TestRetrysqlite:
 
 
 # ── Tests: _retry_sqlite_many (lines 894-908) ───────────────────────────────
+
 
 class TestRetrySqliteMany:
     """Tests for _retry_sqlite_many lock-retry logic."""
@@ -243,15 +250,15 @@ class TestRetrySqliteMany:
         conn = sqlite3.connect(db_path)
         try:
             import pytest
+
             with pytest.raises(sqlite3.OperationalError, match="no such table"):
-                session_index._retry_sqlite_many(
-                    conn, "INSERT INTO nonexistent_xyz VALUES (?)", [(1,)]
-                )
+                session_index._retry_sqlite_many(conn, "INSERT INTO nonexistent_xyz VALUES (?)", [(1,)])
         finally:
             conn.close()
 
     def test_raises_after_max_retries(self, tmp_path):
         import pytest
+
         db_path = tmp_path / "many_locked.db"
         real_conn = sqlite3.connect(db_path)
         wrapper = _LockedExecuteManyConn(real_conn, fail_count=999)
@@ -271,9 +278,7 @@ class TestRetrySqliteMany:
         wrapper = _LockedExecuteManyConn(real_conn, fail_count=1)
         try:
             with mock.patch("session_index.time.sleep"):
-                session_index._retry_sqlite_many(
-                    wrapper, "INSERT INTO t VALUES (?)", [(1,)], max_retries=2
-                )
+                session_index._retry_sqlite_many(wrapper, "INSERT INTO t VALUES (?)", [(1,)], max_retries=2)
             real_conn.commit()
             assert real_conn.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 1
             assert wrapper._attempt == 2
@@ -282,6 +287,7 @@ class TestRetrySqliteMany:
 
 
 # ── Tests: _retry_commit (lines 911-944) ────────────────────────────────────
+
 
 class TestRetryCommit:
     """Tests for _retry_commit lock-retry logic."""
@@ -300,6 +306,7 @@ class TestRetryCommit:
 
     def test_raises_non_lock_error_immediately(self, tmp_path):
         import pytest
+
         db_path = tmp_path / "commit_nolock.db"
         real_conn = sqlite3.connect(db_path)
         arbitrary_exc = sqlite3.OperationalError("disk I/O error")
@@ -312,6 +319,7 @@ class TestRetryCommit:
 
     def test_raises_after_max_retries_exhausted(self, tmp_path):
         import pytest
+
         db_path = tmp_path / "commit_exhausted.db"
         real_conn = sqlite3.connect(db_path)
         wrapper = _LockedCommitConn(real_conn, fail_count=999)
@@ -337,6 +345,7 @@ class TestRetryCommit:
 
 
 # ── Tests: sync timing / interval logic (lines 985-1002) ────────────────────
+
 
 class TestSyncTimingInterval:
     """Tests for the SYNC_MIN_INTERVAL_SEC guard in sync_session_index."""
@@ -387,6 +396,7 @@ class TestSyncTimingInterval:
 
 
 # ── Tests: _check_fts5_available probe paths (lines 1429-1436) ──────────────
+
 
 class TestCheckFts5Available:
     """Tests for _check_fts5_available including the fallback probe."""
@@ -454,8 +464,10 @@ class TestCheckFts5Available:
 
         class _AlwaysFailConn:
             """Proxy that raises OperationalError for every execute call."""
+
             def execute(self, sql, params=None):
                 raise sqlite3.OperationalError("no such function: fts5")
+
             def __getattr__(self, name):
                 return getattr(sqlite3.connect(":memory:"), name)
 
@@ -467,6 +479,7 @@ class TestCheckFts5Available:
 
 
 # ── Tests: _fts5_search_rows empty-query / empty-token (lines 1455-1471) ───
+
 
 class TestFts5SearchRows:
     """Tests for _fts5_search_rows edge cases."""
@@ -514,6 +527,7 @@ class TestFts5SearchRows:
 
 # ── Tests: _score_term_frequency (lines 1529-1535) ──────────────────────────
 
+
 class TestScoreTermFrequency:
     """Tests for _score_term_frequency edge cases."""
 
@@ -558,6 +572,7 @@ class TestScoreTermFrequency:
 
 
 # ── Tests: search-type filtering (format_search_results, line 1758-1759) ───
+
 
 class TestSearchTypeFiltering:
     """Tests for the search_type filter in format_search_results."""
@@ -719,6 +734,7 @@ class TestSearchTypeFiltering:
 
 # ── Tests: cache eviction (lines 1669-1673, 1733-1734) ──────────────────────
 
+
 class TestSearchResultCache:
     """Tests for TTL-based cache in _search_rows."""
 
@@ -747,9 +763,7 @@ class TestSearchResultCache:
         ):
             with mock.patch.object(session_index, "_iter_sources", return_value=[]):
                 # Pre-populate cache manually
-                cache_key = json.dumps(
-                    [str(db_path), "cachedquery_r37", 5, False], ensure_ascii=False
-                )
+                cache_key = json.dumps([str(db_path), "cachedquery_r37", 5, False], ensure_ascii=False)
                 future_expiry = time.monotonic() + 9999
                 session_index._SEARCH_RESULT_CACHE[cache_key] = (future_expiry, fake_results)
 
@@ -771,9 +785,7 @@ class TestSearchResultCache:
             clear=False,
         ):
             with mock.patch.object(session_index, "_iter_sources", return_value=[]):
-                cache_key = json.dumps(
-                    [str(db_path), "expiredquery_r37", 5, False], ensure_ascii=False
-                )
+                cache_key = json.dumps([str(db_path), "expiredquery_r37", 5, False], ensure_ascii=False)
                 # Set expiry in the past so entry is stale
                 past_expiry = time.monotonic() - 1.0
                 session_index._SEARCH_RESULT_CACHE[cache_key] = (past_expiry, stale_results)
@@ -838,26 +850,33 @@ class TestSearchResultCache:
 
 # ── Tests: batch upsert edge cases in sync_session_index ────────────────────
 
+
 class TestBatchUpsertEdgeCases:
     """Tests for batch upsert behaviour in sync_session_index."""
 
     def _make_session_file(self, path: Path, session_id: str, content: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            "\n".join([
-                json.dumps({
-                    "type": "session_meta",
-                    "payload": {
-                        "id": session_id,
-                        "cwd": "/tmp/project",
-                        "timestamp": "2026-03-25T00:00:00Z",
-                    },
-                }),
-                json.dumps({
-                    "type": "event_msg",
-                    "payload": {"type": "user_message", "message": content},
-                }),
-            ]),
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "type": "session_meta",
+                            "payload": {
+                                "id": session_id,
+                                "cwd": "/tmp/project",
+                                "timestamp": "2026-03-25T00:00:00Z",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "event_msg",
+                            "payload": {"type": "user_message", "message": content},
+                        }
+                    ),
+                ]
+            ),
             encoding="utf-8",
         )
 
@@ -982,6 +1001,7 @@ class TestBatchUpsertEdgeCases:
 
 
 # ── Tests: format_search_results output formatting (lines 1763-1769) ────────
+
 
 class TestFormatSearchResultsOutput:
     """Tests for the human-readable output format of format_search_results."""

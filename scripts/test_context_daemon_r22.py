@@ -102,6 +102,7 @@ class TestValidateStartup(unittest.TestCase):
                                     context_daemon._validate_startup()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_storage_root_symlink_warns_but_continues(self) -> None:
@@ -118,6 +119,7 @@ class TestValidateStartup(unittest.TestCase):
                     context_daemon._validate_startup()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -135,6 +137,7 @@ class TestSetCursorEviction(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_eviction_triggered_when_over_max(self) -> None:
@@ -187,6 +190,7 @@ class TestCleanupCursors(unittest.TestCase):
     def test_no_eviction_when_under_limit(self) -> None:
         """cleanup_cursors should be a no-op when under MAX_FILE_CURSORS."""
         from collections import OrderedDict
+
         self.tracker.file_cursors = OrderedDict((f"k{i}", (i, i)) for i in range(10))
         self.tracker.cleanup_cursors()
         self.assertEqual(len(self.tracker.file_cursors), 10)
@@ -195,6 +199,7 @@ class TestCleanupCursors(unittest.TestCase):
         """cleanup_cursors should evict oldest third when over limit."""
         count = MAX_FILE_CURSORS + 10
         from collections import OrderedDict
+
         self.tracker.file_cursors = OrderedDict((f"key_{i:06d}", (i, i)) for i in range(count))
         self.tracker.cleanup_cursors()
         expected_max = count - max(1, count // 3)
@@ -215,6 +220,7 @@ class TestRefreshSourcesDisabled(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_disabled_source_removed_from_active_jsonl(self) -> None:
@@ -288,6 +294,7 @@ class TestPollCodexSessionsTypeFilter(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_non_response_item_type_is_skipped(self) -> None:
@@ -298,7 +305,12 @@ class TestPollCodexSessionsTypeFilter(unittest.TestCase):
         # Write lines of various non-response_item types
         session_file = sessions_dir / "abc123.jsonl"
         lines = [
-            json.dumps({"type": "user_input", "payload": {"type": "message", "content": [{"type": "output_text", "text": "hello"}]}}),
+            json.dumps(
+                {
+                    "type": "user_input",
+                    "payload": {"type": "message", "content": [{"type": "output_text", "text": "hello"}]},
+                }
+            ),
             json.dumps({"type": "system_event", "payload": {}}),
             json.dumps({"type": "metadata", "session_id": "xyz"}),
         ]
@@ -395,6 +407,7 @@ class TestPollAntigravityOSError(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_new_session_is_registered_without_export(self) -> None:
@@ -480,6 +493,7 @@ class TestPollAntigravityMinDocBytes(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _setup_session_for_export(self, brain_dir: Path, sid: str, content: str) -> Path:
@@ -591,7 +605,9 @@ class TestMaybeSyncIndexErrors(unittest.TestCase):
 
     def test_sqlite_operational_error_increments_error_count(self) -> None:
         """sqlite3.OperationalError during sync increments error counter."""
-        with patch("context_daemon.sync_index_from_storage", side_effect=sqlite3.OperationalError("database is locked")):
+        with patch(
+            "context_daemon.sync_index_from_storage", side_effect=sqlite3.OperationalError("database is locked")
+        ):
             initial_errors = self.tracker._error_count
             self.tracker.maybe_sync_index(force=True)
             self.assertEqual(self.tracker._error_count, initial_errors + 1)
@@ -718,6 +734,7 @@ class TestReleaseSingleInstanceLock(unittest.TestCase):
     def test_no_error_when_lock_fd_is_none(self) -> None:
         """_release_single_instance_lock handles _LOCK_FD=None gracefully."""
         import contextlib
+
         with patch.object(context_daemon, "_LOCK_FD", None, create=True):
             with patch("os.close") as mock_close:
                 with contextlib.suppress(Exception):
@@ -738,6 +755,7 @@ class TestRefreshGlobCache(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_returns_cached_when_interval_not_elapsed(self) -> None:
@@ -876,6 +894,7 @@ class TestHeartbeat(unittest.TestCase):
         self.tracker._last_heartbeat = 0.0
 
         import logging
+
         with self.assertLogs("contextgo.daemon", level=logging.INFO) as cm:
             self.tracker.heartbeat()
 

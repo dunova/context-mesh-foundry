@@ -34,6 +34,7 @@ import context_cli  # noqa: E402
 # Helper factories
 # ---------------------------------------------------------------------------
 
+
 def _make_session_index_mock(
     *,
     db_exists: bool = True,
@@ -61,6 +62,7 @@ def _make_native_mock(*, available: list[str] | None = None) -> mock.MagicMock:
 # ---------------------------------------------------------------------------
 # 1. Lazy module getter functions
 # ---------------------------------------------------------------------------
+
 
 class TestLazyModuleGetters(unittest.TestCase):
     """Verify that each _get_* function returns a ModuleType on success and
@@ -116,6 +118,7 @@ class TestLazyModuleGetters(unittest.TestCase):
 # 2. Module-level __getattr__ lazy attribute access
 # ---------------------------------------------------------------------------
 
+
 class TestModuleGetattr(unittest.TestCase):
     """Verify that accessing context_cli.<lazy_name> triggers the getter."""
 
@@ -141,6 +144,7 @@ class TestModuleGetattr(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. build_parser — multiple calls should return valid parsers
 # ---------------------------------------------------------------------------
+
 
 class TestBuildParser(unittest.TestCase):
     """build_parser() must always return a properly configured ArgumentParser."""
@@ -177,8 +181,16 @@ class TestBuildParser(unittest.TestCase):
     def test_build_parser_all_commands_registered(self) -> None:
         """All expected commands must be registered in the parser."""
         expected = {
-            "search", "semantic", "save", "export", "import",
-            "serve", "maintain", "native-scan", "smoke", "health",
+            "search",
+            "semantic",
+            "save",
+            "export",
+            "import",
+            "serve",
+            "maintain",
+            "native-scan",
+            "smoke",
+            "health",
         }
         p = context_cli.build_parser()
         # subparser actions store choices
@@ -193,6 +205,7 @@ class TestBuildParser(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 4. cmd_semantic — memory hit path
 # ---------------------------------------------------------------------------
+
 
 class TestCmdSemanticMemoryHit(unittest.TestCase):
     """cmd_semantic returns 0 and prints memory matches when local hits exist."""
@@ -220,7 +233,9 @@ class TestCmdSemanticMemoryHit(unittest.TestCase):
         printed_lines: list[str] = []
         with (
             mock.patch.object(context_cli, "_local_memory_matches", return_value=matches),
-            mock.patch("builtins.print", side_effect=lambda *a, **kw: printed_lines.append(" ".join(str(x) for x in a))),
+            mock.patch(
+                "builtins.print", side_effect=lambda *a, **kw: printed_lines.append(" ".join(str(x) for x in a))
+            ),
         ):
             rc = context_cli.cmd_semantic(args)
         self.assertEqual(rc, 0)
@@ -244,6 +259,7 @@ class TestCmdSemanticMemoryHit(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 5. cmd_semantic — session index fallback path
 # ---------------------------------------------------------------------------
+
 
 class TestCmdSemanticSessionFallback(unittest.TestCase):
     """When no local matches exist cmd_semantic falls back to session_index."""
@@ -308,6 +324,7 @@ class TestCmdSemanticSessionFallback(unittest.TestCase):
 # 6. cmd_semantic — empty query guard
 # ---------------------------------------------------------------------------
 
+
 class TestCmdSemanticEmptyQuery(unittest.TestCase):
     """cmd_semantic must reject empty or whitespace-only queries."""
 
@@ -329,6 +346,7 @@ class TestCmdSemanticEmptyQuery(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 7. cmd_health — compact and verbose output
 # ---------------------------------------------------------------------------
+
 
 class TestCmdHealth(unittest.TestCase):
     """cmd_health must produce correct JSON payloads in both modes."""
@@ -393,6 +411,7 @@ class TestCmdHealth(unittest.TestCase):
 # 8. cmd_health — concurrent execution simulation
 # ---------------------------------------------------------------------------
 
+
 class TestCmdHealthConcurrency(unittest.TestCase):
     """Simulate concurrent calls to cmd_health to verify thread safety."""
 
@@ -431,6 +450,7 @@ class TestCmdHealthConcurrency(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 9. cmd_semantic — concurrent execution simulation
 # ---------------------------------------------------------------------------
+
 
 class TestCmdSemanticConcurrency(unittest.TestCase):
     """Simulate concurrent cmd_semantic calls to verify thread safety."""
@@ -494,6 +514,7 @@ class TestCmdSemanticConcurrency(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 10. Error handling when underlying calls raise exceptions
 # ---------------------------------------------------------------------------
+
 
 class TestErrorHandlingInCommands(unittest.TestCase):
     """Verify that exceptions in underlying modules are handled gracefully."""
@@ -562,6 +583,7 @@ class TestErrorHandlingInCommands(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 11. ThreadPoolExecutor cleanup on exception
 # ---------------------------------------------------------------------------
+
 
 class TestThreadPoolExecutorCleanup(unittest.TestCase):
     """Verify that ThreadPoolExecutor properly cleans up even when tasks raise."""
@@ -643,8 +665,12 @@ class TestThreadPoolExecutorCleanup(unittest.TestCase):
                 errors.append(exc)
 
         with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = [pool.submit(run_semantic), pool.submit(run_health),
-                       pool.submit(run_semantic), pool.submit(run_health)]
+            futures = [
+                pool.submit(run_semantic),
+                pool.submit(run_health),
+                pool.submit(run_semantic),
+                pool.submit(run_health),
+            ]
             for f in futures:
                 f.result(timeout=10)
 
@@ -656,6 +682,7 @@ class TestThreadPoolExecutorCleanup(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 12. _remote_process_count helper
 # ---------------------------------------------------------------------------
+
 
 class TestRemoteProcessCount(unittest.TestCase):
     """_remote_process_count must return int >= 0 and handle errors gracefully."""
@@ -669,11 +696,13 @@ class TestRemoteProcessCount(unittest.TestCase):
         therefore the correct approach.
         """
         import subprocess as _sp
+
         return mock.patch.object(_sp, "run")
 
     def test_returns_zero_on_oserror(self) -> None:
         """OSError from pgrep must result in 0."""
         import subprocess as _sp
+
         with mock.patch.object(_sp, "run", side_effect=OSError("no pgrep")):
             count = context_cli._remote_process_count()
         self.assertEqual(count, 0)
@@ -695,6 +724,7 @@ class TestRemoteProcessCount(unittest.TestCase):
     def test_returns_zero_on_empty_output(self) -> None:
         """pgrep output with no PIDs must yield count=0."""
         import subprocess as _sp
+
         proc = SimpleNamespace(stdout="", returncode=1)
         with mock.patch.object(_sp, "run", return_value=proc):
             count = context_cli._remote_process_count()
@@ -703,6 +733,7 @@ class TestRemoteProcessCount(unittest.TestCase):
     def test_returns_zero_when_stdout_is_none(self) -> None:
         """pgrep with None stdout must yield count=0 without raising."""
         import subprocess as _sp
+
         proc = SimpleNamespace(stdout=None, returncode=1)
         with mock.patch.object(_sp, "run", return_value=proc):
             count = context_cli._remote_process_count()
@@ -713,6 +744,7 @@ class TestRemoteProcessCount(unittest.TestCase):
 # 13. _source_freshness helper
 # ---------------------------------------------------------------------------
 
+
 class TestSourceFreshness(unittest.TestCase):
     """_source_freshness must return a dict with the expected source keys."""
 
@@ -720,6 +752,7 @@ class TestSourceFreshness(unittest.TestCase):
         """Call _source_freshness with context_core un-mocked."""
         # Restore the real context_core getter in case a previous test cached a mock.
         import context_core as _real_cc
+
         with mock.patch.object(context_cli, "_get_context_core", return_value=_real_cc):
             return context_cli._source_freshness()
 
@@ -740,6 +773,7 @@ class TestSourceFreshness(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 14. export_observations_payload and import_observations_payload wrappers
 # ---------------------------------------------------------------------------
+
 
 class TestObservationPayloadWrappers(unittest.TestCase):
     """The thin wrapper functions must delegate to memory_index correctly."""
@@ -767,6 +801,7 @@ class TestObservationPayloadWrappers(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 15. run() dispatch table
 # ---------------------------------------------------------------------------
+
 
 class TestRunDispatch(unittest.TestCase):
     """run() must dispatch to the correct handler or return 2 for unknowns."""

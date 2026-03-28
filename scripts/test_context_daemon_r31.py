@@ -183,6 +183,7 @@ class TestFileWatcherNOLibc(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_init_without_libc_debug_log(self) -> None:
@@ -199,6 +200,7 @@ class TestFileWatcherNOLibc(unittest.TestCase):
                     self.assertTrue(any("mtime" in c or "fallback" in c or "inotify" in c for c in calls))
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -225,6 +227,7 @@ class TestFileWatcherInitInotifyFailure(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -260,6 +263,7 @@ class TestFileWatcherAddWatchFailure(unittest.TestCase):
                     watcher._inotify_fd = -1  # prevent actual close
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -288,6 +292,7 @@ class TestFileWatcherNoWatches(unittest.TestCase):
                     self.assertEqual(watcher._inotify_fd, -1)
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -311,6 +316,7 @@ class TestInitPollFallback(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -327,6 +333,7 @@ class TestFileWatcherAddDirectory(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_add_directory_noop_if_already_watched(self) -> None:
@@ -408,6 +415,7 @@ class TestFileWatcherUpdate(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -431,6 +439,7 @@ class TestFileWatcherHasChanges(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -458,6 +467,7 @@ class TestFileWatcherGetChangedPaths(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_get_changed_paths_inotify_clears_set(self) -> None:
@@ -481,6 +491,7 @@ class TestFileWatcherGetChangedPaths(unittest.TestCase):
                     watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -506,6 +517,7 @@ class TestDrainInotifyEarlyReturn(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -530,11 +542,13 @@ class TestDrainInotifySelectError(unittest.TestCase):
                 with patch("os.close"):
                     watcher = _FileWatcher([d])
                     import select as _select
+
                     with patch.object(_select, "select", side_effect=OSError("bad fd")):
                         watcher._drain_inotify()  # should not raise
                     watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -564,12 +578,14 @@ class TestDrainInotifyRead(unittest.TestCase):
         try:
             watcher = self._make_inotify_watcher(Path(tmp))
             import select as _select
+
             with patch.object(_select, "select", return_value=([99], [], [])):
                 with patch("os.read", side_effect=BlockingIOError("would block")):
                     watcher._drain_inotify()  # should not raise
             watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_drain_inotify_os_error(self) -> None:
@@ -578,12 +594,14 @@ class TestDrainInotifyRead(unittest.TestCase):
         try:
             watcher = self._make_inotify_watcher(Path(tmp))
             import select as _select
+
             with patch.object(_select, "select", return_value=([99], [], [])):
                 with patch("os.read", side_effect=OSError("io error")):
                     watcher._drain_inotify()  # should not raise
             watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_drain_inotify_empty_read(self) -> None:
@@ -592,23 +610,27 @@ class TestDrainInotifyRead(unittest.TestCase):
         try:
             watcher = self._make_inotify_watcher(Path(tmp))
             import select as _select
+
             with patch.object(_select, "select", return_value=([99], [], [])):
                 with patch("os.read", return_value=b""):
                     watcher._drain_inotify()
             watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_drain_inotify_parses_event(self) -> None:
         """Valid inotify event bytes are parsed and dir added to changed set."""
         import struct
+
         tmp = tempfile.mkdtemp(prefix="cg_drain_event_")
         try:
             watcher = self._make_inotify_watcher(Path(tmp))
             # Build a fake inotify event: wd=5, mask=IN_MODIFY, cookie=0, len=0
             event = struct.pack("<iIII", 5, 0x00000002, 0, 0)
             import select as _select
+
             with patch.object(_select, "select", return_value=([99], [], [])):
                 with patch("os.read", return_value=event):
                     watcher._drain_inotify()
@@ -616,6 +638,7 @@ class TestDrainInotifyRead(unittest.TestCase):
             watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_drain_inotify_no_readability(self) -> None:
@@ -624,12 +647,14 @@ class TestDrainInotifyRead(unittest.TestCase):
         try:
             watcher = self._make_inotify_watcher(Path(tmp))
             import select as _select
+
             with patch.object(_select, "select", return_value=([], [], [])):
                 watcher._drain_inotify()
             self.assertEqual(len(watcher._changed_paths), 0)
             watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -657,6 +682,7 @@ class TestPollMtimeFallback(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_poll_mtime_handles_oserror(self) -> None:
@@ -675,6 +701,7 @@ class TestPollMtimeFallback(unittest.TestCase):
                 watcher.close()
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -703,6 +730,7 @@ class TestCloseInotify(unittest.TestCase):
                     self.assertEqual(len(watcher._wd_to_dir), 0)
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -742,6 +770,7 @@ class TestBuildFileWatcherSpecialDirs(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_codex_sessions_dir_added(self) -> None:
@@ -1091,6 +1120,7 @@ class TestMainFunction(unittest.TestCase):
         """The if __name__ == '__main__': guard calls main()."""
         # We test this by reading the module source and confirming the guard exists
         import inspect
+
         source = inspect.getsource(context_daemon)
         self.assertIn('if __name__ == "__main__"', source)
         self.assertIn("main()", source)
@@ -1121,6 +1151,7 @@ class TestFileWatcherInotifyFallbackEdges(unittest.TestCase):
                     watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_has_changes_with_changed_paths(self) -> None:
@@ -1141,6 +1172,7 @@ class TestFileWatcherInotifyFallbackEdges(unittest.TestCase):
                     watcher._inotify_fd = -1
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
 

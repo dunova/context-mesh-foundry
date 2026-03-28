@@ -2724,6 +2724,7 @@ class TestCleanupCursors(unittest.TestCase):
         try:
             context_daemon.MAX_FILE_CURSORS = 1000
             from collections import OrderedDict
+
             self.tracker.file_cursors = OrderedDict((f"key_{i}", (i, i)) for i in range(10))
             self.tracker.cleanup_cursors()
             self.assertEqual(len(self.tracker.file_cursors), 10)
@@ -2735,6 +2736,7 @@ class TestCleanupCursors(unittest.TestCase):
         try:
             context_daemon.MAX_FILE_CURSORS = 6
             from collections import OrderedDict
+
             self.tracker.file_cursors = OrderedDict((f"key_{i:03d}", (i, i)) for i in range(9))
             self.tracker.cleanup_cursors()
             # Should remove roughly 1/3 = 3 entries
