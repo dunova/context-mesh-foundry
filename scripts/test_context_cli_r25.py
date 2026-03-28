@@ -191,6 +191,8 @@ class TestBuildParser(unittest.TestCase):
             "native-scan",
             "smoke",
             "health",
+            "vector-sync",
+            "vector-status",
         }
         p = context_cli.build_parser()
         # subparser actions store choices

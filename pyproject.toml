@@ -53,6 +53,7 @@ dependencies = []
 
 [project.optional-dependencies]
 remote = ["httpx>=0.27"]
+vector = ["model2vec>=0.4.0", "bm25s>=0.2.0", "numpy>=1.24"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -61,7 +62,7 @@ dev = [
     "safety>=3.3",
     "mypy>=1.10",
 ]
-all = ["contextgo[remote,dev]"]
+all = ["contextgo[remote,vector,dev]"]
 
 [project.scripts]
 contextgo = "scripts.context_cli:main"

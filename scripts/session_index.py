@@ -1110,6 +1110,24 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
                 _logger.debug("FTS5 rebuild skipped: %s", exc)
 
         _retry_commit(conn)
+
+        # --- Vector embedding: embed new/updated session documents ---
+        if EXPERIMENTAL_SEARCH_BACKEND == "vector":
+            try:
+                from vector_index import embed_pending_session_docs, get_vector_db_path, vector_available  # noqa: PLC0415, I001
+
+                if vector_available():
+                    _vdb = get_vector_db_path(db_path)
+                    _vresult = embed_pending_session_docs(db_path, _vdb, force=force)
+                    _logger.debug(
+                        "sync_session_index: vector embed result: embedded=%d skipped=%d deleted=%d",
+                        _vresult.get("embedded", 0),
+                        _vresult.get("skipped", 0),
+                        _vresult.get("deleted", 0),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                _logger.debug("sync_session_index: vector embedding skipped: %s", exc)
+
         total = _retry_sqlite(conn, _SQL_COUNT_DOCS).fetchone()[0]
 
         _t_remove_elapsed = time.monotonic() - _t_remove_start
@@ -1685,6 +1703,28 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
     with _open_db(db_path) as conn:
         terms = [query.strip()] if literal else build_query_terms(query)
         literal_fallback = False
+
+        # --- Vector hybrid search backend ---
+        if EXPERIMENTAL_SEARCH_BACKEND == "vector":
+            try:
+                from vector_index import (  # noqa: PLC0415
+                    fetch_enriched_results,
+                    get_vector_db_path,
+                    hybrid_search_session,
+                    vector_available,
+                )
+
+                if vector_available():
+                    _vdb = get_vector_db_path(db_path)
+                    ranked = hybrid_search_session(query, db_path, _vdb, limit=max_results)
+                    if ranked:
+                        results = fetch_enriched_results(ranked, db_path, query)
+                        if results:
+                            if _SEARCH_RESULT_CACHE_TTL > 0:
+                                _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
+                            return results
+            except Exception as exc:  # noqa: BLE001
+                _logger.debug("_search_rows: vector search fallback: %s", exc)
 
         native_rows = _native_search_rows(query, limit=max_results)
         if native_rows:

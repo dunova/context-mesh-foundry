@@ -22,6 +22,8 @@ __all__ = [
     "cmd_semantic",
     "cmd_serve",
     "cmd_smoke",
+    "cmd_vector_status",
+    "cmd_vector_sync",
     "export_observations_payload",
     "import_observations_payload",
     "main",
@@ -667,6 +669,62 @@ def cmd_health(args: object) -> int:
 
 
 # ───────────────────────────────────────────────
+# Vector index commands
+# ───────────────────────────────────────────────
+
+
+def cmd_vector_sync(args: object) -> int:
+    """Embed pending session documents into the vector index."""
+    import time as _time  # noqa: PLC0415
+
+    si = _get_session_index()
+    db_path = si.get_session_db_path()
+
+    try:
+        from vector_index import embed_pending_session_docs, get_vector_db_path, vector_available  # noqa: PLC0415
+    except ImportError:
+        print("Error: vector dependencies not installed. Run: pip install contextgo[vector]", file=sys.stderr)
+        return 1
+
+    if not vector_available():
+        print("Error: model2vec or numpy not available. Run: pip install contextgo[vector]", file=sys.stderr)
+        return 1
+
+    force = getattr(args, "force", False)
+    vdb = get_vector_db_path(db_path)
+
+    t0 = _time.monotonic()
+    result = embed_pending_session_docs(db_path, vdb, force=force)
+    elapsed = _time.monotonic() - t0
+
+    _print_json({
+        "embedded": result.get("embedded", 0),
+        "skipped": result.get("skipped", 0),
+        "deleted": result.get("deleted", 0),
+        "elapsed_sec": round(elapsed, 3),
+        "vector_db": str(vdb),
+    })
+    return 0
+
+
+def cmd_vector_status(args: object) -> int:
+    """Show vector index statistics."""
+    si = _get_session_index()
+    db_path = si.get_session_db_path()
+
+    try:
+        from vector_index import get_vector_db_path, vector_status  # noqa: PLC0415
+    except ImportError:
+        print("Error: vector dependencies not installed. Run: pip install contextgo[vector]", file=sys.stderr)
+        return 1
+
+    vdb = get_vector_db_path(db_path)
+    status = vector_status(db_path, vdb)
+    _print_json(status)
+    return 0
+
+
+# ───────────────────────────────────────────────
 # Command dispatch table
 # ───────────────────────────────────────────────
 
@@ -681,6 +739,8 @@ COMMANDS: dict[str, object] = {
     "native-scan": cmd_native_scan,
     "smoke": cmd_smoke,
     "health": cmd_health,
+    "vector-sync": cmd_vector_sync,
+    "vector-status": cmd_vector_status,
 }
 
 
@@ -789,6 +849,13 @@ def build_parser() -> object:
     # health
     p = sub.add_parser("health", help="Check context system health")
     p.add_argument("--verbose", action="store_true", help="Print full health payload")
+
+    # vector-sync
+    p = sub.add_parser("vector-sync", help="Embed pending session documents into vector index")
+    p.add_argument("--force", action="store_true", help="Re-embed all documents")
+
+    # vector-status
+    sub.add_parser("vector-status", help="Show vector index statistics")
 
     _PARSER = parser
     return _PARSER
