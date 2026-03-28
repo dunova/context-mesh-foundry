@@ -258,6 +258,7 @@ except (ValueError, TypeError):
     _SEARCH_RESULT_CACHE_TTL: int = 5
 # Mapping of cache_key -> (expiry_monotonic_float, results_list)
 _SEARCH_RESULT_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_SEARCH_CACHE_MAX_ENTRIES: int = 64
 
 # Pre-compiled whitespace normalizer used throughout this module.
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -1095,6 +1096,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
 
         if delete_batch:
             _retry_sqlite_many(conn, _SQL_DELETE_DOC, delete_batch)
+            _retry_commit(conn)
 
         _meta_set(conn, "last_sync_epoch", str(now_epoch))
 
@@ -1436,8 +1438,8 @@ def _check_fts5_available(conn: sqlite3.Connection) -> bool:
     except sqlite3.OperationalError:
         # fts5() scalar is not available — try creating a temp table instead.
         try:
-            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x)")
-            conn.execute("DROP TABLE IF EXISTS _fts5_probe")
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp._fts5_probe USING fts5(x)")
+            conn.execute("DROP TABLE IF EXISTS temp._fts5_probe")
             _FTS5_AVAILABLE = True
         except sqlite3.OperationalError:
             _FTS5_AVAILABLE = False
@@ -1686,7 +1688,10 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
 
         native_rows = _native_search_rows(query, limit=max_results)
         if native_rows:
-            return _enrich_native_rows(native_rows, conn, terms, max_results)
+            results = _enrich_native_rows(native_rows, conn, terms, max_results)
+            if _SEARCH_RESULT_CACHE_TTL > 0:
+                _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
+            return results
 
         # Try FTS5 first; fall back to LIKE-based scan when unavailable.
         fts5_rows = _fts5_search_rows(conn, query, limit=max_results) if _check_fts5_available(conn) else []
@@ -1737,6 +1742,15 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
         ]
 
     if _SEARCH_RESULT_CACHE_TTL > 0:
+        # Evict expired entries and cap cache size to prevent unbounded growth.
+        if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+            now_mono = time.monotonic()
+            expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= now_mono]
+            for k in expired:
+                del _SEARCH_RESULT_CACHE[k]
+            # If still over limit, drop oldest entries.
+            while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+                _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
         _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
 
     return results
