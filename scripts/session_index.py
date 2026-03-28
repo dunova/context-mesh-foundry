@@ -1813,6 +1813,39 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
 _VALID_SEARCH_TYPES = frozenset({"all", "codex", "claude", "shell", "event", "session", "turn", "content"})
 
 
+def lookup_session_by_id(
+    session_id_prefix: str,
+    *,
+    limit: int = 10,
+    db_path: Path | str | None = None,
+) -> list[dict[str, Any]]:
+    """Look up session documents by session_id prefix.
+
+    Returns a list of dicts matching the ``_search_rows`` output contract.
+    """
+    db = Path(db_path) if db_path else ensure_session_db()
+    with _open_db(db) as conn:
+        rows = conn.execute(
+            "SELECT source_type, session_id, title, file_path, "
+            "created_at, created_at_epoch, content "
+            "FROM session_documents WHERE session_id LIKE ? "
+            "ORDER BY created_at_epoch DESC LIMIT ?",
+            (session_id_prefix + "%", limit),
+        ).fetchall()
+    return [
+        {
+            "source_type": r["source_type"],
+            "session_id": r["session_id"],
+            "title": r["title"],
+            "file_path": r["file_path"],
+            "created_at": r["created_at"],
+            "created_at_epoch": r["created_at_epoch"],
+            "snippet": (r["content"] or "")[:240].strip(),
+        }
+        for r in rows
+    ]
+
+
 def format_search_results(
     query: str,
     *,

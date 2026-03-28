@@ -17,10 +17,12 @@ __all__ = [
     "cmd_import",
     "cmd_maintain",
     "cmd_native_scan",
+    "cmd_q",
     "cmd_save",
     "cmd_search",
     "cmd_semantic",
     "cmd_serve",
+    "cmd_shell_init",
     "cmd_smoke",
     "cmd_vector_status",
     "cmd_vector_sync",
@@ -736,6 +738,140 @@ def cmd_vector_status(args: object) -> int:
 
 
 # ───────────────────────────────────────────────
+# Quick recall: contextgo q
+# ───────────────────────────────────────────────
+
+_UUID_PREFIX_RE: object | None = None
+
+
+def _uuid_prefix_pattern() -> object:
+    """Compile and cache the UUID-prefix regex on first use."""
+    global _UUID_PREFIX_RE  # noqa: PLW0603
+    if _UUID_PREFIX_RE is None:
+        import re as _re  # noqa: PLC0415
+
+        _UUID_PREFIX_RE = _re.compile(r"^[0-9a-f]{8}[-0-9a-f]*$", _re.IGNORECASE)
+    return _UUID_PREFIX_RE
+
+
+def _print_q_results(results: list[dict], *, as_json: bool = False) -> None:
+    """Print quick-recall results in compact format."""
+    if as_json:
+        import json  # noqa: PLC0415
+
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+        return
+    for idx, row in enumerate(results, 1):
+        sid = row.get("session_id", "")[:8]
+        created = (row.get("created_at") or "")[:10]
+        src = row.get("source_type", "")
+        title = row.get("title", "")
+        snippet = row.get("snippet", "")[:200].replace("\n", " ").strip()
+        print(f"[{idx}] {created} | {sid} | {src} | {title}")
+        if snippet:
+            print(f"    > {snippet}")
+
+
+def _q_session_lookup(session_id: str, limit: int, as_json: bool) -> int:
+    """Look up sessions by ID prefix."""
+    si = _get_session_index()
+    rows = si.lookup_session_by_id(session_id, limit=limit)
+    if not rows:
+        print(f"No session found matching: {session_id}", file=sys.stderr)
+        return 1
+    _print_q_results(rows, as_json=as_json)
+    return 0
+
+
+def _q_search(query: str, limit: int, as_json: bool) -> int:
+    """Fast hybrid search — tries vector first, then FTS5/LIKE fallback."""
+    si = _get_session_index()
+    db_path = si.get_session_db_path()
+
+    # Try vector search (always, regardless of EXPERIMENTAL_SEARCH_BACKEND)
+    try:
+        try:
+            from vector_index import (  # noqa: PLC0415
+                fetch_enriched_results,
+                get_vector_db_path,
+                hybrid_search_session,
+                vector_available,
+            )
+        except ImportError:
+            from .vector_index import (  # type: ignore[import-not-found]  # noqa: PLC0415, I001
+                fetch_enriched_results,
+                get_vector_db_path,
+                hybrid_search_session,
+                vector_available,
+            )
+        if vector_available():
+            vdb = get_vector_db_path(db_path)
+            ranked = hybrid_search_session(query, db_path, vdb, limit=limit)
+            if ranked:
+                results = fetch_enriched_results(ranked, db_path, query)
+                if results:
+                    _print_q_results(results, as_json=as_json)
+                    return 0
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Fallback to FTS5/LIKE
+    text = si.format_search_results(query, limit=limit)
+    if as_json:
+        import json  # noqa: PLC0415
+
+        rows = si._search_rows(query, limit=limit) if hasattr(si, "_search_rows") else []
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+    else:
+        print(text)
+    return 0 if text and not text.startswith("No matches found") else 1
+
+
+def cmd_q(args: object) -> int:
+    """Quick recall — auto-routes to session ID lookup or hybrid search.
+
+    Accepts natural language queries or session ID prefixes.
+    """
+    query = " ".join(args.query).strip()  # type: ignore[union-attr]
+    if not query:
+        print("Usage: contextgo q <query or session-id>", file=sys.stderr)
+        return 2
+
+    as_json = getattr(args, "json", False)
+    limit = getattr(args, "limit", 5)
+
+    # Session ID detection: 8+ hex chars, optional dashes
+    if _uuid_prefix_pattern().match(query):
+        return _q_session_lookup(query, limit, as_json)
+
+    return _q_search(query, limit, as_json)
+
+
+# ───────────────────────────────────────────────
+# Shell integration: contextgo shell-init
+# ───────────────────────────────────────────────
+
+_SHELL_INTEGRATION = """\
+# ContextGO shell integration
+# Add to ~/.bashrc or ~/.zshrc, or run: eval "$(contextgo shell-init)"
+
+# Quick recall — search or session ID lookup
+cg() { contextgo q "$@"; }
+
+# Shorthand aliases
+alias cgs='contextgo search'
+alias cgse='contextgo semantic'
+alias cgvs='contextgo vector-sync'
+"""
+
+
+def cmd_shell_init(args: object) -> int:
+    """Print shell integration script to stdout."""
+    print(_SHELL_INTEGRATION)
+    return 0
+
+
+# ───────────────────────────────────────────────
 # Command dispatch table
 # ───────────────────────────────────────────────
 
@@ -752,6 +888,8 @@ COMMANDS: dict[str, object] = {
     "health": cmd_health,
     "vector-sync": cmd_vector_sync,
     "vector-status": cmd_vector_status,
+    "q": cmd_q,
+    "shell-init": cmd_shell_init,
 }
 
 
@@ -867,6 +1005,15 @@ def build_parser() -> object:
 
     # vector-status
     sub.add_parser("vector-status", help="Show vector index statistics")
+
+    # q (quick recall)
+    p = sub.add_parser("q", help="Quick recall — search or session ID lookup")
+    p.add_argument("query", nargs="+", help="Query text or session ID prefix")
+    p.add_argument("--limit", type=int, default=5)
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # shell-init
+    sub.add_parser("shell-init", help="Print shell integration script (source or eval)")
 
     _PARSER = parser
     return _PARSER

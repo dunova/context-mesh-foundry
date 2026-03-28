@@ -193,6 +193,8 @@ class TestBuildParser(unittest.TestCase):
             "health",
             "vector-sync",
             "vector-status",
+            "q",
+            "shell-init",
         }
         p = context_cli.build_parser()
         # subparser actions store choices
