@@ -114,7 +114,7 @@ ignore = [
 unfixable = ["B"]  # keep B-violations visible; fix manually
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/test_*.py" = ["SIM117", "SIM105", "E741"]
+"scripts/test_*.py" = ["SIM117", "SIM105", "E741", "E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["scripts"]

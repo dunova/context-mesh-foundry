@@ -9,9 +9,7 @@ Each test uses real temp-dir files and is self-contained.
 
 from __future__ import annotations
 
-import json
 import os
-import stat
 import sys
 import tempfile
 import unittest
@@ -561,7 +559,6 @@ class WriteMemoryMarkdownTests(unittest.TestCase):
             )
             self.assertTrue(path.exists())
             # Filename should start with a date-like prefix
-            import re
             self.assertRegex(path.name, r"^\d{8}_\d{6}_")
 
     def test_write_memory_markdown_file_contains_title_and_tags(self) -> None:

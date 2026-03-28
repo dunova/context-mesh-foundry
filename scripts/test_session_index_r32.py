@@ -25,14 +25,12 @@ import sys
 import time
 import unittest
 from pathlib import Path
-from unittest import mock
 from unittest.mock import MagicMock, patch
 
 _SCRIPTS_DIR = str(Path(__file__).parent)
 sys.path.insert(0, _SCRIPTS_DIR)
 
 import session_index
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -174,7 +172,6 @@ class TestSyncFts5Rebuild(unittest.TestCase):
     def _make_populated_db(self, tmp_path: Path) -> Path:
         """Create a DB with at least one document."""
         import json
-        from pathlib import Path as P
         root = tmp_path
         codex_root = root / ".codex" / "sessions" / "2026" / "03" / "01"
         codex_root.mkdir(parents=True)
@@ -493,8 +490,8 @@ class TestSyncFts5RebuildIntegration(unittest.TestCase):
 
     def test_fts5_rebuild_called_on_add(self):
         """sync_session_index triggers FTS5 rebuild when docs are added (line 1094-1097)."""
-        import tempfile
         import json
+        import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             codex_root = root / ".codex" / "sessions" / "2026" / "03" / "02"

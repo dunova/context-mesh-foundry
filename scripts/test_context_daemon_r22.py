@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import stat
 import sys
 import tempfile
 import time
@@ -461,7 +460,7 @@ class TestPollAntigravityOSError(unittest.TestCase):
             patch.object(context_daemon, "ANTIGRAVITY_INGEST_MODE", "final_only"),
         ):
             # poll_antigravity will find no docs (file deleted), so wt=None -> continue
-            initial_session_count = len(self.tracker.antigravity_sessions)
+            len(self.tracker.antigravity_sessions)
             self.tracker.poll_antigravity()
             # At minimum, no new session was added and no exception was raised
             self.assertGreaterEqual(len(self.tracker.antigravity_sessions), 0)
@@ -685,11 +684,12 @@ class TestNextSleepIntervalNearestDue(unittest.TestCase):
         self.assertGreaterEqual(sleep_s, 1)
 
     def test_no_sessions_returns_idle_cap(self) -> None:
-        """With no sessions, sleep interval is the idle cap."""
+        """With no sessions during daytime, sleep interval is the idle cap."""
         self.tracker.sessions.clear()
 
-        with patch.object(context_daemon, "NIGHT_POLL_START_HOUR", 23):
-            with patch.object(context_daemon, "NIGHT_POLL_END_HOUR", 7):
+        # Force daytime: set night window to a range that excludes all hours (start == end).
+        with patch.object(context_daemon, "NIGHT_POLL_START_HOUR", 0):
+            with patch.object(context_daemon, "NIGHT_POLL_END_HOUR", 0):
                 sleep_s = self.tracker.next_sleep_interval()
 
         self.assertGreaterEqual(sleep_s, 1)

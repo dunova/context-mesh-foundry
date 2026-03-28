@@ -30,7 +30,6 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import context_cli  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------
@@ -94,7 +93,7 @@ class TestLazyModuleGetters(unittest.TestCase):
 
     def test_lazy_getter_fallback_on_import_error(self) -> None:
         """When the top-level import fails the getter must try the relative import."""
-        fake_mod = ModuleType("context_core_fake")
+        ModuleType("context_core_fake")
         import builtins
 
         original_import = builtins.__import__
@@ -586,7 +585,6 @@ class TestThreadPoolExecutorCleanup(unittest.TestCase):
 
     def test_executor_partial_failure_others_succeed(self) -> None:
         """When one task fails in a pool, other tasks must still complete."""
-        results: list[str] = []
 
         def good_task(label: str) -> str:
             return f"ok:{label}"

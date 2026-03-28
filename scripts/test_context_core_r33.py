@@ -18,7 +18,6 @@ the relevant code path.
 
 from __future__ import annotations
 
-import mmap
 import os
 import sys
 import unittest
@@ -32,7 +31,6 @@ if _SCRIPTS_DIR not in sys.path:
 os.environ.setdefault("CONTEXTGO_STORAGE_ROOT", "/tmp/cgo_test_r33")
 
 import context_core  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # _scandir_files -- OSError branches (lines 78->72, 84-89)
@@ -153,7 +151,6 @@ class MmapContainsOSErrorTests(unittest.TestCase):
             f = Path(tmpdir) / "note.md"
             f.write_text("hello world FINDME content here", encoding="utf-8")
 
-            original_mmap = mmap.mmap
 
             def mmap_oserror(*args, **kwargs):
                 raise OSError("mmap not supported")

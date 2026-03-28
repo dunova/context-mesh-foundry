@@ -18,14 +18,12 @@ import os
 import sqlite3
 import sys
 import time
-import tempfile
 from pathlib import Path
 from unittest import mock
 
 # ── sys.path setup ──────────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import session_index  # noqa: E402
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -462,7 +460,6 @@ class TestCheckFts5Available:
                 return getattr(sqlite3.connect(":memory:"), name)
 
         wrapper = _AlwaysFailConn()
-        import pytest
         result = session_index._check_fts5_available(wrapper)
         assert result is False
         assert session_index._FTS5_AVAILABLE is False
@@ -595,10 +592,10 @@ class TestSearchTypeFiltering:
             with mock.patch.object(session_index, "_iter_sources", return_value=[]):
                 with mock.patch.object(session_index, "SYNC_MIN_INTERVAL_SEC", 0):
                     session_index.sync_session_index(force=True)
-                    text = session_index.format_search_results("r37", search_type="all", limit=10)
+                    session_index.format_search_results("r37", search_type="all", limit=10)
 
         # Both session ids should appear (or at least no "No matches" for combined)
-        assert "No matches" not in text or True  # lenient: just verify function runs
+        assert True  # lenient: just verify function runs
 
     def test_search_type_filters_to_codex(self, tmp_path):
         db_path = self._setup_db_with_docs(tmp_path)
@@ -636,7 +633,7 @@ class TestSearchTypeFiltering:
         assert "codex-r37" in text or "claude-r37" in text
 
     def test_search_type_valid_codex_filters(self, tmp_path):
-        db_path = self._setup_db_with_docs(tmp_path)
+        self._setup_db_with_docs(tmp_path)
         fake_results = [
             {
                 "source_type": "codex",
@@ -801,7 +798,7 @@ class TestSearchResultCache:
             with mock.patch.object(session_index, "_iter_sources", return_value=[]):
                 with mock.patch.object(session_index, "_SEARCH_RESULT_CACHE_TTL", 0):
                     with mock.patch.object(session_index, "SYNC_MIN_INTERVAL_SEC", 0):
-                        result = session_index._search_rows("nocachequery_r37", limit=5)
+                        session_index._search_rows("nocachequery_r37", limit=5)
 
         # No entry should have been added to cache
         assert not any("nocachequery_r37" in k for k in session_index._SEARCH_RESULT_CACHE)

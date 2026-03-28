@@ -16,7 +16,6 @@ Targets:
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sqlite3
 import sys
@@ -25,14 +24,11 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-import pytest
-
 _SCRIPTS_DIR = str(Path(__file__).parent)
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 import memory_index
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -40,8 +36,7 @@ import memory_index
 
 def _make_db(tmp_path: Path) -> Path:
     """Create a fresh isolated memory index DB and return its path."""
-    db_path = tmp_path / "memory_index.db"
-    return db_path
+    return tmp_path / "memory_index.db"
 
 
 def _insert_obs(db_path: Path, fingerprint: str, title: str, content: str,

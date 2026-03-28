@@ -42,13 +42,11 @@ Targets the specific uncovered lines:
 
 from __future__ import annotations
 
-import ctypes
 import os
 import sys
 import tempfile
 import time
 import unittest
-from collections import OrderedDict
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -830,7 +828,6 @@ class TestNextSleepIntervalIdle(unittest.TestCase):
         self.tracker._last_activity_ts = time.time() - context_daemon.IDLE_TIMEOUT_SEC - 100
         self.tracker.sessions = {}  # no pending sessions
         # Ensure no pending files by patching Path.exists at pathlib level
-        pending_dir = context_daemon.PENDING_DIR
         with patch("pathlib.Path.exists", return_value=False):
             result = self.tracker.next_sleep_interval()
         self.assertEqual(result, max(1, context_daemon.NIGHT_POLL_INTERVAL_SEC))
@@ -851,8 +848,11 @@ class TestNextSleepIntervalActiveSources(unittest.TestCase):
         """With active sources and no pending sessions, returns FAST_POLL_INTERVAL_SEC."""
         self.tracker._active_sources["source1"] = time.time()
         self.tracker.sessions = {}
-        with patch("pathlib.Path.exists", return_value=False):
-            result = self.tracker.next_sleep_interval()
+        # Force daytime to avoid night-mode early return.
+        with patch.object(context_daemon, "NIGHT_POLL_START_HOUR", 0):
+            with patch.object(context_daemon, "NIGHT_POLL_END_HOUR", 0):
+                with patch("pathlib.Path.exists", return_value=False):
+                    result = self.tracker.next_sleep_interval()
         self.assertEqual(result, max(1, context_daemon.FAST_POLL_INTERVAL_SEC))
 
 
@@ -891,7 +891,6 @@ class TestMainFunction(unittest.TestCase):
 
     def _run_main_one_cycle(self, extra_patches: dict | None = None, **kwargs: bool) -> None:
         """Run main() for one iteration then trigger shutdown."""
-        import threading
 
         shutdown_after = [False]
 

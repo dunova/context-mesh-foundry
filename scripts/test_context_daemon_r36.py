@@ -11,16 +11,13 @@ Targets uncovered inotify and adaptive-polling code paths:
 from __future__ import annotations
 
 import os
-import select
 import struct
 import sys
 import tempfile
 import threading
-import time
 import unittest
-from collections import OrderedDict
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:
@@ -621,9 +618,8 @@ class TestAdaptivePollingLogic(unittest.TestCase):
             and inotify_active
             and not watcher_has_changes
             and not has_active_sources
-        ):
-            if not has_pending_sessions and not has_pending_files:
-                sleep_s = min(float(IDLE_SLEEP_CAP_SEC), sleep_s * 2)
+        ) and not has_pending_sessions and not has_pending_files:
+            sleep_s = min(float(IDLE_SLEEP_CAP_SEC), sleep_s * 2)
 
         if consecutive_errors > 0:
             sleep_s += min(float(ERROR_BACKOFF_MAX_SEC), float(2 ** min(consecutive_errors, 6)))

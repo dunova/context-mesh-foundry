@@ -22,9 +22,10 @@ import io
 import sys
 import time
 import unittest
-from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 from unittest import mock
 
 _SCRIPTS_DIR = str(Path(__file__).parent)
@@ -32,7 +33,6 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 import context_cli  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -88,7 +88,7 @@ class TestLazyGetterImportErrorFallbacks(unittest.TestCase):
         original_import = _builtins.__import__
 
         # Pre-seeded fake module returned when the fallback import resolves
-        fake_mod = type(sys)("fake_" + direct_name)
+        type(sys)("fake_" + direct_name)
 
         # The fallback `from . import X` with __package__=None will fail with
         # ImportError("attempted relative import…").  We intercept __import__
@@ -221,9 +221,8 @@ class TestLoadModuleFallback(unittest.TestCase):
 
     def test_load_module_fallback_branch_reached(self) -> None:
         """Lines 222-227: ModuleNotFoundError branch is entered and fallback attempted."""
-        import importlib as _importlib
+
         import context_core as _real_context_core
-        real_import = _importlib.import_module
         attempts: list[tuple] = []
 
         def _patched(name: str, package=None):  # type: ignore[no-untyped-def]
@@ -313,7 +312,6 @@ class TestCmdSemanticMemoryTimeout(unittest.TestCase):
         # We do this by catching it in the future result using a tiny timeout
         # combined with a sleep.
 
-        TINY_TIMEOUT = 0.02  # 20 ms
         args = context_cli.build_parser().parse_args(["semantic", "line386 test"])
 
         def _blocking_memory(q, lim):  # type: ignore[no-untyped-def]
@@ -346,14 +344,12 @@ class TestCmdSemanticMemoryTimeout(unittest.TestCase):
                 def result(self, timeout=None):  # type: ignore[no-untyped-def]
                     return ""  # empty session text
 
-            submit_count = {"n": 0}
 
             class _FakePool:
                 """Passes isinstance(pool, ThreadPoolExecutor) by inheriting it."""
                 # We inherit from ThreadPoolExecutor but override submit
-                pass
 
-            fake_pool = ThreadPoolExecutor.__new__(ThreadPoolExecutor)
+            ThreadPoolExecutor.__new__(ThreadPoolExecutor)
             futures_queue = [_TimeoutFuture(), _GoodFuture()]
 
             _orig_submit = ThreadPoolExecutor.submit

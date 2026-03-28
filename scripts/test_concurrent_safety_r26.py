@@ -16,7 +16,6 @@ import os
 import sqlite3
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -29,7 +28,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import memory_index as mi
 import session_index as si
-
 
 # ---------------------------------------------------------------------------
 # Helpers
