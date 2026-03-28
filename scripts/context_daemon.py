@@ -41,6 +41,7 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse as _urlparse
 
 try:
     import resource as _resource_mod
@@ -93,8 +94,9 @@ def _validate_startup() -> None:
     is merely imported (e.g. by tests).
     """
     # Security: non-localhost URLs must use HTTPS to prevent MITM attacks.
-    remote_host = REMOTE_SYNC_URL.split("://", 1)[-1].split("/", 1)[0].split(":")[0]
-    if remote_host not in ("127.0.0.1", "localhost", "::1") and not REMOTE_SYNC_URL.startswith("https://"):
+    _parsed = _urlparse(REMOTE_SYNC_URL)
+    _remote_host = (_parsed.hostname or "").lower()
+    if _remote_host not in ("127.0.0.1", "localhost", "::1") and _parsed.scheme != "https":
         print(
             f"FATAL: CONTEXTGO_REMOTE_URL must use https:// for non-localhost targets. Got: {REMOTE_SYNC_URL}",
             file=sys.stderr,
@@ -338,10 +340,6 @@ def _handle_signal(signum: int, _frame: object) -> None:
     _shutdown = True
 
 
-signal.signal(signal.SIGTERM, _handle_signal)
-signal.signal(signal.SIGINT, _handle_signal)
-
-
 # Single-instance lock
 
 
@@ -375,8 +373,13 @@ def _acquire_single_instance_lock() -> bool:
     for _ in range(2):
         try:
             _LOCK_FD = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            os.write(_LOCK_FD, str(os.getpid()).encode("utf-8"))
-            os.fsync(_LOCK_FD)
+            try:
+                os.write(_LOCK_FD, str(os.getpid()).encode("utf-8"))
+                os.fsync(_LOCK_FD)
+            except OSError:
+                os.close(_LOCK_FD)
+                _LOCK_FD = None
+                raise
             atexit.register(_release_single_instance_lock)
             return True
         except FileExistsError:
@@ -641,7 +644,6 @@ class _FileWatcher:
             return
 
         # Read in 4 KiB chunks; inotify events are variable-length.
-        buf = bytearray(4096)
         try:
             n = os.read(self._inotify_fd, 4096)
         except BlockingIOError:
@@ -866,7 +868,11 @@ class SessionTracker:
                 self.active_jsonl[source_name] = picked
                 if not prev or prev["path"] != picked["path"]:
                     cursor_key = self._cursor_key("jsonl", source_name, picked["path"])
-                    self._set_cursor(cursor_key, picked["path"], picked["path"].stat().st_size)
+                    try:
+                        size = picked["path"].stat().st_size
+                    except (OSError, FileNotFoundError):
+                        continue
+                    self._set_cursor(cursor_key, picked["path"], size)
                     logger.info("Source active: %s -> %s", source_name, picked["path"])
             elif source_name in self.active_jsonl:
                 logger.info("Source offline: %s", source_name)
@@ -882,7 +888,11 @@ class SessionTracker:
                     self.active_shell[source_name] = picked_path
                     if prev_path != picked_path:
                         cursor_key = self._cursor_key("shell", source_name, picked_path)
-                        self._set_cursor(cursor_key, picked_path, picked_path.stat().st_size)
+                        try:
+                            size = picked_path.stat().st_size
+                        except (OSError, FileNotFoundError):
+                            continue
+                        self._set_cursor(cursor_key, picked_path, size)
                         logger.info("Source active: %s -> %s", source_name, picked_path)
                 elif source_name in self.active_shell:
                     logger.info("Source offline: %s", source_name)
@@ -1130,10 +1140,11 @@ class SessionTracker:
                     fsize = 0
                 if mtime < lookback_cutoff:
                     self._set_cursor(cursor_key, path, fsize)
+                    if cursor_key not in self.file_cursors:
+                        continue
                     continue
-                try:
-                    self.file_cursors[cursor_key] = (path.stat().st_ino, 0)
-                except OSError:
+                self._set_cursor(cursor_key, path, 0)
+                if cursor_key not in self.file_cursors:
                     continue
 
             result = self._tail_file(cursor_key, path, f"poll_claude_transcripts({path})")
@@ -1538,6 +1549,7 @@ class SessionTracker:
             if not ENABLE_REMOTE_SYNC:
                 self._export_count += 1
                 return True
+            logger.warning("Remote sync enabled but HTTP client unavailable; queuing export for %s", source)
             self._queue_pending(file_path, formatted)
             return False
 
@@ -1598,6 +1610,8 @@ class SessionTracker:
         Stops on the first HTTP failure to preserve ordering.
         """
         if not self._http_client:
+            logger.warning("Cannot retry pending exports: HTTP client not initialized. "
+                           "Check remote sync configuration.")
             return
 
         pending = sorted(
@@ -1810,6 +1824,8 @@ class SessionTracker:
 
 def main() -> None:
     """Start the ContextGO sync daemon."""
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
     _validate_startup()
     _setup_logging()
     os.umask(0o077)

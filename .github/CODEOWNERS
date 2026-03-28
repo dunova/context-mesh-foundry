@@ -1,12 +1,9 @@
-# Core Python runtime
-/scripts/ @dunova
+# Default owners for everything
+* @dunova
 
-# Native hot paths
-/native/ @dunova
-
-# CI/CD
-/.github/ @dunova
-
-# Documentation
-/docs/ @dunova
-/README.md @dunova
+# Critical paths require explicit review
+.github/ @dunova
+pyproject.toml @dunova
+scripts/context_daemon.py @dunova
+scripts/session_index.py @dunova
+scripts/memory_index.py @dunova

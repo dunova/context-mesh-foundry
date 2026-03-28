@@ -13,14 +13,13 @@ write_memory_markdown   -- write a memory entry as a Markdown file
 
 from __future__ import annotations
 
-import contextlib
 import heapq
 import json
 import mmap
 import os
 import re
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -216,7 +215,7 @@ def _mmap_snippet(path: Path, query_bytes: bytes, query_str: str, read_cap: int)
                 raw = fh.read(region)
             else:
                 try:
-                    raw = bytes(mm)
+                    raw = mm[:region]
                 finally:
                     mm.close()
     except OSError:
@@ -319,7 +318,7 @@ def local_memory_matches(
             # Fast byte-level search via mmap; avoids full UTF-8 decode.
             if _mmap_contains(path, ql_bytes, read_cap):
                 matched_in = "content"
-                snippet = _mmap_snippet(path, ql_bytes, ql, read_cap)
+                snippet = _mmap_snippet(path, ql_bytes, q, read_cap)
 
         if matched_in:
             matches.append(
@@ -327,7 +326,7 @@ def local_memory_matches(
                     "uri_hint": f"{prefix}{rel_path}" if prefix else rel_path,
                     "file_path": str(path),
                     "matched_in": matched_in,
-                    "mtime": datetime.fromtimestamp(safe_mtime(path)).isoformat(),
+                    "mtime": datetime.fromtimestamp(safe_mtime(path), tz=timezone.utc).isoformat(),
                     "snippet": snippet,
                 }
             )
@@ -434,17 +433,19 @@ def write_memory_markdown(
 
     normalized_tags = normalize_tags(tags)
     root = Path(conversations_root)
-    root.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(root, 0o700)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    safe_ts = (timestamp or "").strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    safe_ts = safe_filename((timestamp or "").strip() or now.strftime("%Y%m%d_%H%M%S"))
     path = root / f"{safe_ts}_{safe_filename(clean_title)}.md"
+    # Containment check
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"timestamp produces a path outside the storage root: {timestamp!r}")
 
     body = (
         f"# {clean_title}\n\n"
         f"Tags: {', '.join(normalized_tags)}\n"
-        f"Date: {datetime.now().isoformat()}\n\n"
+        f"Date: {now.isoformat()}\n\n"
         f"{clean_content}\n"
     )
 

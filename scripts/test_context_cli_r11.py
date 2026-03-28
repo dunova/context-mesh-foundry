@@ -732,7 +732,7 @@ class TestCmdSemanticFallbackText(unittest.TestCase):
             rc = context_cli.cmd_semantic(args)
         self.assertEqual(rc, 1)
 
-    def test_cmd_semantic_returns_0_when_empty_fallback(self) -> None:
+    def test_cmd_semantic_returns_1_when_empty_fallback(self) -> None:
         args = context_cli.build_parser().parse_args(["semantic", "some query"])
         fake_session_index = mock.MagicMock()
         fake_session_index.format_search_results.return_value = ""
@@ -741,7 +741,7 @@ class TestCmdSemanticFallbackText(unittest.TestCase):
             mock.patch.object(context_cli, "_get_session_index", return_value=fake_session_index),
         ):
             rc = context_cli.cmd_semantic(args)
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 1)
 
 
 # ---------------------------------------------------------------------------

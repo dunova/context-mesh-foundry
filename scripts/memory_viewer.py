@@ -64,6 +64,9 @@ _MAX_POST_BYTES: int = env_int("CONTEXTGO_VIEWER_MAX_POST_BYTES", default=1_048_
 _MAX_BATCH_IDS: int = env_int("CONTEXTGO_VIEWER_MAX_BATCH_IDS", default=500, minimum=1)
 _SSE_INTERVAL_SEC: float = env_float("CONTEXTGO_VIEWER_SSE_INTERVAL_SEC", default=1.0, minimum=0.2)
 _SSE_MAX_TICKS: int = env_int("CONTEXTGO_VIEWER_SSE_MAX_TICKS", default=120, minimum=1)
+
+# Shutdown event — set by ``main()`` on KeyboardInterrupt to unblock SSE threads.
+_SHUTDOWN_EVENT: threading.Event = threading.Event()
 _SYNC_MIN_INTERVAL_SEC: float = env_float("CONTEXTGO_VIEWER_SYNC_MIN_INTERVAL_SEC", default=5.0, minimum=0.0)
 
 # ---------------------------------------------------------------------------
@@ -183,6 +186,8 @@ _VIEWER_HTML: str = """<!doctype html>
   <pre id="out">Enter a query and press Search.</pre>
 </main>
 <script>
+const _token = new URLSearchParams(window.location.search).get('token') || '';
+
 async function run() {
   const q = document.getElementById('q').value.trim();
   const out = document.getElementById('out');
@@ -192,7 +197,7 @@ async function run() {
   try {
     const res = await fetch(
       '/api/search?query=' + encodeURIComponent(q) + '&limit=20',
-      { headers: { 'Accept': 'application/json' } }
+      { headers: { 'Accept': 'application/json', 'X-Context-Token': _token } }
     );
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -213,7 +218,7 @@ document.getElementById('q').addEventListener('keydown', function(e) {
 (function connectSSE() {
   const dot = document.getElementById('status-dot');
   const stats = document.getElementById('stats');
-  const es = new EventSource('/api/events');
+  const es = new EventSource('/api/events?token=' + encodeURIComponent(_token));
   es.onopen = () => { dot.className = 'live'; };
   es.onmessage = function(e) {
     try {
@@ -307,11 +312,19 @@ class Handler(BaseHTTPRequestHandler):
         """Return ``True`` when the request carries a valid auth token.
 
         Uses :func:`hmac.compare_digest` to prevent timing-based attacks.
+        Also accepts the token via ``?token=`` query string so that
+        EventSource (which cannot set custom headers) can authenticate.
         """
         if not VIEWER_TOKEN:
             return True
         got = self.headers.get("X-Context-Token", "").strip()
-        return bool(got) and hmac.compare_digest(got, VIEWER_TOKEN)
+        if got and hmac.compare_digest(got, VIEWER_TOKEN):
+            return True
+        # Fallback: check query string (for SSE EventSource which can't set headers)
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        qs_token = (qs.get("token", [""])[0] or "").strip()
+        return bool(qs_token) and hmac.compare_digest(qs_token, VIEWER_TOKEN)
 
     def _add_security_headers(self) -> None:
         """Emit common security headers on the current response."""
@@ -371,7 +384,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(401, {"ok": False, "error": "unauthorized"})
 
     def _send_not_found(self, path: str) -> None:
-        self._send_json(404, {"ok": False, "error": "not found", "path": path})
+        self._send_json(404, {"ok": False, "error": "not found"})
 
     # ------------------------------------------------------------------
     # Route dispatch
@@ -381,6 +394,7 @@ class Handler(BaseHTTPRequestHandler):
         """Handle CORS pre-flight requests."""
         self.send_response(204)
         self._add_cors_headers()
+        self._add_security_headers()
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -389,6 +403,9 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path in ("/", "/index.html"):
+            if not self._authorized():
+                self._send_unauthorized()
+                return
             self._send_html(_VIEWER_HTML)
             return
 
@@ -461,8 +478,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             rows = search_index(query=query, limit=limit, offset=offset, source_type=source_type)
-        except Exception as exc:
-            self._send_json(500, {"ok": False, "error": "search failed", "detail": str(exc)})
+        except Exception:  # noqa: BLE001
+            self._send_json(500, {"ok": False, "error": "search failed"})
             return
         self._send_json(200, {"ok": True, "sync": sync, "count": len(rows), "results": rows})
 
@@ -474,8 +491,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             rows = timeline_index(anchor_id=anchor, depth_before=before, depth_after=after) if anchor > 0 else []
-        except Exception as exc:
-            self._send_json(500, {"ok": False, "error": "timeline failed", "detail": str(exc)})
+        except Exception:  # noqa: BLE001
+            self._send_json(500, {"ok": False, "error": "timeline failed"})
             return
         self._send_json(200, {"ok": True, "sync": sync, "count": len(rows), "timeline": rows})
 
@@ -486,12 +503,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-store")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
-        self.send_header("retry", "5000")
         self._add_security_headers()
         self._add_cors_headers()
         self.end_headers()
+        self.wfile.write(b"retry: 5000\n\n")
+        self.wfile.flush()
 
         for _ in range(_SSE_MAX_TICKS):
+            if _SHUTDOWN_EVENT.is_set():
+                break
             try:
                 data: dict[str, Any] = {
                     "at": datetime.now(timezone.utc).isoformat(),
@@ -500,7 +520,7 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 self.wfile.write(f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode())
                 self.wfile.flush()
-                time.sleep(_SSE_INTERVAL_SEC)
+                _SHUTDOWN_EVENT.wait(timeout=_SSE_INTERVAL_SEC)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 break
 
@@ -513,7 +533,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"ok": False, "error": "invalid Content-Length"})
             return
 
-        if length <= 0 or length > _MAX_POST_BYTES:
+        if length <= 0:
+            self._send_json(400, {"ok": False, "error": "missing or empty request body"})
+            return
+        if length > _MAX_POST_BYTES:
             self._send_json(
                 413,
                 {"ok": False, "error": "payload too large", "max_bytes": _MAX_POST_BYTES},
@@ -522,7 +545,10 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             raw = self.rfile.read(length).decode("utf-8")
-            body: dict[str, Any] = json.loads(raw) if raw.strip() else {}
+            if not raw.strip():
+                self._send_json(400, {"ok": False, "error": "missing or empty request body"})
+                return
+            body: dict[str, Any] = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._send_json(400, {"ok": False, "error": "invalid JSON body"})
             return
@@ -583,6 +609,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        _SHUTDOWN_EVENT.set()
         server.server_close()
 
 

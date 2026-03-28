@@ -41,7 +41,10 @@ from typing import Any
 # In-process search result cache (TTL-based)
 # ---------------------------------------------------------------------------
 # Cache TTL in seconds.  Set MEMORY_INDEX_SEARCH_CACHE_TTL=0 to disable.
-_SEARCH_CACHE_TTL: int = int(os.environ.get("MEMORY_INDEX_SEARCH_CACHE_TTL", "5") or "5")
+try:
+    _SEARCH_CACHE_TTL: int = int(os.environ.get("MEMORY_INDEX_SEARCH_CACHE_TTL", "5") or "5")
+except (ValueError, TypeError):
+    _SEARCH_CACHE_TTL: int = 5
 
 # Mapping of cache_key -> (expiry_epoch_float, results)
 _SEARCH_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
@@ -215,17 +218,19 @@ def _to_epoch(ts: str, fallback: int) -> int:
 @contextmanager
 def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """Open a SQLite connection with WAL mode and ensure it is closed."""
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-8000")
-    conn.execute("PRAGMA mmap_size=268435456")
-    conn.execute("PRAGMA temp_store=MEMORY")
+    conn: sqlite3.Connection | None = None
     try:
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-8000")
+        conn.execute("PRAGMA mmap_size=268435456")
+        conn.execute("PRAGMA temp_store=MEMORY")
         yield conn
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 # FTS5 availability cache: db_path_str -> bool
@@ -440,7 +445,10 @@ def _parse_markdown(path: Path) -> Observation | None:
     if not content:
         return None
 
-    mtime_epoch = int(path.stat().st_mtime)
+    try:
+        mtime_epoch = int(path.stat().st_mtime)
+    except OSError:
+        return None
     created_at_epoch = _to_epoch(created_at, mtime_epoch)
     if not created_at:
         created_at = datetime.fromtimestamp(created_at_epoch).isoformat()
@@ -489,7 +497,7 @@ def ensure_index_db() -> Path:
             _retry_sqlite(conn, _DDL_FTS5)
             if not fts_existed:
                 # Newly created — rebuild to populate from existing rows.
-                conn.execute(_SQL_FTS5_REBUILD)
+                _retry_sqlite(conn, _SQL_FTS5_REBUILD)
                 # Invalidate the cache entry so the next call re-checks.
                 _FTS5_AVAILABLE_CACHE.pop(str(db_path), None)
         except sqlite3.OperationalError:
@@ -991,8 +999,7 @@ def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
     fingerprint = str(raw.get("fingerprint") or "").strip()
     if not fingerprint and content:
         src = raw.get("source_type") or "import"
-        sid = raw.get("session_id") or "imported"
-        fingerprint = hashlib.sha256(f"{src}|{sid}|{title}|{content}|{created_at_epoch}".encode()).hexdigest()
+        fingerprint = hashlib.sha256(f"{src}|{title}|{content}|{created_at_epoch}".encode()).hexdigest()
 
     return {
         "fingerprint": fingerprint,

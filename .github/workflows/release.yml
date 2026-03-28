@@ -6,7 +6,7 @@ on:
       - "v[0-9]*"
 
 permissions:
-  contents: write
+  contents: read
 
 # ---------------------------------------------------------------------------
 # Release pipeline
@@ -30,7 +30,7 @@ jobs:
       version: ${{ steps.tag.outputs.version }}
       has_notes: ${{ steps.notes.outputs.has_notes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Parse tag version
         id: tag
@@ -71,14 +71,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: validate
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
         with:
           fetch-depth: 0
 
       - name: Create GitHub release (with release notes)
         if: needs.validate.outputs.has_notes == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631  # v2
         with:
           body_path: docs/RELEASE_NOTES_${{ needs.validate.outputs.version }}.md
           generate_release_notes: false
@@ -88,7 +90,7 @@ jobs:
 
       - name: Create GitHub release (auto-generated notes)
         if: needs.validate.outputs.has_notes != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631  # v2
         with:
           generate_release_notes: true
           draft: false
@@ -109,18 +111,21 @@ jobs:
       name: pypi
       url: https://pypi.org/p/contextgo
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
 
       - name: Install build
-        run: pip install build
+        run: pip install build twine
 
       - name: Build sdist and wheel
         run: python3 -m build
 
+      - name: Check dist artifacts
+        run: twine check dist/*
+
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b54f72e44af3222aff7e3a36  # release/v1

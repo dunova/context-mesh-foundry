@@ -290,8 +290,8 @@ class TestCmdSemanticSessionFallback(unittest.TestCase):
             rc = context_cli.cmd_semantic(args)
         self.assertEqual(rc, 1)
 
-    def test_fallback_empty_text_returns_zero(self) -> None:
-        """When session_index returns empty string, cmd_semantic returns 0 (no error)."""
+    def test_fallback_empty_text_returns_one(self) -> None:
+        """When session_index returns empty string and memory also empty, cmd_semantic returns 1 (no results)."""
         args = context_cli.build_parser().parse_args(["semantic", "query"])
         si_mock = _make_session_index_mock(format_result="")
         with (
@@ -300,7 +300,7 @@ class TestCmdSemanticSessionFallback(unittest.TestCase):
             mock.patch("builtins.print"),
         ):
             rc = context_cli.cmd_semantic(args)
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 1)
 
     def test_fallback_calls_format_search_results_with_correct_args(self) -> None:
         """format_search_results must be called with search_type='content' and literal=True."""

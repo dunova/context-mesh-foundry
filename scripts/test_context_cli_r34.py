@@ -376,8 +376,8 @@ class TestCmdSemanticMemoryTimeout(unittest.TestCase):
         finally:
             real_pool.shutdown(wait=False)
 
-        # Both futures gave empty/timeout → rc == 0
-        self.assertEqual(rc, 0)
+        # Both futures gave empty/timeout → rc == 1 (both memory and session came back empty)
+        self.assertEqual(rc, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -388,8 +388,8 @@ class TestCmdSemanticMemoryTimeout(unittest.TestCase):
 class TestCmdSemanticSessionTimeout(unittest.TestCase):
     """FuturesTimeoutError on future_session.result() must set session_text='' (line 404)."""
 
-    def test_session_timeout_returns_zero(self) -> None:
-        """When both memory and session futures give empty/timeout, rc is 0."""
+    def test_session_timeout_returns_one(self) -> None:
+        """When both memory and session futures give empty/timeout, rc is 1 (both came back empty)."""
         args = context_cli.build_parser().parse_args(["semantic", "double timeout"])
 
         class _EmptyFuture:
@@ -424,8 +424,8 @@ class TestCmdSemanticSessionTimeout(unittest.TestCase):
         finally:
             real_pool.shutdown(wait=False)
 
-        # session_text becomes "" → rc == 0
-        self.assertEqual(rc, 0)
+        # session_text becomes "" → rc == 1 (both memory and session came back empty)
+        self.assertEqual(rc, 1)
 
 
 # ---------------------------------------------------------------------------

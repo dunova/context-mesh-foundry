@@ -252,12 +252,18 @@ _SOURCE_CACHE: dict[str, Any] = {"expires_at": 0.0, "items": [], "home": None}
 # In-process search result cache (TTL-based)
 # ---------------------------------------------------------------------------
 # Cache TTL in seconds.  Set CONTEXTGO_SESSION_SEARCH_CACHE_TTL=0 to disable.
-_SEARCH_RESULT_CACHE_TTL: int = int(os.environ.get("CONTEXTGO_SESSION_SEARCH_CACHE_TTL", "5") or "5")
+try:
+    _SEARCH_RESULT_CACHE_TTL: int = int(os.environ.get("CONTEXTGO_SESSION_SEARCH_CACHE_TTL", "5") or "5")
+except (ValueError, TypeError):
+    _SEARCH_RESULT_CACHE_TTL: int = 5
 # Mapping of cache_key -> (expiry_monotonic_float, results_list)
 _SEARCH_RESULT_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 # Pre-compiled whitespace normalizer used throughout this module.
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# Pre-compiled CJK character matcher used in snippet and scoring helpers.
+_CJK_CHAR_RE: re.Pattern[str] = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 
 _SNIPPET_MAX_CHARS = 120
 
@@ -983,7 +989,10 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
             force = True
 
         last_sync_raw = _meta_get(conn, "last_sync_epoch")
-        last_sync_epoch = int(last_sync_raw or "0")
+        try:
+            last_sync_epoch = int(last_sync_raw or "0")
+        except (ValueError, TypeError):
+            last_sync_epoch = 0
         if not force and last_sync_epoch and (now_epoch - last_sync_epoch) < SYNC_MIN_INTERVAL_SEC:
             total = _retry_sqlite(conn, _SQL_COUNT_DOCS).fetchone()[0]
             _logger.debug(
@@ -1208,7 +1217,6 @@ def _cjk_safe_boundary(text: str, pos: int, direction: int) -> int:
     the given direction until it finds a non-CJK character or a whitespace
     boundary.
     """
-    _CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
     length = len(text)
     adjusted = max(0, min(pos, length))
     for _ in range(4):
@@ -1245,8 +1253,7 @@ def _build_snippet(text: str, terms: list[str], radius: int = 80) -> str:
     lower_terms = [t.lower() for t in terms if t]
 
     # Detect CJK query so we apply boundary adjustment selectively.
-    _CJK_QUERY_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
-    is_cjk_query = any(_CJK_QUERY_RE.search(t) for t in lower_terms)
+    is_cjk_query = any(_CJK_CHAR_RE.search(t) for t in lower_terms)
 
     # --- Phase 1: collect candidate windows ---
     # Each candidate is (start, end, matched_term_lower).
@@ -1513,7 +1520,7 @@ def _fetch_rows(
         )
         args.extend([like_term, like_term, like_term])
     where_clause = f"WHERE {' OR '.join(where_parts)}" if where_parts else ""
-    sql = f"SELECT * FROM session_documents {where_clause} ORDER BY created_at_epoch DESC LIMIT ?"
+    sql = f"SELECT * FROM session_documents {where_clause} ORDER BY created_at_epoch DESC, file_path DESC LIMIT ?"
     args.append(max(1, int(row_limit)))
     return _retry_sqlite(conn, sql, args).fetchall()
 
@@ -1584,14 +1591,13 @@ def _rank_rows(
     exact_phrase = " ".join(lower_terms)
 
     # Detect CJK queries: at least one term contains a CJK character.
-    _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
-    has_cjk = any(_CJK_RE.search(t) for t in lower_terms)
+    has_cjk = any(_CJK_CHAR_RE.search(t) for t in lower_terms)
 
     # Build CJK bigrams from all terms for bigram matching.
     cjk_bigrams: list[str] = []
     if has_cjk:
         for term in lower_terms:
-            cjk_chars = _CJK_RE.findall(term)
+            cjk_chars = _CJK_CHAR_RE.findall(term)
             for i in range(len(cjk_chars) - 1):
                 bg = cjk_chars[i] + cjk_chars[i + 1]
                 if bg not in cjk_bigrams:
@@ -1754,9 +1760,11 @@ def format_search_results(
     *search_type* filters results by source type (e.g. ``"codex"``, ``"claude"``).
     ``"all"`` returns every source type.
     """
-    results = _search_rows(query, limit=limit, literal=literal)
+    effective_limit = limit * 5 if (search_type != "all" and search_type in _VALID_SEARCH_TYPES) else limit
+    results = _search_rows(query, limit=effective_limit, literal=literal)
     if search_type != "all" and search_type in _VALID_SEARCH_TYPES:
-        results = [r for r in results if r.get("source_type", "") == search_type]
+        results = [r for r in results if r.get("source_type", "").startswith(search_type)]
+    results = results[:limit]
     if not results:
         return "No matches found in local session index."
 

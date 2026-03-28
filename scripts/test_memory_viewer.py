@@ -367,7 +367,7 @@ class TestHandlerBatchFetch(unittest.TestCase):
     def test_empty_body_returns_400(self) -> None:
         h, wfile = self._make_post_handler(b"", content_length=0)
         h._handle_batch_fetch()
-        self.assertEqual(h._status_code, 413)
+        self.assertEqual(h._status_code, 400)
 
     def test_invalid_content_length_returns_400(self) -> None:
         h, wfile = self._make_post_handler(b"{}", content_length=-1)

@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import sys
+import threading
 from pathlib import Path
 from types import ModuleType
 
@@ -104,6 +106,7 @@ REMOTE_MEMORY_URL = env_str("CONTEXTGO_REMOTE_URL", default="http://127.0.0.1:80
 # Lazy thread pool — initialized once, reused across calls
 # ───────────────────────────────────────────────
 
+_THREAD_POOL_LOCK = threading.Lock()
 _THREAD_POOL: object | None = None  # type: concurrent.futures.ThreadPoolExecutor | None
 
 
@@ -112,12 +115,17 @@ def _get_thread_pool() -> object:
 
     The pool is created on first call and reused for subsequent calls, avoiding
     repeated thread-creation overhead across parallel search and health checks.
+    Uses a lock to prevent race conditions during initialization.
     """
     global _THREAD_POOL  # noqa: PLW0603
-    if _THREAD_POOL is None:
-        from concurrent.futures import ThreadPoolExecutor  # deferred: only needed for parallel ops
+    if _THREAD_POOL is not None:
+        return _THREAD_POOL
+    with _THREAD_POOL_LOCK:
+        if _THREAD_POOL is None:
+            from concurrent.futures import ThreadPoolExecutor  # deferred: only needed for parallel ops
 
-        _THREAD_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="contextgo")
+            _THREAD_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="contextgo")
+            atexit.register(_THREAD_POOL.shutdown, wait=False)
     return _THREAD_POOL
 
 
@@ -180,8 +188,10 @@ def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
         return f"Saved locally: {path}"
 
     # Security: non-localhost remote URLs must use HTTPS.
-    _remote_host = REMOTE_MEMORY_URL.split("://", 1)[-1].split("/", 1)[0].split(":")[0]
-    if _remote_host not in ("127.0.0.1", "localhost", "::1") and not REMOTE_MEMORY_URL.startswith("https://"):
+    from urllib.parse import urlparse as _urlparse
+    _parsed_remote = _urlparse(REMOTE_MEMORY_URL)
+    _remote_host = _parsed_remote.hostname or ""
+    if _remote_host not in ("127.0.0.1", "localhost", "::1") and _parsed_remote.scheme != "https":
         return f"Saved locally: {path} (remote indexing skipped: HTTPS required for non-localhost URL)"
 
     import json  # deferred: only needed when remote HTTP sync is active
@@ -342,7 +352,7 @@ def cmd_search(args: object) -> int:
         literal=args.literal,
     )
     print(text)
-    return 0 if not text.startswith("No matches found") else 1
+    return 0 if text and not text.startswith("No matches found") else 1
 
 
 def cmd_semantic(args: object) -> int:
@@ -352,7 +362,6 @@ def cmd_semantic(args: object) -> int:
     timeout each. Memory matches are preferred; if the memory path returns
     enough results the session path result is discarded.
     """
-    from concurrent.futures import ThreadPoolExecutor  # deferred
     from concurrent.futures import TimeoutError as FuturesTimeoutError
 
     if not args.query or not args.query.strip():
@@ -364,7 +373,8 @@ def cmd_semantic(args: object) -> int:
     _SEARCH_TIMEOUT = 5.0  # seconds per search path
 
     pool = _get_thread_pool()
-    assert isinstance(pool, ThreadPoolExecutor)
+    if not hasattr(pool, 'submit'):
+        raise RuntimeError("Thread pool is not properly initialized")
 
     # Submit both search paths in parallel.
     future_memory = pool.submit(_local_memory_matches, query, limit)
@@ -408,7 +418,8 @@ def cmd_semantic(args: object) -> int:
     if session_text:
         print("--- HISTORY CONTENT FALLBACK ---")
         print(session_text)
-    return 0 if not session_text.startswith("No matches found") else 1
+        return 0 if not session_text.startswith("No matches found") else 1
+    return 1  # Both memory and session came back empty
 
 
 def cmd_save(args: object) -> int:
@@ -439,7 +450,7 @@ def cmd_export(args: object) -> int:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"exported observations={payload['total_observations']} -> {output_path}")
+    print(f"exported observations={payload.get('total_observations', 0)} -> {output_path}")
     return 0
 
 
@@ -470,7 +481,7 @@ def cmd_import(args: object) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"import done inserted={result['inserted']} skipped={result['skipped']} db={result['db_path']}")
+    print(f"import done inserted={result.get('inserted', 0)} skipped={result.get('skipped', 0)} db={result.get('db_path', '')}")
     return 0
 
 
@@ -529,11 +540,12 @@ def cmd_native_scan(args: object) -> int:
     )
     if args.json:
         json_payload = result.json_payload()
-        if isinstance(json_payload, dict):
+        if isinstance(json_payload, (dict, list)):
             _print_json(json_payload)
             if result.returncode != 0 and result.stderr:
                 print(result.stderr.rstrip(), file=sys.stderr)
             return result.returncode
+        # json_payload is neither dict nor list — fall through to text output
     if result.stdout:
         print(result.stdout.rstrip())
     if result.stderr:
@@ -564,7 +576,8 @@ def cmd_smoke(args: object) -> int:
 
     output = payload if args.verbose else _compact_smoke_payload(payload)
     _print_json(output, pretty=args.verbose)
-    return 1 if any(not item["ok"] for item in payload["results"]) else 0
+    results = payload.get("results", [])
+    return 1 if any(not item.get("ok", False) for item in results if isinstance(item, dict)) else 0
 
 
 def cmd_health(args: object) -> int:
@@ -573,14 +586,14 @@ def cmd_health(args: object) -> int:
     Runs session_index health, memory_index stats, and native backend checks in
     parallel via ThreadPoolExecutor to reduce wall-clock time.
     """
-    from concurrent.futures import ThreadPoolExecutor  # deferred
     from concurrent.futures import TimeoutError as FuturesTimeoutError
     from datetime import datetime  # deferred: only needed for health timestamp
 
     _HEALTH_TIMEOUT = 10.0  # seconds per health sub-check
 
     pool = _get_thread_pool()
-    assert isinstance(pool, ThreadPoolExecutor)
+    if not hasattr(pool, 'submit'):
+        raise RuntimeError("Thread pool is not properly initialized")
 
     # Submit all three independent health checks in parallel.
     future_session = pool.submit(_get_session_index().health_payload)
@@ -804,7 +817,6 @@ def main(argv: list[str] | None = None) -> int:
     return run(args)
 
 
-_LAZY_MODULE_MAP: dict[str, object] = {}
 _LAZY_MODULE_GETTERS: dict[str, object] = {
     "context_core": _get_context_core,
     "context_native": _get_context_native,
@@ -823,7 +835,6 @@ def __getattr__(name: str) -> object:
     getter = _LAZY_MODULE_GETTERS.get(name)
     if getter is not None:
         module = getter()  # type: ignore[call-arg]
-        _LAZY_MODULE_MAP[name] = module
         # Cache it as a real attribute so subsequent accesses skip __getattr__
         globals()[name] = module
         return module

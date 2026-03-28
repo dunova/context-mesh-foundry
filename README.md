@@ -66,7 +66,7 @@ pipx install contextgo
 | Built-in delivery validation | **Yes** | No | No | No |
 | CJK / Unicode full support | **Yes** | Partial | No | No |
 
-**Key numbers (v0.9.35):** 1,282 tests | 98.1% coverage | Python 3.10+
+**Key numbers (v0.9.36):** 1,808 tests | 99.4% coverage | Python 3.10+
 
 ---
 
@@ -299,7 +299,7 @@ pipx install contextgo
 | 内置交付验证链 | **是** | 否 | 否 | 否 |
 | CJK / Unicode 全面支持 | **是** | 部分 | 否 | 否 |
 
-**关键数据 (v0.9.35)：** 1,282 项测试 | 98.1% 覆盖率 | Python 3.10+
+**关键数据 (v0.9.36)：** 1,808 项测试 | 99.4% 覆盖率 | Python 3.10+
 
 ---
 

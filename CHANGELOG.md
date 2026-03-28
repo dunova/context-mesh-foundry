@@ -407,7 +407,7 @@ Foundational release of the local-first `contextgo` runtime. All context capture
 
 ---
 
-[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.9.35...HEAD
+[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.9.36...HEAD
 [0.9.35]: https://github.com/dunova/ContextGO/compare/v0.9.32...v0.9.35
 [0.9.32]: https://github.com/dunova/ContextGO/compare/v0.9.31...v0.9.32
 [0.9.31]: https://github.com/dunova/ContextGO/compare/v0.9.3...v0.9.31
