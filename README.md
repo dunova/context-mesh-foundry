@@ -76,7 +76,7 @@ pipx install "contextgo[vector]"
 | Built-in delivery validation | **Yes** | No | No | No |
 | CJK / Unicode full support | **Yes** | Partial | No | No |
 
-**Key numbers:** 1,860 tests | 99.4% coverage | Python 3.10+ | Hybrid search < 5ms (warm)
+**Key numbers:** 2,026 tests | 98.9% coverage | Python 3.10+ | Hybrid search < 5ms (warm)
 
 ---
 
@@ -360,7 +360,7 @@ pipx install "contextgo[vector]"
 | 内置交付验证链 | **是** | 否 | 否 | 否 |
 | CJK / Unicode 全面支持 | **是** | 部分 | 否 | 否 |
 
-**关键数据：** 1,860 项测试 | 99.4% 覆盖率 | Python 3.10+ | 混合搜索 < 5ms（热状态）
+**关键数据：** 2,026 项测试 | 98.9% 覆盖率 | Python 3.10+ | 混合搜索 < 5ms（热状态）
 
 ---
 

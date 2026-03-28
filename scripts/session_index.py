@@ -34,9 +34,15 @@ from typing import Any
 try:
     import context_native
     from context_config import env_int, storage_root
+    from sqlite_retry import retry_commit as _rc
+    from sqlite_retry import retry_sqlite as _rs
+    from sqlite_retry import retry_sqlite_many as _rsm
 except ImportError:  # pragma: no cover
     from . import context_native  # type: ignore[import-not-found]
     from .context_config import env_int, storage_root  # type: ignore[import-not-found]
+    from .sqlite_retry import retry_commit as _rc  # type: ignore[import-not-found]
+    from .sqlite_retry import retry_sqlite as _rs
+    from .sqlite_retry import retry_sqlite_many as _rsm
 
 
 # Configuration
@@ -819,10 +825,11 @@ def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
 
 
 # ---------------------------------------------------------------------------
-# SQLite retry helpers
+# SQLite retry helpers (delegated to shared sqlite_retry module)
 # ---------------------------------------------------------------------------
 
-_SQLITE_RETRY_DELAYS: tuple[float, ...] = (0.1, 0.5, 2.0)
+# Thin wrappers that forward the module-level logger so callers see named
+# warnings from this module rather than from sqlite_retry itself.
 
 
 def _retry_sqlite(
@@ -831,46 +838,8 @@ def _retry_sqlite(
     params: Any = None,
     max_retries: int = 3,
 ) -> sqlite3.Cursor:
-    """Execute *sql* on *conn* with retry-on-busy logic.
-
-    Retries up to *max_retries* times with exponential back-off (0.1 / 0.5 / 2 s)
-    when SQLite raises ``OperationalError: database is locked``.  All other
-    errors are re-raised immediately.
-
-    Args:
-        conn: An open :class:`sqlite3.Connection`.
-        sql: SQL statement to execute.
-        params: Optional bind parameters (sequence or mapping).
-        max_retries: Maximum number of retry attempts (default 3).
-
-    Returns:
-        The :class:`sqlite3.Cursor` returned by the final successful execute.
-
-    Raises:
-        sqlite3.OperationalError: When the database remains locked after all
-            retries are exhausted, or for any non-lock operational error.
-    """
-    last_exc: sqlite3.OperationalError | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            if params is not None:
-                return conn.execute(sql, params)
-            return conn.execute(sql)
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
-            last_exc = exc
-            if attempt < max_retries:
-                delay = _SQLITE_RETRY_DELAYS[min(attempt, len(_SQLITE_RETRY_DELAYS) - 1)]
-                _logger.warning(
-                    "_retry_sqlite: database locked, retrying in %.1fs (attempt %d/%d)",
-                    delay,
-                    attempt + 1,
-                    max_retries,
-                )
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
+    """Execute *sql* on *conn* with retry-on-busy logic."""
+    return _rs(conn, sql, params, max_retries, _logger=_logger)
 
 
 def _retry_sqlite_many(
@@ -879,76 +848,13 @@ def _retry_sqlite_many(
     params_seq: Any,
     max_retries: int = 3,
 ) -> sqlite3.Cursor:
-    """Like :func:`_retry_sqlite` but calls ``executemany`` instead of ``execute``.
-
-    Args:
-        conn: An open :class:`sqlite3.Connection`.
-        sql: SQL statement to execute against each row in *params_seq*.
-        params_seq: Iterable of parameter sequences or mappings.
-        max_retries: Maximum number of retry attempts (default 3).
-
-    Returns:
-        The :class:`sqlite3.Cursor` returned by the final successful executemany.
-
-    Raises:
-        sqlite3.OperationalError: When the database remains locked after all
-            retries are exhausted, or for any non-lock operational error.
-    """
-    last_exc: sqlite3.OperationalError | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            return conn.executemany(sql, params_seq)
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
-            last_exc = exc
-            if attempt < max_retries:
-                delay = _SQLITE_RETRY_DELAYS[min(attempt, len(_SQLITE_RETRY_DELAYS) - 1)]
-                _logger.warning(
-                    "_retry_sqlite_many: database locked, retrying in %.1fs (attempt %d/%d)",
-                    delay,
-                    attempt + 1,
-                    max_retries,
-                )
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
+    """Like :func:`_retry_sqlite` but calls ``executemany`` instead of ``execute``."""
+    return _rsm(conn, sql, params_seq, max_retries, _logger=_logger)
 
 
 def _retry_commit(conn: sqlite3.Connection, max_retries: int = 3) -> None:
-    """Commit *conn* with retry-on-busy logic.
-
-    Retries up to *max_retries* times with exponential back-off (0.1 / 0.5 / 2 s)
-    when SQLite raises ``OperationalError: database is locked``.
-
-    Args:
-        conn: An open :class:`sqlite3.Connection`.
-        max_retries: Maximum number of retry attempts (default 3).
-
-    Raises:
-        sqlite3.OperationalError: When the database remains locked after all
-            retries are exhausted, or for any non-lock operational error.
-    """
-    last_exc: sqlite3.OperationalError | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            conn.commit()
-            return
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
-            last_exc = exc
-            if attempt < max_retries:
-                delay = _SQLITE_RETRY_DELAYS[min(attempt, len(_SQLITE_RETRY_DELAYS) - 1)]
-                _logger.warning(
-                    "_retry_commit: database locked, retrying in %.1fs (attempt %d/%d)",
-                    delay,
-                    attempt + 1,
-                    max_retries,
-                )
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
+    """Commit *conn* with retry-on-busy logic."""
+    _rc(conn, max_retries, _logger=_logger)
 
 
 def _meta_get(conn: sqlite3.Connection, key: str) -> str | None:
@@ -1100,9 +1006,9 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
 
         _meta_set(conn, "last_sync_epoch", str(now_epoch))
 
-        # Rebuild the FTS5 index after bulk inserts/deletes so that BM25
+        # Rebuild the FTS5 index after bulk inserts/updates/deletes so that BM25
         # scores remain accurate.  This is a no-op when FTS5 is unavailable.
-        if (added or removed or force) and _check_fts5_available(conn):
+        if (added or updated or removed or force) and _check_fts5_available(conn):
             try:
                 _retry_sqlite(conn, "INSERT INTO session_documents_fts(session_documents_fts) VALUES ('rebuild')")
                 _logger.debug("sync_session_index: FTS5 index rebuilt")
@@ -1828,9 +1734,9 @@ def lookup_session_by_id(
         rows = conn.execute(
             "SELECT source_type, session_id, title, file_path, "
             "created_at, created_at_epoch, content "
-            "FROM session_documents WHERE session_id LIKE ? "
+            "FROM session_documents WHERE LOWER(session_id) LIKE ? "
             "ORDER BY created_at_epoch DESC LIMIT ?",
-            (session_id_prefix + "%", limit),
+            (session_id_prefix.lower() + "%", limit),
         ).fetchall()
     return [
         {

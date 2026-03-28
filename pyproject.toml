@@ -87,6 +87,8 @@ packages = ["scripts"]
 exclude = [
     "scripts/test_*.py",
     "scripts/*_test.py",
+    "scripts/*.sh",
+    "coverage.xml",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -136,7 +138,7 @@ addopts = [
     "--cov=scripts",
     "--cov-report=term-missing",
     "--cov-report=xml",
-    "--cov-fail-under=95",
+    "--cov-fail-under=97",
     "-v",
 ]
 
@@ -159,6 +161,18 @@ exclude_lines = [
     "raise NotImplementedError",
     "\\.\\.\\.",
 ]
+
+# ---------------------------------------------------------------------------
+# Mypy
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Bandit — security scanner
+# ---------------------------------------------------------------------------
+
+[tool.bandit]
+exclude_dirs = ["scripts/test_*.py"]
+skips = ["B101"]  # assert used in tests and retry helpers
 
 # ---------------------------------------------------------------------------
 # Mypy

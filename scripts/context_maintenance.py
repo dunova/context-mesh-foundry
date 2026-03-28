@@ -366,13 +366,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), timeout=30)
     except sqlite3.OperationalError as exc:
         print(f"ERROR: cannot open database {db_path}: {exc}", file=sys.stderr)
         return 1
 
     try:
         cur = conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
 
         local_items = collect_local_session_files(codex_root, claude_root, args.include_subagents)
         existing_paths = fetch_existing_session_paths(cur)

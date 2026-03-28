@@ -68,7 +68,9 @@ ContextGO/
 │   ├── context_server.py      # Viewer server entry point
 │   ├── memory_viewer.py       # HTTP handler implementation
 │   ├── context_maintenance.py # Index cleanup and repair
-│   └── context_smoke.py       # Smoke test suite
+│   ├── context_smoke.py       # Smoke test suite
+│   ├── vector_index.py        # Hybrid semantic search (model2vec + BM25 + RRF)
+│   └── sqlite_retry.py        # Shared SQLite retry helpers (exponential backoff)
 ├── native/
 │   ├── session_scan/          # Rust hot-path binary
 │   └── session_scan_go/       # Go hot-path binary

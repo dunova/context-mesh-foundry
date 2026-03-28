@@ -82,6 +82,13 @@ def vector_available() -> bool:
 _MODEL: Any = None
 _MODEL_LOCK = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# BM25 index cache (module-level, keyed by sdb path)
+# ---------------------------------------------------------------------------
+
+_BM25_CACHE: dict[str, tuple[int, Any]] = {}  # sdb_path -> (row_count, retriever)
+_BM25_CACHE_LOCK = threading.Lock()
+
 
 def _load_model() -> Any:
     """Load and cache the model2vec StaticModel.  Thread-safe."""
@@ -135,7 +142,10 @@ def _unpack_vector(blob: bytes, dim: int | None = None) -> Any:
     """Deserialize bytes from SQLite BLOB to float32 ndarray."""
     import numpy as np  # noqa: PLC0415
 
-    return np.frombuffer(blob, dtype=np.float32).copy()
+    vec = np.frombuffer(blob, dtype=np.float32).copy()
+    if dim is not None and vec.shape[0] != dim:
+        raise ValueError(f"Vector dimension mismatch: expected {dim}, got {vec.shape[0]}")
+    return vec
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +230,6 @@ def embed_pending_session_docs(
 
     Returns ``{"embedded": int, "skipped": int, "deleted": int}``.
     """
-    sdb = str(Path(session_db_path).resolve())
     vdb = ensure_vector_db(vector_db_path)
     now_epoch = int(time.time())
     embedded = 0
@@ -232,7 +241,13 @@ def embed_pending_session_docs(
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute(f"ATTACH DATABASE '{sdb}' AS sessions")
+        sdb_path = Path(session_db_path).resolve()
+        if sdb_path.suffix != ".db" or not sdb_path.exists():
+            raise ValueError(f"Invalid session database path: {sdb_path}")
+        sdb_str = str(sdb_path)
+        if any(c in sdb_str for c in ("'", '"', ";", "\x00")):
+            raise ValueError(f"Unsafe characters in database path: {sdb_str}")
+        conn.execute(f"ATTACH DATABASE '{sdb_str}' AS sessions")
 
         # Find pending documents
         if force:
@@ -390,13 +405,20 @@ def bm25s_search_session(
 
     paths = [r[0] for r in rows]
     corpus = [f"{r[1]} {r[2][:VECTOR_TEXT_CAP]}" for r in rows]
+    row_count = len(rows)
 
     try:
         import bm25s  # noqa: PLC0415
 
-        tokenized_corpus = bm25s.tokenize(corpus, show_progress=False)
-        retriever = bm25s.BM25()
-        retriever.index(tokenized_corpus, show_progress=False)
+        with _BM25_CACHE_LOCK:
+            cached = _BM25_CACHE.get(sdb)
+            if cached is not None and cached[0] == row_count:
+                retriever = cached[1]
+            else:
+                tokenized_corpus = bm25s.tokenize(corpus, show_progress=False)
+                retriever = bm25s.BM25()
+                retriever.index(tokenized_corpus, show_progress=False)
+                _BM25_CACHE[sdb] = (row_count, retriever)
 
         tokenized_query = bm25s.tokenize([query], show_progress=False)
         results, scores = retriever.retrieve(

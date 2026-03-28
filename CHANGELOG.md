@@ -15,6 +15,41 @@ _No unreleased changes._
 
 ---
 
+## [0.9.6] — 2026-03-28
+
+### Overview
+
+Security hardening, search robustness, and CI quality improvements. SQL injection in `vector_index.py` patched, FTS5 rebuild correctness fixed, shared SQLite retry helpers extracted, BM25 index caching added, vector dimension validation introduced, WAL mode applied to `context_maintenance.py`, and chunked dedup for large import batches. Python 3.13 added to the test matrix, GitHub Actions SHA-pinned, Bandit scanning integrated, and the coverage threshold raised to 97%. 165 new tests push the total to 2,026 at 98.9% coverage.
+
+安全加固、搜索健壮性与 CI 质量提升。修补 `vector_index.py` SQL 注入漏洞，修复 FTS5 重建正确性，提取公共 SQLite retry helper，新增 BM25 索引缓存与向量维度校验，`context_maintenance.py` 启用 WAL 模式，大批量导入分块去重。测试矩阵加入 Python 3.13，GitHub Actions SHA 固定，集成 Bandit 安全扫描，覆盖率阈值提升至 97%。新增 165 个测试，总计 2,026 个，覆盖率 98.9%。
+
+### Fixed
+
+- **CRITICAL**: SQL injection in `vector_index.py` ATTACH DATABASE — parameterized path now validated and quoted
+- **HIGH**: FTS5 rebuild now correctly triggers on document updates (was silently skipped)
+- **HIGH**: Vector dimension mismatch detection — mismatched embeddings raise a clear error instead of silent corruption
+- **HIGH**: Import fingerprint dedup chunked for >999 items to avoid SQLite variable limit
+
+### Added
+
+- **HIGH**: `sqlite_retry.py` — shared SQLite retry helpers extracted from `session_index.py` and `memory_index.py`
+- **HIGH**: BM25 index caching in `vector_index.py` (no rebuild on every query)
+- **HIGH**: WAL mode + `busy_timeout` applied in `context_maintenance.py`
+- **MEDIUM**: Session ID lookup made case-insensitive
+- **MEDIUM**: Bilingual error messages (English + Chinese) on user-facing exceptions
+- **MEDIUM**: Shell scripts excluded from wheel via `pyproject.toml`
+- CI: Python 3.13 added to test matrix
+- CI: GitHub Actions steps pinned to SHA for supply-chain security
+- CI: Bandit security scanning integrated
+- CI: Coverage threshold raised to 97%
+
+### Changed
+
+- Tests: 1,861 → 2,026 (+165)
+- Coverage: 97.4% → 98.9%
+
+---
+
 ## [0.9.36] — 2026-03-27
 
 ### Overview

@@ -14,10 +14,10 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Sync labels from labels.yml
-        uses: EndBug/label-sync@v2
+        uses: EndBug/label-sync@da00f2c11571b3e31a25fbc2a91226076c2f8d47  # v2
         with:
           config-file: .github/labels.yml
           delete-other-labels: false

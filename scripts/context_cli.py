@@ -186,7 +186,7 @@ def _save_local_memory(title: str, content: str, tags: list[str]) -> str:
             conversations_root=LOCAL_CONVERSATIONS_ROOT,
         )
     except ValueError as exc:
-        return f"Failed to save memory: {exc}. Ensure --title and --content are non-empty."
+        return f"Failed to save memory: {exc}. Ensure --title and --content are non-empty. / 内存保存失败：{exc}。请确保 --title 和 --content 非空。"
 
     if not ENABLE_REMOTE_MEMORY_HTTP:
         return f"Saved locally: {path}"
@@ -348,7 +348,7 @@ def cmd_search(args: object) -> int:
     """Search session/history context and print results."""
 
     if not args.query or not args.query.strip():
-        print("Error: search query must not be empty.", file=sys.stderr)
+        print("Error: search query must not be empty. / 错误：搜索查询不能为空。", file=sys.stderr)
         return 2
     text = _get_session_index().format_search_results(
         args.query,
@@ -370,7 +370,7 @@ def cmd_semantic(args: object) -> int:
     from concurrent.futures import TimeoutError as FuturesTimeoutError
 
     if not args.query or not args.query.strip():
-        print("Error: search query must not be empty.", file=sys.stderr)
+        print("Error: search query must not be empty. / 错误：搜索查询不能为空。", file=sys.stderr)
         return 2
 
     query: str = args.query
@@ -440,7 +440,7 @@ def cmd_export(args: object) -> int:
     """Export indexed observations to a JSON file."""
 
     if not args.output or not args.output.strip():
-        print("Error: export output path must not be empty.", file=sys.stderr)
+        print("Error: export output path must not be empty. / 错误：导出输出路径不能为空。", file=sys.stderr)
         return 2
     payload = export_observations_payload(
         args.query,
@@ -449,7 +449,10 @@ def cmd_export(args: object) -> int:
     )
     output_path = Path(args.output).expanduser()
     if output_path.is_dir():
-        print(f"Error: output path '{output_path}' is a directory, not a file.", file=sys.stderr)
+        print(
+            f"Error: output path '{output_path}' is a directory, not a file. / 错误：输出路径 '{output_path}' 是目录而非文件。",
+            file=sys.stderr,
+        )
         return 2
     import json  # deferred: only needed for export serialisation
 
@@ -468,13 +471,13 @@ def cmd_import(args: object) -> int:
         payload = json.loads(input_path.read_text(encoding="utf-8"))
     except OSError as exc:
         print(
-            f"Error reading import file '{input_path}': {exc}. Check that the file exists and is readable.",
+            f"Error reading import file '{input_path}': {exc}. Check that the file exists and is readable. / 错误：读取导入文件 '{input_path}' 失败：{exc}。请检查文件是否存在且可读。",
             file=sys.stderr,
         )
         return 1
     except json.JSONDecodeError as exc:
         print(
-            f"Error parsing JSON from '{input_path}': {exc}. Ensure the file is a valid JSON export produced by 'contextgo export'.",
+            f"Error parsing JSON from '{input_path}': {exc}. Ensure the file is a valid JSON export produced by 'contextgo export'. / 错误：解析 '{input_path}' 中的 JSON 失败：{exc}。请确认文件是由 'contextgo export' 生成的有效 JSON 导出。",
             file=sys.stderr,
         )
         return 1
@@ -482,7 +485,7 @@ def cmd_import(args: object) -> int:
         result = import_observations_payload(payload, sync_from_storage=not args.no_sync)
     except ValueError as exc:
         print(
-            f"Invalid import payload from '{input_path}': {exc}. Ensure the file was created by 'contextgo export'.",
+            f"Invalid import payload from '{input_path}': {exc}. Ensure the file was created by 'contextgo export'. / 无效的导入数据来自 '{input_path}'：{exc}。请确认文件由 'contextgo export' 创建。",
             file=sys.stderr,
         )
         return 1
@@ -496,7 +499,10 @@ def cmd_serve(args: object) -> int:
     """Start the local memory viewer server (blocks until interrupted)."""
 
     if not (1 <= args.port <= 65535):
-        print(f"Error: port {args.port} is out of valid range 1-65535.", file=sys.stderr)
+        print(
+            f"Error: port {args.port} is out of valid range 1-65535. / 错误：端口 {args.port} 超出有效范围 1-65535。",
+            file=sys.stderr,
+        )
         return 2
     viewer_module = _load_module("context_server")
     _configure_viewer_module(viewer_module, args.host, args.port, args.token)
@@ -533,7 +539,10 @@ def cmd_native_scan(args: object) -> int:
     """Run the native Rust/Go scan backend and print results."""
 
     if args.threads < 1:
-        print(f"Error: --threads must be at least 1, got {args.threads}.", file=sys.stderr)
+        print(
+            f"Error: --threads must be at least 1, got {args.threads}. / 错误：--threads 至少为 1，实际值为 {args.threads}。",
+            file=sys.stderr,
+        )
         return 2
     result = _get_context_native().run_native_scan(
         backend=args.backend,
@@ -691,11 +700,17 @@ def cmd_vector_sync(args: object) -> int:
         try:
             from .vector_index import embed_pending_session_docs, get_vector_db_path, vector_available  # type: ignore[import-not-found]  # noqa: PLC0415, I001
         except ImportError:
-            print("Error: vector dependencies not installed. Run: pip install contextgo[vector]", file=sys.stderr)
+            print(
+                "Error: vector dependencies not installed. Run: pip install contextgo[vector] / 错误：向量依赖未安装，请运行：pip install contextgo[vector]",
+                file=sys.stderr,
+            )
             return 1
 
     if not vector_available():
-        print("Error: model2vec or numpy not available. Run: pip install contextgo[vector]", file=sys.stderr)
+        print(
+            "Error: model2vec or numpy not available. Run: pip install contextgo[vector] / 错误：model2vec 或 numpy 不可用，请运行：pip install contextgo[vector]",
+            file=sys.stderr,
+        )
         return 1
 
     force = getattr(args, "force", False)
@@ -728,7 +743,10 @@ def cmd_vector_status(args: object) -> int:
         try:
             from .vector_index import get_vector_db_path, vector_status  # type: ignore[import-not-found]  # noqa: PLC0415, I001
         except ImportError:
-            print("Error: vector dependencies not installed. Run: pip install contextgo[vector]", file=sys.stderr)
+            print(
+                "Error: vector dependencies not installed. Run: pip install contextgo[vector] / 错误：向量依赖未安装，请运行：pip install contextgo[vector]",
+                file=sys.stderr,
+            )
             return 1
 
     vdb = get_vector_db_path(db_path)
@@ -777,7 +795,7 @@ def _q_session_lookup(session_id: str, limit: int, as_json: bool) -> int:
     si = _get_session_index()
     rows = si.lookup_session_by_id(session_id, limit=limit)
     if not rows:
-        print(f"No session found matching: {session_id}", file=sys.stderr)
+        print(f"No session found matching: {session_id} / 未找到匹配的会话：{session_id}", file=sys.stderr)
         return 1
     _print_q_results(rows, as_json=as_json)
     return 0
@@ -834,7 +852,7 @@ def cmd_q(args: object) -> int:
     """
     query = " ".join(args.query).strip()  # type: ignore[union-attr]
     if not query:
-        print("Usage: contextgo q <query or session-id>", file=sys.stderr)
+        print("Usage: contextgo q <query or session-id> / 用法：contextgo q <查询或会话 ID>", file=sys.stderr)
         return 2
 
     as_json = getattr(args, "json", False)

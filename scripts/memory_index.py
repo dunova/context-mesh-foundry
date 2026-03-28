@@ -37,6 +37,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    from sqlite_retry import retry_commit as _retry_commit
+    from sqlite_retry import retry_sqlite as _retry_sqlite
+    from sqlite_retry import retry_sqlite_many as _retry_sqlite_many
+except ImportError:  # pragma: no cover
+    from .sqlite_retry import retry_commit as _retry_commit  # type: ignore[import-not-found]
+    from .sqlite_retry import retry_sqlite as _retry_sqlite
+    from .sqlite_retry import retry_sqlite_many as _retry_sqlite_many
+
 # ---------------------------------------------------------------------------
 # In-process search result cache (TTL-based)
 # ---------------------------------------------------------------------------
@@ -293,96 +302,6 @@ def _escape_fts5_query(query: str) -> str:
         return ""
     # Wrap each token in double-quotes so it is treated as a literal phrase.
     return " AND ".join(f'"{t}"' for t in tokens)
-
-
-# SQLite retry helpers
-
-_SQLITE_RETRY_DELAYS: tuple[float, ...] = (0.1, 0.5, 2.0)
-
-
-def _retry_sqlite(
-    conn: sqlite3.Connection,
-    sql: str,
-    params: Any = None,
-    max_retries: int = 3,
-) -> sqlite3.Cursor:
-    """Execute *sql* on *conn* with retry-on-busy logic.
-
-    Retries up to *max_retries* times with exponential back-off (0.1 / 0.5 / 2 s)
-    when SQLite raises ``OperationalError: database is locked``.  All other
-    errors are re-raised immediately.
-
-    Args:
-        conn: An open :class:`sqlite3.Connection`.
-        sql: SQL statement to execute.
-        params: Optional bind parameters (sequence or mapping).
-        max_retries: Maximum number of retry attempts (default 3).
-
-    Returns:
-        The :class:`sqlite3.Cursor` returned by the final successful execute.
-
-    Raises:
-        sqlite3.OperationalError: When the database remains locked after all
-            retries are exhausted, or for any non-lock operational error.
-    """
-    last_exc: sqlite3.OperationalError | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            if params is not None:
-                return conn.execute(sql, params)
-            return conn.execute(sql)
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
-            last_exc = exc
-            if attempt < max_retries:
-                delay = _SQLITE_RETRY_DELAYS[min(attempt, len(_SQLITE_RETRY_DELAYS) - 1)]
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
-
-
-def _retry_sqlite_many(
-    conn: sqlite3.Connection,
-    sql: str,
-    params_seq: Any,
-    max_retries: int = 3,
-) -> sqlite3.Cursor:
-    """Like :func:`_retry_sqlite` but calls ``executemany`` instead of ``execute``."""
-    # Materialise iterators so retries don't see an exhausted sequence.
-    if not isinstance(params_seq, list):
-        params_seq = list(params_seq)
-    last_exc: sqlite3.OperationalError | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            return conn.executemany(sql, params_seq)
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
-            last_exc = exc
-            if attempt < max_retries:
-                delay = _SQLITE_RETRY_DELAYS[min(attempt, len(_SQLITE_RETRY_DELAYS) - 1)]
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
-
-
-def _retry_commit(conn: sqlite3.Connection, max_retries: int = 3) -> None:
-    """Commit *conn* with retry-on-busy logic."""
-    last_exc: sqlite3.OperationalError | None = None
-    for attempt in range(max_retries + 1):
-        try:
-            conn.commit()
-            return
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
-            last_exc = exc
-            if attempt < max_retries:
-                delay = _SQLITE_RETRY_DELAYS[min(attempt, len(_SQLITE_RETRY_DELAYS) - 1)]
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
 
 
 # Domain model
@@ -1065,11 +984,17 @@ def import_observations_payload(
     if candidates:
         with _open_db(db_path) as conn:
             # Batch-check which fingerprints already exist.
+            # Chunk into groups of 900 to stay under SQLite's 999 bind-param limit.
             fps = [c["fingerprint"] for c in candidates]
-            qmarks = ",".join("?" for _ in fps)
-            existing = {
-                row["fingerprint"] for row in _retry_sqlite(conn, _SQL_FIND_BY_FPS.format(qmarks), fps).fetchall()
-            }
+            existing: set[str] = set()
+            _CHUNK = 900
+            for _i in range(0, len(fps), _CHUNK):
+                _chunk = fps[_i : _i + _CHUNK]
+                qmarks = ",".join("?" for _ in _chunk)
+                existing.update(
+                    row["fingerprint"]
+                    for row in _retry_sqlite(conn, _SQL_FIND_BY_FPS.format(qmarks), _chunk).fetchall()
+                )
 
             to_insert: list[tuple[Any, ...]] = []
             for obs in candidates:

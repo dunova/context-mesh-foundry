@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -168,6 +169,13 @@ func mmapFile(f *os.File, size int64) (data []byte, unmap func(), err error) {
 	if size <= 0 {
 		return nil, func() {}, nil
 	}
+	// Guard against 32-bit int overflow: on platforms where int is 32 bits,
+	// files larger than math.MaxInt32 (~2 GB) cannot be safely mmap'd via
+	// syscall.Mmap (which takes an int length).  Fall back to buffered I/O
+	// in that case by returning an error.
+	if size > math.MaxInt32 && math.MaxInt == math.MaxInt32 {
+		return nil, nil, fmt.Errorf("file too large for mmap on 32-bit platform: %d bytes", size)
+	}
 	data, err = syscall.Mmap(int(f.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		return nil, nil, err
@@ -249,10 +257,13 @@ func (s *SessionScanner) ProcessFile(item WorkItem, query string) (SessionSummar
 
 	// Estimate initial candidate capacity from file size: assume ~200 bytes per line
 	// and ~10% of lines carry meaningful text fields.
-	estLines := int(fileSize/200) + 1
-	if estLines > 1024 {
-		estLines = 1024
+	// Cap the intermediate int64 value before converting to int to prevent
+	// overflow on 32-bit platforms where int is 32 bits.
+	estLinesI64 := fileSize/200 + 1
+	if estLinesI64 > 1024 {
+		estLinesI64 = 1024
 	}
+	estLines := int(estLinesI64)
 
 	// processOneLine handles one raw line (as []byte).  Using a closure keeps
 	// the hot path inlined without repeating the outer variable captures.
@@ -781,11 +792,11 @@ func extractTextCandidates(payload map[string]any) []TextCandidate {
 
 // extractTextCandidatesWithCap is like extractTextCandidates but pre-allocates
 // the output slice with the provided capacity hint.
-func extractTextCandidatesWithCap(payload map[string]any, cap int) []TextCandidate {
-	if cap < 4 {
-		cap = 4
+func extractTextCandidatesWithCap(payload map[string]any, capHint int) []TextCandidate {
+	if capHint < 4 {
+		capHint = 4
 	}
-	out := make([]TextCandidate, 0, cap)
+	out := make([]TextCandidate, 0, capHint)
 	appendStr := func(field string, value any) {
 		if text, ok := value.(string); ok {
 			if text = strings.TrimSpace(text); text != "" {
