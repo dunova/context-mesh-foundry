@@ -41,7 +41,11 @@ try:
 except ImportError:  # pragma: no cover
     from . import context_native  # type: ignore[import-not-found]
     from .context_config import env_int, storage_root  # type: ignore[import-not-found]
-    from .source_adapters import adapter_dirty_epoch, discover_index_sources, sync_all_adapters  # type: ignore[import-not-found]
+    from .source_adapters import (  # type: ignore[import-not-found]
+        adapter_dirty_epoch,
+        discover_index_sources,
+        sync_all_adapters,
+    )
     from .sqlite_retry import retry_commit as _rc  # type: ignore[import-not-found]
     from .sqlite_retry import retry_sqlite as _rs
     from .sqlite_retry import retry_sqlite_many as _rsm
