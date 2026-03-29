@@ -15,13 +15,13 @@ _No unreleased changes._
 
 ---
 
-## [0.9.7] — 2026-03-29
+## [0.9.37] — 2026-03-29
 
 ### Overview
 
 Installation-guidance and agent-handoff release. Public onboarding now defaults to `pipx` and deployed-runtime flows, avoiding unsupported `pip install` guidance on macOS. Agent instructions were tightened around shell initialization, durable memory usage, and installed-runtime verification.
 
-安装指引与智能体接管标准化补丁版。公开安装流程统一收敛到 `pipx` 与已部署运行时路径，避免在 macOS 上继续给出不受支持的 `pip install` 文案。Agent 接管说明进一步明确了 shell 初始化、持久记忆使用和已安装运行时验证步骤。
+安装指引与智能体接管标准化补丁版。公开安装流程统一收敛到 `pipx` 与已部署运行时路径，避免在 macOS 上继续给出不受支持的 `pip install` 文案。Agent 接管说明进一步明确了 shell 初始化、持久记忆使用和已安装运行时验证步骤。同时修正版本号策略，确保公开发布序列继续高于既有 `0.9.36`。
 
 ### Changed
 
