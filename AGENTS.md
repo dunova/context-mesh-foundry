@@ -9,19 +9,29 @@
 
 ---
 
-## Quick Install / 快速安装
+## Quick Start / 快速接管
 
 **Requirements / 依赖：** Python 3.10+, Bash, Git
 
 ```bash
-git clone https://github.com/dunova/ContextGO.git \
-  && cd ContextGO \
-  && bash scripts/unified_context_deploy.sh \
-  && python3 scripts/context_cli.py smoke --sandbox
+pipx install "contextgo[vector]" || pipx upgrade "contextgo[vector]"
+contextgo health
+eval "$(contextgo shell-init)"
 ```
 
 macOS and Linux. No Docker. No MCP. No external services.
 适用于 macOS 和 Linux。无需 Docker、无需 MCP、无外部服务依赖。
+
+Do not present `pip install` as the default install path for macOS users.
+不要把 `pip install` 作为 macOS 用户的默认安装路径。
+
+For repository maintenance or local development:
+```bash
+git clone https://github.com/dunova/ContextGO.git
+cd ContextGO
+bash scripts/unified_context_deploy.sh
+contextgo smoke --sandbox
+```
 
 ---
 
@@ -40,26 +50,26 @@ Storage root: `~/.contextgo` (override: `CONTEXTGO_STORAGE_ROOT`)
 
 ```bash
 # Health check / 健康检查
-python3 scripts/context_cli.py health
+contextgo health
 
 # Smoke gate (sandboxed, does not touch ~/.contextgo) / 冒烟测试（沙箱，不写入真实数据）
-python3 scripts/context_cli.py smoke --sandbox
+contextgo smoke --sandbox
 
 # Semantic search over memories and session history / 语义搜索记忆与历史
-python3 scripts/context_cli.py semantic "database design decision" --limit 5
+contextgo semantic "database design decision" --limit 5
 
 # Keyword search / 关键词全文搜索
-python3 scripts/context_cli.py search "auth root cause" --limit 10
+contextgo search "auth root cause" --limit 10
 
 # Save a durable memory / 保存持久记忆
-python3 scripts/context_cli.py save \
+contextgo save \
   --title "Fix: JWT expiry" \
   --content "Set exp to 3600 in auth.py line 42" \
   --tags auth,jwt,fix
 
 # Cross-agent handoff / 跨智能体交接
-python3 scripts/context_cli.py export "" /tmp/snapshot.json --limit 5000
-python3 scripts/context_cli.py import /tmp/snapshot.json
+contextgo export "" /tmp/snapshot.json --limit 5000
+contextgo import /tmp/snapshot.json
 ```
 
 ---
@@ -69,7 +79,7 @@ python3 scripts/context_cli.py import /tmp/snapshot.json
 As an AI agent, execute these behaviors **proactively** — do not wait to be asked.
 作为 AI 智能体，以下行为**主动执行**，无需用户提示。
 
-### Auto-Search / 自动检索
+### Default Search Policy / 默认检索策略
 
 | Trigger / 触发场景 | Action / 行动 |
 |---|---|
@@ -81,7 +91,7 @@ As an AI agent, execute these behaviors **proactively** — do not wait to be as
 **Output rule / 输出规则：** Summarize in 2–3 sentences. Never paste raw output. If search returns nothing, proceed silently.
 结果用 2–3 句话总结，禁止粘贴原始输出；无结果时静默继续。
 
-### Auto-Save / 自动保存
+### Default Save Policy / 默认保存策略
 
 | Trigger / 触发场景 | Title Pattern / 标题格式 |
 |---|---|
@@ -130,7 +140,7 @@ All steps must pass. / 所有步骤必须通过。
 bash -n scripts/*.sh
 python3 -m py_compile scripts/*.py
 
-# Unit + integration tests / 单元与集成测试
+# Targeted unit + integration tests / 单元与集成测试
 python3 -m pytest \
   scripts/test_context_cli.py \
   scripts/test_context_core.py \
@@ -142,11 +152,9 @@ python3 -m pytest \
 # End-to-end quality gate / 端到端质量门控
 python3 scripts/e2e_quality_gate.py
 
-# Smoke (sandboxed) / 沙箱冒烟测试
-python3 scripts/context_cli.py smoke --sandbox
-
-# Health check / 健康检查
-bash scripts/context_healthcheck.sh
+# Installed-runtime validation / 已安装运行时验证
+contextgo smoke --sandbox
+contextgo health
 ```
 
 ---
