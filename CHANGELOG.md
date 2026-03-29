@@ -15,6 +15,43 @@ _No unreleased changes._
 
 ---
 
+## [0.10.0] — 2026-03-29
+
+### Overview
+
+Commercial-grade onboarding and multi-platform memory unification release. ContextGO now ships with automatic source discovery, normalized adapter ingestion for additional terminal AI tools, immediate post-install platform visibility via `contextgo sources`, first-class upgrade/uninstall flows, and a release-grade README that demonstrates value in under a minute.
+
+面向商业开源标准的安装与多平台记忆统一版本。ContextGO 现在内置自动数据源发现、针对额外终端 AI 工具的规范化 adapter 摄取、安装后可立即查看接入平台的 `contextgo sources`、标准化升级/卸载流程，以及 1 分钟内可展示价值的发布级 README。
+
+### Added
+
+- `contextgo sources` command for platform detection and adapter visibility
+- `source_adapters.py` for normalized ingestion of:
+  - OpenCode session databases
+  - Kilo local storage
+  - OpenClaw session JSONL roots
+- `scripts/upgrade_contextgo.sh` for idempotent local upgrade flows
+- `scripts/uninstall_contextgo.sh` for one-command uninstall with optional data purge
+- Adapter schema versioning and home-scoped adapter roots to prevent stale cache reuse across environments
+- New adapter and incremental-ingest regression tests
+
+### Changed
+
+- README rewritten around a 1-minute install, immediate proof of value, upgrade flow, uninstall flow, and automatic platform absorption
+- `health --verbose` now reports OpenCode DBs, Kilo storage, OpenClaw session roots, and adapter session counts
+- `session_index` now refreshes adapters before min-interval gating so newly installed tools become searchable immediately
+- `vector-sync` remains safe on fresh installs and now coexists with the new adapter discovery layer
+- Release and packaging metadata now align around `0.10.0`
+
+### Fixed
+
+- Incremental platform adoption no longer requires manual reconfiguration after installing OpenCode / Kilo / OpenClaw
+- Adapter-generated session mirrors are now normalized, schema-versioned, and cleaned up across upgrades
+- OpenClaw adapter filenames and titles no longer render with duplicated `.jsonl` suffixes
+- Installed runtime and CLI smoke coverage expanded to catch first-run regressions earlier
+
+---
+
 ## [0.9.37] — 2026-03-29
 
 ### Overview
