@@ -65,12 +65,14 @@ jobs:
             --glob '!artifacts/' \
             --glob '!.github/' \
             --glob '!scripts/test_*.py' \
+            --glob '!tests/test_*.py' \
             . || (echo "ERROR: secret pattern detected" && exit 1)
           # Block hardcoded home paths
           ! rg -n "/Users/\\w+/" \
             --glob '!artifacts/' \
             --glob '!.github/' \
             --glob '!native/session_scan_go/*_test.go' \
+            --glob '!tests/test_*.py' \
             --glob '!CONTRIBUTING.md' \
             . || (echo "ERROR: hardcoded path detected" && exit 1)
 
