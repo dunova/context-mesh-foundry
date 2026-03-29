@@ -57,7 +57,7 @@ Dashed arrows indicate optional native acceleration; the Python path is always a
 
 ```text
 ContextGO/
-├── scripts/                   # Python core
+├── src/contextgo/             # Runtime package
 │   ├── context_cli.py         # Single canonical entry point
 │   ├── context_daemon.py      # Session capture and sanitization
 │   ├── context_config.py      # Env var resolution and storage root
@@ -69,8 +69,11 @@ ContextGO/
 │   ├── memory_viewer.py       # HTTP handler implementation
 │   ├── context_maintenance.py # Index cleanup and repair
 │   ├── context_smoke.py       # Smoke test suite
+│   ├── source_adapters.py     # External tool auto-discovery + normalization
 │   ├── vector_index.py        # Hybrid semantic search (model2vec + BM25 + RRF)
 │   └── sqlite_retry.py        # Shared SQLite retry helpers (exponential backoff)
+├── tests/                     # Full automated test suite
+├── scripts/                   # Compatibility wrappers + operational scripts
 ├── native/
 │   ├── session_scan/          # Rust hot-path binary
 │   └── session_scan_go/       # Go hot-path binary
@@ -78,7 +81,7 @@ ContextGO/
 ├── config/                    # Runtime config files (noise_markers.json)
 ├── templates/                 # launchd / systemd-user service templates
 ├── examples/                  # Configuration templates
-├── docs/                      # Documentation
+├── docs/                      # Documentation + current release notes
 └── integrations/gsd/          # GSD / gstack workflow integration
 ```
 

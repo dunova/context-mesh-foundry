@@ -632,7 +632,7 @@ class TestMainGuard(unittest.TestCase):
         """
         import runpy
 
-        cli_path = str(Path(__file__).parent / "context_cli.py")
+        cli_path = str(Path(__file__).resolve().parents[1] / "scripts" / "context_cli.py")
 
         si_mock = _make_session_index_mock(db_exists=True)
         native_mock = _make_native_mock()

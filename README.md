@@ -337,18 +337,18 @@ Full reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
 ```
 ContextGO/
-├── scripts/                   # Python control plane
-│   ├── context_cli.py         # Single entry point for all commands
-│   ├── context_daemon.py      # Session capture and sanitization
+├── src/contextgo/             # Runtime package
+│   ├── context_cli.py         # Unified CLI entry point
 │   ├── session_index.py       # SQLite session index + hybrid search
 │   ├── memory_index.py        # Memory and observation index
-│   ├── vector_index.py        # Hybrid vector search (model2vec + bm25s)
-│   ├── context_server.py      # Local viewer API server
-│   └── context_smoke.py       # Smoke test suite
+│   ├── source_adapters.py     # Auto-discovery for tool-specific local storage
+│   └── ...
+├── tests/                     # Full automated test suite
+├── scripts/                   # Thin wrappers + operational shell scripts
 ├── native/
 │   ├── session_scan/          # Rust hot-path binary
 │   └── session_scan_go/       # Go parallel-scan binary
-├── docs/                      # Architecture, config, troubleshooting
+├── docs/                      # Architecture, config, release notes
 ├── benchmarks/                # Python vs. native performance harness
 └── templates/                 # launchd / systemd-user service templates
 ```
@@ -368,6 +368,13 @@ bash scripts/unified_context_deploy.sh
 export PATH="$HOME/.local/bin:$PATH"
 contextgo health
 ```
+
+Repository layout principles:
+
+- Runtime code lives in `src/contextgo/`
+- Tests live in `tests/`
+- `scripts/` is reserved for wrappers and operational entrypoints
+- Old release notes are archived under `docs/archive/`
 
 | Resource | |
 |---|---|
@@ -716,18 +723,18 @@ contextgo vector-status
 
 ```
 ContextGO/
-├── scripts/                   # Python 控制层
-│   ├── context_cli.py         # 所有命令的统一入口
-│   ├── context_daemon.py      # 会话采集与脱敏
+├── src/contextgo/             # 运行时主包
+│   ├── context_cli.py         # 统一 CLI 入口
 │   ├── session_index.py       # SQLite 会话索引 + 混合搜索
 │   ├── memory_index.py        # 记忆与观察索引
-│   ├── vector_index.py        # 混合向量搜索 (model2vec + bm25s)
-│   ├── context_server.py      # 本地 Viewer API 服务器
-│   └── context_smoke.py       # Smoke 测试套件
+│   ├── source_adapters.py     # 多平台本地来源自动发现
+│   └── ...
+├── tests/                     # 完整自动化测试套件
+├── scripts/                   # wrapper 与运维入口脚本
 ├── native/
 │   ├── session_scan/          # Rust 热路径二进制
 │   └── session_scan_go/       # Go 并行扫描二进制
-├── docs/                      # 架构、配置、故障排查文档
+├── docs/                      # 架构、配置、发布说明
 ├── benchmarks/                # Python 与原生性能对比测试
 └── templates/                 # launchd / systemd-user 服务模板
 ```
@@ -747,6 +754,13 @@ bash scripts/unified_context_deploy.sh
 export PATH="$HOME/.local/bin:$PATH"
 contextgo health
 ```
+
+仓库布局原则：
+
+- 运行时代码放在 `src/contextgo/`
+- 测试全部放在 `tests/`
+- `scripts/` 只保留 wrapper 与运维入口
+- 历史 release notes 归档到 `docs/archive/`
 
 | 资源 | |
 |---|---|

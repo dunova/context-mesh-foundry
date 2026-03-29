@@ -7,6 +7,7 @@ PIP        := $(PYTHON) -m pip
 PYTEST     := $(PYTHON) -m pytest
 RUFF       := ruff
 SCRIPTS    := scripts
+TESTS      := tests
 BENCHMARKS := benchmarks
 
 .PHONY: help install install-remote dev-check \
@@ -42,12 +43,12 @@ install-remote: ## Also install optional remote/httpx extra
 # ---------------------------------------------------------------------------
 
 lint: ## Run ruff check and format-check (non-destructive)
-	$(RUFF) check $(SCRIPTS)/ $(BENCHMARKS)/
-	$(RUFF) format --check $(SCRIPTS)/ $(BENCHMARKS)/
+	$(RUFF) check $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
+	$(RUFF) format --check $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
 
 format: ## Auto-format and auto-fix with ruff
-	$(RUFF) format $(SCRIPTS)/ $(BENCHMARKS)/
-	$(RUFF) check --fix $(SCRIPTS)/ $(BENCHMARKS)/
+	$(RUFF) format $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
+	$(RUFF) check --fix $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
 
 type-check: ## Run mypy type checking (informational)
 	$(PYTHON) -m mypy $(SCRIPTS)/ --ignore-missing-imports || true
@@ -61,18 +62,18 @@ dev-check: lint ## Full pre-commit check: syntax + lint
 # ---------------------------------------------------------------------------
 
 TEST_FILES := \
-	$(SCRIPTS)/test_context_cli.py \
-	$(SCRIPTS)/test_context_core.py \
-	$(SCRIPTS)/test_context_native.py \
-	$(SCRIPTS)/test_context_smoke.py \
-	$(SCRIPTS)/test_source_adapters.py \
-	$(SCRIPTS)/test_session_index.py \
-	$(SCRIPTS)/test_autoresearch_contextgo.py \
-	$(SCRIPTS)/test_utility_scripts.py
+	$(TESTS)/test_context_cli.py \
+	$(TESTS)/test_context_core.py \
+	$(TESTS)/test_context_native.py \
+	$(TESTS)/test_context_smoke.py \
+	$(TESTS)/test_source_adapters.py \
+	$(TESTS)/test_session_index.py \
+	$(TESTS)/test_autoresearch_contextgo.py \
+	$(TESTS)/test_utility_scripts.py
 
 test: ## Run full pytest suite with coverage
 	$(PYTEST) $(TEST_FILES) \
-		--cov=$(SCRIPTS) --cov-report=term-missing --cov-report=xml -v
+		--cov=src/contextgo --cov-report=term-missing --cov-report=xml -v
 
 test-fast: ## Run tests without coverage (faster iteration)
 	$(PYTEST) $(TEST_FILES) -v --no-cov

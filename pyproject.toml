@@ -65,7 +65,7 @@ dev = [
 all = ["contextgo[remote,vector,dev]"]
 
 [project.scripts]
-contextgo = "scripts.context_cli:main"
+contextgo = "contextgo.context_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/dunova/ContextGO"
@@ -83,19 +83,20 @@ path = "VERSION"
 pattern = "(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+.*)"
 
 [tool.hatch.build.targets.wheel]
-packages = ["scripts"]
+packages = ["src/contextgo"]
 exclude = [
-    "scripts/test_*.py",
-    "scripts/*_test.py",
     "scripts/*.sh",
     "coverage.xml",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
 "config/noise_markers.json" = "config/noise_markers.json"
+"scripts" = "scripts"
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/src",
+    "/tests",
     "/scripts",
     "/config",
     "/docs",
@@ -122,10 +123,10 @@ ignore = [
 unfixable = ["B"]  # keep B-violations visible; fix manually
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/test_*.py" = ["SIM117", "SIM105", "E741", "E402"]
+"tests/test_*.py" = ["SIM117", "SIM105", "E741", "E402"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["scripts"]
+known-first-party = ["contextgo"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -137,10 +138,10 @@ skip-magic-trailing-comma = false
 # ---------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
-testpaths = ["scripts"]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = [
-    "--cov=scripts",
+    "--cov=src/contextgo",
     "--cov-report=term-missing",
     "--cov-report=xml",
     "--cov-fail-under=97",
@@ -152,8 +153,8 @@ addopts = [
 # ---------------------------------------------------------------------------
 
 [tool.coverage.run]
-source = ["scripts"]
-omit = ["scripts/test_*.py", "scripts/*_test.py"]
+source = ["src/contextgo"]
+omit = ["tests/test_*.py", "tests/*_test.py"]
 branch = true
 
 [tool.coverage.report]

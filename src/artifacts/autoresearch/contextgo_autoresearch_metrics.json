@@ -1,0 +1,17 @@
+[
+  {
+    "round": 8,
+    "timestamp": "2026-03-26T10:05:00",
+    "git_commit": "",
+    "note": "second",
+    "total_score": 99.0,
+    "stability": 100,
+    "recall": 100,
+    "token_efficiency": 95,
+    "health_bytes": null,
+    "search_bytes": null,
+    "smoke_bytes": null,
+    "native_total_bytes": null,
+    "native_text_bytes": null
+  }
+]

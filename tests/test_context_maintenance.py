@@ -795,8 +795,9 @@ class TestMainEntryPoint(unittest.TestCase):
 
     def test_module_run_as_script_exits_0(self) -> None:
         """Running the module as __main__ via subprocess covers line 420."""
-        scripts_dir = str(Path(__file__).resolve().parent)
-        module_path = str(Path(__file__).resolve().parent / "context_maintenance.py")
+        repo_root = Path(__file__).resolve().parents[1]
+        scripts_dir = str(repo_root / "scripts")
+        module_path = str(repo_root / "scripts" / "context_maintenance.py")
         with tempfile.TemporaryDirectory() as tmp:
             # Ensure no real DB or session dirs interfere.
             fake_db = Path(tmp) / "no.db"
@@ -812,7 +813,7 @@ class TestMainEntryPoint(unittest.TestCase):
 
     def test_module_runpy_covers_main_block(self) -> None:
         """Use runpy.run_path to execute the __main__ block in-process for coverage."""
-        module_path = str(Path(__file__).resolve().parent / "context_maintenance.py")
+        module_path = str(Path(__file__).resolve().parents[1] / "scripts" / "context_maintenance.py")
         with tempfile.TemporaryDirectory() as tmp:
             fake_db = str(Path(tmp) / "no.db")
             saved_argv = sys.argv[:]
