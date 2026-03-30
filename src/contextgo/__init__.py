@@ -1,4 +1,4 @@
-"""ContextGO package."""
+"""ContextGO — local-first context & memory runtime for multi-agent AI coding teams."""
 
 from __future__ import annotations
 
@@ -7,9 +7,15 @@ from pathlib import Path
 
 __all__ = [
     "__version__",
+    "__author__",
+    "__license__",
     "main",
     "run",
 ]
+
+__author__ = "Dunova"
+__license__ = "AGPL-3.0-only"
+__email__ = "contact@dunova.io"
 
 try:
     __version__ = version("contextgo")

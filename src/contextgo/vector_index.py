@@ -200,6 +200,11 @@ CREATE TABLE IF NOT EXISTS observation_vectors (
 )
 """
 
+_SQL_CREATE_VECTOR_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_sv_indexed_epoch ON session_vectors(indexed_at_epoch DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_sv_model ON session_vectors(model_name)",
+]
+
 
 def get_vector_db_path(session_db_path: Path | str) -> Path:
     """Return the vector DB path alongside the session DB."""
@@ -210,15 +215,20 @@ def get_vector_db_path(session_db_path: Path | str) -> Path:
 
 
 def ensure_vector_db(vector_db_path: Path | str) -> Path:
-    """Create the vector database with required tables."""
+    """Create the vector database with required tables and indexes."""
     vdb = Path(vector_db_path)
     vdb.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     conn = sqlite3.connect(str(vdb), timeout=30)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-16000")
+        conn.execute("PRAGMA mmap_size=268435456")
+        conn.execute("PRAGMA temp_store=MEMORY")
         conn.execute(_SQL_CREATE_SESSION_VECTORS)
         conn.execute(_SQL_CREATE_OBSERVATION_VECTORS)
+        for idx_sql in _SQL_CREATE_VECTOR_INDEXES:
+            conn.execute(idx_sql)
         conn.commit()
     finally:
         conn.close()
@@ -251,6 +261,9 @@ def embed_pending_session_docs(
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-16000")
+        conn.execute("PRAGMA mmap_size=268435456")
+        conn.execute("PRAGMA temp_store=MEMORY")
         sdb_path = Path(session_db_path).resolve()
         if sdb_path.suffix != ".db" or not sdb_path.exists():
             raise ValueError(f"Invalid session database path: {sdb_path}")
@@ -333,14 +346,17 @@ def _store_batch(
     epochs: list[int],
     now_epoch: int,
 ) -> None:
-    """Insert or replace a batch of vectors."""
-    for i, path in enumerate(paths):
-        conn.execute(
-            "INSERT OR REPLACE INTO session_vectors "
-            "(file_path, embedding, model_name, vector_dim, indexed_at_epoch) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (path, _pack_vector(vectors[i]), VECTOR_MODEL_NAME, VECTOR_DIM, now_epoch),
-        )
+    """Insert or replace a batch of vectors using executemany for efficiency."""
+    rows = [
+        (path, _pack_vector(vectors[i]), VECTOR_MODEL_NAME, VECTOR_DIM, now_epoch)
+        for i, path in enumerate(paths)
+    ]
+    conn.executemany(
+        "INSERT OR REPLACE INTO session_vectors "
+        "(file_path, embedding, model_name, vector_dim, indexed_at_epoch) "
+        "VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +385,8 @@ def vector_search_session(
 
     conn = sqlite3.connect(vdb, timeout=30)
     try:
+        conn.execute("PRAGMA cache_size=-16000")
+        conn.execute("PRAGMA mmap_size=268435456")
         rows = conn.execute("SELECT file_path, embedding FROM session_vectors").fetchall()
     finally:
         conn.close()

@@ -15,28 +15,28 @@ __all__ = [
     "retry_commit",
 ]
 
-SQLITE_RETRY_DELAYS: tuple[float, ...] = (0.1, 0.5, 2.0)
+SQLITE_RETRY_DELAYS: tuple[float, ...] = (0.05, 0.25, 1.0, 3.0, 8.0)
 
 
 def retry_sqlite(
     conn: sqlite3.Connection,
     sql: str,
     params: Any = None,
-    max_retries: int = 3,
+    max_retries: int = 5,
     *,
     _logger: Any = None,
 ) -> sqlite3.Cursor:
     """Execute *sql* on *conn* with retry-on-busy logic.
 
-    Retries up to *max_retries* times with exponential back-off (0.1 / 0.5 / 2 s)
-    when SQLite raises ``OperationalError: database is locked``.  All other
-    errors are re-raised immediately.
+    Retries up to *max_retries* times with exponential back-off + jitter when
+    SQLite raises ``OperationalError: database is locked``.  All other errors
+    are re-raised immediately.
 
     Args:
         conn: An open :class:`sqlite3.Connection`.
         sql: SQL statement to execute.
         params: Optional bind parameters (sequence or mapping).
-        max_retries: Maximum number of retry attempts (default 3).
+        max_retries: Maximum number of retry attempts (default 5).
         _logger: Optional :class:`logging.Logger` for retry-warning messages.
 
     Returns:
@@ -58,10 +58,12 @@ def retry_sqlite(
             last_exc = exc
             if attempt < max_retries:
                 delay = SQLITE_RETRY_DELAYS[min(attempt, len(SQLITE_RETRY_DELAYS) - 1)]
-                delay = delay * (1 + random.uniform(-0.1, 0.1))
+                # Full-jitter: multiply base delay by a random factor in [0.75, 1.25]
+                # to reduce thundering-herd collisions under concurrent writers.
+                delay = delay * (0.75 + random.random() * 0.5)
                 if _logger is not None:
                     _logger.warning(
-                        "retry_sqlite: database locked, retrying in %.1fs (attempt %d/%d)",
+                        "retry_sqlite: database locked, retrying in %.2fs (attempt %d/%d)",
                         delay,
                         attempt + 1,
                         max_retries,
@@ -76,7 +78,7 @@ def retry_sqlite_many(
     conn: sqlite3.Connection,
     sql: str,
     params_seq: Any,
-    max_retries: int = 3,
+    max_retries: int = 5,
     *,
     _logger: Any = None,
 ) -> sqlite3.Cursor:
@@ -88,7 +90,7 @@ def retry_sqlite_many(
         conn: An open :class:`sqlite3.Connection`.
         sql: SQL statement to execute against each row in *params_seq*.
         params_seq: Iterable of parameter sequences or mappings.
-        max_retries: Maximum number of retry attempts (default 3).
+        max_retries: Maximum number of retry attempts (default 5).
         _logger: Optional :class:`logging.Logger` for retry-warning messages.
 
     Returns:
@@ -110,10 +112,10 @@ def retry_sqlite_many(
             last_exc = exc
             if attempt < max_retries:
                 delay = SQLITE_RETRY_DELAYS[min(attempt, len(SQLITE_RETRY_DELAYS) - 1)]
-                delay = delay * (1 + random.uniform(-0.1, 0.1))
+                delay = delay * (0.75 + random.random() * 0.5)
                 if _logger is not None:
                     _logger.warning(
-                        "retry_sqlite_many: database locked, retrying in %.1fs (attempt %d/%d)",
+                        "retry_sqlite_many: database locked, retrying in %.2fs (attempt %d/%d)",
                         delay,
                         attempt + 1,
                         max_retries,
@@ -126,18 +128,18 @@ def retry_sqlite_many(
 
 def retry_commit(
     conn: sqlite3.Connection,
-    max_retries: int = 3,
+    max_retries: int = 5,
     *,
     _logger: Any = None,
 ) -> None:
     """Commit *conn* with retry-on-busy logic.
 
-    Retries up to *max_retries* times with exponential back-off (0.1 / 0.5 / 2 s)
-    when SQLite raises ``OperationalError: database is locked``.
+    Retries up to *max_retries* times with exponential back-off + jitter when
+    SQLite raises ``OperationalError: database is locked``.
 
     Args:
         conn: An open :class:`sqlite3.Connection`.
-        max_retries: Maximum number of retry attempts (default 3).
+        max_retries: Maximum number of retry attempts (default 5).
         _logger: Optional :class:`logging.Logger` for retry-warning messages.
 
     Raises:
@@ -155,10 +157,10 @@ def retry_commit(
             last_exc = exc
             if attempt < max_retries:
                 delay = SQLITE_RETRY_DELAYS[min(attempt, len(SQLITE_RETRY_DELAYS) - 1)]
-                delay = delay * (1 + random.uniform(-0.1, 0.1))
+                delay = delay * (0.75 + random.random() * 0.5)
                 if _logger is not None:
                     _logger.warning(
-                        "retry_commit: database locked, retrying in %.1fs (attempt %d/%d)",
+                        "retry_commit: database locked, retrying in %.2fs (attempt %d/%d)",
                         delay,
                         attempt + 1,
                         max_retries,

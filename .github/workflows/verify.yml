@@ -39,7 +39,7 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-lint-
 
       - name: Install lint tools
-        run: pip install --quiet "ruff==0.15.7" "bandit==1.8.3"
+        run: pip install --quiet "ruff==0.15.7" "bandit==1.8.3" "mypy>=1.10"
 
       - name: Check Bash syntax
         run: bash -n scripts/*.sh
@@ -52,6 +52,11 @@ jobs:
 
       - name: Ruff format check
         run: ruff format --check src/contextgo/ tests/ scripts/ benchmarks/
+
+      - name: Mypy static type check
+        run: |
+          pip install --quiet -e ".[dev]" 2>/dev/null || pip install --quiet -e .
+          mypy src/contextgo/ --ignore-missing-imports --no-error-summary
 
       - name: Bandit security scan
         run: bandit -r src/contextgo/ -c pyproject.toml --quiet
@@ -129,10 +134,11 @@ jobs:
             -v
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.11'
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24  # v5
         with:
           files: coverage.xml
+          flags: python-${{ matrix.python-version }}
+          name: coverage-py${{ matrix.python-version }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 

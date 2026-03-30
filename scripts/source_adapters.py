@@ -1,1 +1,0 @@
-../src/contextgo/source_adapters.py

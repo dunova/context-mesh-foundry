@@ -1,1 +1,0 @@
-../src/contextgo/smoke_installed_runtime.py

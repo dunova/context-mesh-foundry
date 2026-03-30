@@ -640,7 +640,11 @@ Foundational release of the local-first `contextgo` runtime. All context capture
 
 ---
 
-[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.11.4...HEAD
+[0.11.4]: https://github.com/dunova/ContextGO/compare/v0.11.3...v0.11.4
+[0.11.3]: https://github.com/dunova/ContextGO/compare/v0.11.2...v0.11.3
+[0.11.2]: https://github.com/dunova/ContextGO/compare/v0.11.1...v0.11.2
+[0.11.1]: https://github.com/dunova/ContextGO/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/dunova/ContextGO/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/dunova/ContextGO/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dunova/ContextGO/compare/v0.9.37...v0.10.0

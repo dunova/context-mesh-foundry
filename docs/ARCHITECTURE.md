@@ -115,9 +115,9 @@ ContextGO/
 
 ### 3. Interface layer / 接口层
 
-`context_cli.py` is the single operator entry point. It exposes fifteen subcommands:
+`context_cli.py` is the single operator entry point. It exposes sixteen subcommands:
 
-`context_cli.py` 是唯一的操作入口，提供以下十五个子命令：
+`context_cli.py` 是唯一的操作入口，提供以下十六个子命令：
 
 | Subcommand | Purpose / 用途 |
 |---|---|

@@ -1,1 +1,0 @@
-../src/contextgo/memory_index.py

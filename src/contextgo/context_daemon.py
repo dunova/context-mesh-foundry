@@ -306,6 +306,9 @@ SOURCE_MONITOR_FLAGS: dict[str, bool] = {
 # zsh extended_history format: ": <timestamp>:<elapsed>;<command>"
 _SHELL_LINE_RE: re.Pattern[str] = re.compile(r"^:\s*(\d+):\d+;(.*)$")
 
+# Safe filename character filter — strips anything not in [A-Za-z0-9._-]
+_SAFE_FILENAME_PART_RE: re.Pattern[str] = re.compile(r"[^A-Za-z0-9._-]+")
+
 # Commands that are noisy and carry no context value.
 _IGNORE_SHELL_CMD_PREFIXES = ("history", "fc ")
 
@@ -323,15 +326,30 @@ _SECRET_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bsk-proj-[A-Za-z0-9_-]{16,}\b"), "sk-proj-***"),
     # Anthropic API keys (sk-ant-api03-…)
     (re.compile(r"\bsk-ant-[A-Za-z0-9_-]{16,}\b"), "sk-ant-***"),
+    # GitHub tokens: Personal (ghp_), OAuth (gho_), Server (ghs_), Actions refresh (ghr_)
     (re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"), "ghp_***"),
     (re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"), "gho_***"),
+    (re.compile(r"\bghs_[A-Za-z0-9]{20,}\b"), "ghs_***"),
+    (re.compile(r"\bghr_[A-Za-z0-9]{20,}\b"), "ghr_***"),
     # GitLab personal/project/group access tokens
     (re.compile(r"\bglpat-[A-Za-z0-9_-]{16,}\b"), "glpat-***"),
     (re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"), "AIza***"),
     # npm automation / publish tokens
     (re.compile(r"\bnpm_[A-Za-z0-9]{20,}\b"), "npm_***"),
-    (re.compile(r"\bxox[bprs]-[A-Za-z0-9\-]{10,}\b"), "xox?-***"),
-    (re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{12,}\b"), "AKIA***"),
+    # Slack tokens: bot (xoxb-), user (xoxp-), workspace (xoxs-), app-level (xoxa-), refresh (xoxr-)
+    (re.compile(r"\bxox[abprs]-[A-Za-z0-9\-]{10,}\b"), "xox?-***"),
+    # AWS access key IDs (real keys are prefix + 16 uppercase alphanums, min 12 to catch test fixtures)
+    (re.compile(r"\b(?:AKIA|ASIA|AROA|AIPA|ANPA|ANVA|APKA)[A-Z0-9]{12,}\b"), "AKIA***"),
+    # Stripe secret/restricted keys
+    (re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9]{24,}\b"), "sk_stripe_***"),
+    (re.compile(r"\brk_(?:live|test)_[A-Za-z0-9]{24,}\b"), "rk_stripe_***"),
+    # HuggingFace API tokens
+    (re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "hf_***"),
+    # SendGrid API keys
+    (re.compile(r"\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b"), "SG.***"),
+    # Twilio Account SID / Auth Token patterns
+    (re.compile(r"\bAC[a-f0-9]{32}\b"), "AC_twilio_***"),
+    (re.compile(r"\bSK[a-f0-9]{32}\b"), "SK_twilio_***"),
     (
         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
         "***PEM_KEY_REDACTED***",
@@ -841,7 +859,7 @@ class SessionTracker:
                     follow_redirects=False,
                 )
             except Exception as exc:
-                logger.warning("Failed to initialise HTTP client: %s", exc)
+                logger.exception("Failed to initialise HTTP client: %s", exc)
 
         PENDING_DIR.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
@@ -1402,7 +1420,7 @@ class SessionTracker:
 
     @staticmethod
     def _sanitize_filename_part(raw: str, default: str = "session") -> str:
-        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (raw or "").strip()).strip("._-")
+        safe = _SAFE_FILENAME_PART_RE.sub("_", (raw or "").strip()).strip("._-")
         return safe[:64] if safe else default
 
     def _build_transcript_sid(self, path: Path) -> str:
@@ -1595,18 +1613,27 @@ class SessionTracker:
         return False
 
     def _queue_pending(self, file_path: Path, formatted: str) -> None:
-        """Write *formatted* to the pending queue for later retry."""
+        """Write *formatted* to the pending queue for later retry.
+
+        Uses an atomic write (tmp file + os.replace) so a partial write never
+        leaves a corrupt file in the pending directory.
+        """
         pending_path = PENDING_DIR / file_path.name
+        tmp_path = pending_path.with_suffix(".tmp")
         try:
             self._prune_pending_files()
-            fd = os.open(str(pending_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 os.write(fd, formatted.encode("utf-8"))
+                os.fsync(fd)
             finally:
                 os.close(fd)
+            os.replace(str(tmp_path), str(pending_path))
             logger.info("Queued pending export: %s", pending_path.name)
         except OSError as exc:
             logger.error("Failed to write pending export: %s", exc)
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
 
     @staticmethod
     def _pending_mtime(p: Path) -> float:

@@ -355,8 +355,8 @@ def _safe_source_freshness() -> dict[str, object]:
     """
     try:
         return _source_freshness()
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning("_source_freshness failed: %s", exc)
+    except Exception as exc:
+        _logger.exception("_source_freshness failed: %s", exc)
         return {"error": f"source_freshness: error — {exc}"}
 
 
@@ -394,8 +394,16 @@ def cmd_search(args: object) -> int:
         limit=args.limit,
         literal=args.literal,
     )
+    if not text or text.startswith("No matches found"):
+        print(
+            f"No matches found for: {args.query!r}\n"
+            "  Tip: try different keywords, remove quotes, or use --type all.\n"
+            f"  提示：未找到匹配项，尝试不同关键词或使用 --type all。",
+            file=sys.stderr,
+        )
+        return 1
     print(text)
-    return 0 if text and not text.startswith("No matches found") else 1
+    return 0
 
 
 def cmd_semantic(args: object) -> int:
@@ -437,7 +445,7 @@ def cmd_semantic(args: object) -> int:
         matches = future_memory.result(timeout=_SEARCH_TIMEOUT)
     except FuturesTimeoutError:
         matches = []
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.debug("Memory search future failed: %s", exc)
         matches = []
 
@@ -456,7 +464,7 @@ def cmd_semantic(args: object) -> int:
         session_text = future_session.result(timeout=_SEARCH_TIMEOUT)
     except FuturesTimeoutError:
         session_text = ""
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.debug("Session search future failed: %s", exc)
         session_text = ""
 
@@ -464,6 +472,12 @@ def cmd_semantic(args: object) -> int:
         print("--- HISTORY CONTENT FALLBACK ---")
         print(session_text)
         return 0 if not session_text.startswith("No matches found") else 1
+    print(
+        f"No results found for: {query!r}\n"
+        "  Tip: try broader keywords, or run 'contextgo search <query>' for full-text search.\n"
+        f"  提示：未找到结果，尝试更宽泛的关键词，或使用 'contextgo search {query}' 进行全文搜索。",
+        file=sys.stderr,
+    )
     return 1  # Both memory and session came back empty
 
 
@@ -684,7 +698,7 @@ def cmd_health(args: object) -> int:
         recall: dict = future_session.result(timeout=_HEALTH_TIMEOUT)
     except FuturesTimeoutError:
         recall = {}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning("Session index health check failed: %s", exc)
         recall = {}
 
@@ -696,7 +710,7 @@ def cmd_health(args: object) -> int:
     except FuturesTimeoutError:
         print("Warning: memory root check timed out, falling back to direct stat. / 警告：内存根目录检查超时，回退到直接检测。", file=sys.stderr)
         memory_root_exists = LOCAL_SHARED_ROOT.exists()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning("Memory root check future failed: %s", exc)
         memory_root_exists = LOCAL_SHARED_ROOT.exists()
 
@@ -705,7 +719,7 @@ def cmd_health(args: object) -> int:
         native_health: object = future_native.result(timeout=_HEALTH_TIMEOUT)
     except FuturesTimeoutError:
         native_health = {}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning("Native backends health check failed: %s", exc)
         native_health = {}
 
@@ -894,7 +908,7 @@ def _q_search(query: str, limit: int, as_json: bool) -> int:
                 if results:
                     _print_q_results(results, as_json=as_json)
                     return 0
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.debug("Vector search unavailable, falling back to FTS5: %s", exc)
 
     # Fallback to FTS5/LIKE
@@ -935,9 +949,24 @@ def cmd_q(args: object) -> int:
 
 _SHELL_INTEGRATION = """\
 # ContextGO shell integration
-# Add to ~/.bashrc or ~/.zshrc, or run: eval "$(contextgo shell-init)"
+# ──────────────────────────────────────────────────────────────────────────────
+# INSTALLATION
+#   Option 1 (recommended) — add to your shell rc file:
+#     echo 'eval "$(contextgo shell-init)"' >> ~/.bashrc   # or ~/.zshrc
+#
+#   Option 2 — one-time activation in current session:
+#     eval "$(contextgo shell-init)"
+#
+# ALIASES ADDED
+#   cg   — contextgo q        (quick recall: hybrid search or session ID lookup)
+#   cgs  — contextgo search   (full-text search)
+#   cgse — contextgo semantic  (semantic search with memory fallback)
+#   cgvs — contextgo vector-sync  (embed new sessions into vector index)
+# ──────────────────────────────────────────────────────────────────────────────
 
 # Quick recall — search or session ID lookup
+# Usage: cg 'how did we fix the auth bug?'
+#        cg 3f2a1b8c
 cg() { contextgo q "$@"; }
 
 # Shorthand aliases
@@ -1197,67 +1226,195 @@ def build_parser() -> object:
     )
 
     # search
-    p = sub.add_parser("search", help="Search session/history context")
-    p.add_argument("query", help="Query text")
-    p.add_argument("--type", default="all", choices=["all", "event", "session", "turn", "content"])
-    p.add_argument("--limit", type=int, default=10)
-    p.add_argument("--literal", action="store_true")
+    p = sub.add_parser(
+        "search",
+        help="Full-text search across session/history context",
+        description=(
+            "Search indexed sessions and history for matching content.\n\n"
+            "Examples:\n"
+            "  contextgo search 'deploy pipeline'\n"
+            "  contextgo search 'auth bug' --type session --limit 20\n"
+            "  contextgo search 'exact phrase' --literal\n\n"
+            "Exit codes: 0 = results found, 1 = no results, 2 = bad arguments."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("query", help="Search query text (supports FTS5 syntax unless --literal)")
+    p.add_argument(
+        "--type",
+        default="all",
+        choices=["all", "event", "session", "turn", "content"],
+        help="Restrict search to a specific record type (default: all)",
+    )
+    p.add_argument("--limit", type=int, default=10, help="Maximum number of results to return (default: 10)")
+    p.add_argument("--literal", action="store_true", help="Use literal string match instead of FTS5 query syntax")
 
     # semantic
-    p = sub.add_parser("semantic", help="Search local memories, then fallback to history content")
-    p.add_argument("query", help="Query text")
-    p.add_argument("--limit", type=int, default=5)
+    p = sub.add_parser(
+        "semantic",
+        help="Semantic search: local memories first, then history fallback",
+        description=(
+            "Search local memory files for relevant context, falling back to session history.\n"
+            "Both paths run in parallel (5s timeout each).\n\n"
+            "Examples:\n"
+            "  contextgo semantic 'how we handle rate limits'\n"
+            "  contextgo semantic 'database migration approach' --limit 10\n\n"
+            "Exit codes: 0 = results found, 1 = no results, 2 = bad arguments."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("query", help="Natural language query to search memories and session history")
+    p.add_argument("--limit", type=int, default=5, help="Maximum number of results to return (default: 5)")
 
     # save
-    p = sub.add_parser("save", help="Save key conclusion to local memory")
-    p.add_argument("--title", required=True)
-    p.add_argument("--content", required=True)
-    p.add_argument("--tags", default="")
+    p = sub.add_parser(
+        "save",
+        help="Save a key conclusion or decision to local memory",
+        description=(
+            "Write a memory markdown file to the local memory store.\n"
+            "Saved memories are searchable via 'contextgo semantic' and 'contextgo q'.\n\n"
+            "Examples:\n"
+            "  contextgo save --title 'Auth approach' --content 'We use JWT with 1h expiry'\n"
+            "  contextgo save --title 'Deploy steps' --content '...' --tags 'deploy,infra'\n\n"
+            "Exit codes: 0 = saved, 1 = save failed."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--title", required=True, help="Short descriptive title for this memory entry")
+    p.add_argument("--content", required=True, help="Body text of the memory (markdown supported)")
+    p.add_argument("--tags", default="", help="Comma-separated tags to aid future retrieval (e.g. 'auth,api')")
 
     # export
-    p = sub.add_parser("export", help="Export indexed observations to JSON")
-    p.add_argument("query", nargs="?", default="", help="Search query, empty for all")
-    p.add_argument("output", help="Output JSON path")
-    p.add_argument("--limit", type=int, default=5000)
-    p.add_argument("--source-type", default="all", choices=["all", "history", "conversation"])
+    p = sub.add_parser(
+        "export",
+        help="Export indexed observations to a JSON file",
+        description=(
+            "Export observations (memories and sessions) to a JSON file for backup or transfer.\n"
+            "Use 'contextgo import' to restore from an export file.\n\n"
+            "Examples:\n"
+            "  contextgo export backup.json                    # export all\n"
+            "  contextgo export 'auth' auth-memories.json      # export matching query\n"
+            "  contextgo export backup.json --source-type history --limit 1000\n\n"
+            "Exit codes: 0 = success, 1 = error, 2 = bad arguments."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("query", nargs="?", default="", help="Optional filter query (leave empty to export all)")
+    p.add_argument("output", help="Output file path for the JSON export (e.g. backup.json)")
+    p.add_argument("--limit", type=int, default=5000, help="Maximum observations to export (default: 5000)")
+    p.add_argument(
+        "--source-type",
+        default="all",
+        choices=["all", "history", "conversation"],
+        help="Filter by source type: all, history, or conversation (default: all)",
+    )
 
     # import
-    p = sub.add_parser("import", help="Import observations from JSON")
-    p.add_argument("input", help="Input JSON path")
-    p.add_argument("--no-sync", action="store_true")
+    p = sub.add_parser(
+        "import",
+        help="Import observations from a previously exported JSON file",
+        description=(
+            "Restore observations from a JSON file created by 'contextgo export'.\n\n"
+            "Examples:\n"
+            "  contextgo import backup.json\n"
+            "  contextgo import backup.json --no-sync   # skip storage sync step\n\n"
+            "Exit codes: 0 = success, 1 = error."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("input", help="Path to the JSON file produced by 'contextgo export'")
+    p.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="Skip the storage sync step after import (faster, but index may be stale)",
+    )
 
     # serve
-    p = sub.add_parser("serve", help="Start local memory viewer")
-    p.add_argument("--host", default=env_str("CONTEXTGO_VIEWER_HOST", default="127.0.0.1"))
-    p.add_argument("--port", type=int, default=env_int("CONTEXTGO_VIEWER_PORT", default=37677, minimum=1))
-    p.add_argument("--token", default=env_str("CONTEXTGO_VIEWER_TOKEN", default=""))
+    p = sub.add_parser(
+        "serve",
+        help="Start the local memory viewer web UI",
+        description=(
+            "Start the local memory viewer server. Opens a web UI to browse sessions and memories.\n"
+            "Press Ctrl+C to stop.\n\n"
+            "Examples:\n"
+            "  contextgo serve                          # listen on 127.0.0.1:37677\n"
+            "  contextgo serve --port 8080              # custom port\n"
+            "  contextgo serve --token mysecret         # require auth token\n\n"
+            "Environment: CONTEXTGO_VIEWER_HOST, CONTEXTGO_VIEWER_PORT, CONTEXTGO_VIEWER_TOKEN"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument(
+        "--host",
+        default=env_str("CONTEXTGO_VIEWER_HOST", default="127.0.0.1"),
+        help="Interface to listen on (default: 127.0.0.1; override via CONTEXTGO_VIEWER_HOST)",
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=env_int("CONTEXTGO_VIEWER_PORT", default=37677, minimum=1),
+        help="Port to listen on (default: 37677; override via CONTEXTGO_VIEWER_PORT)",
+    )
+    p.add_argument(
+        "--token",
+        default=env_str("CONTEXTGO_VIEWER_TOKEN", default=""),
+        help="Optional auth token to protect the viewer (override via CONTEXTGO_VIEWER_TOKEN)",
+    )
 
     # maintain
-    p = sub.add_parser("maintain", help="Run local maintenance workflow")
-    p.add_argument("--db", default="~/.contextgo/db/contextgo.db")
-    p.add_argument("--codex-root", default="~/.codex/sessions")
-    p.add_argument("--claude-root", default="~/.claude/projects")
-    p.add_argument("--include-subagents", action="store_true")
-    p.add_argument("--repair-queue", action="store_true")
-    p.add_argument("--enqueue-missing", action="store_true")
-    p.add_argument("--max-enqueue", type=int, default=2000)
-    p.add_argument("--stale-minutes", type=int, default=15)
-    p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser(
+        "maintain",
+        help="Run local index maintenance (repair, enqueue missing sessions)",
+        description=(
+            "Repair the session index and enqueue any sessions that were missed during capture.\n"
+            "Safe to run at any time; use --dry-run to preview changes without writing.\n\n"
+            "Examples:\n"
+            "  contextgo maintain                         # standard maintenance pass\n"
+            "  contextgo maintain --repair-queue          # fix stalled queue entries\n"
+            "  contextgo maintain --enqueue-missing       # add missed sessions to queue\n"
+            "  contextgo maintain --dry-run               # preview without making changes\n\n"
+            "Exit codes: 0 = success, non-zero = error from maintenance module."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--db", default="~/.contextgo/db/contextgo.db", help="Path to the session index database")
+    p.add_argument("--codex-root", default="~/.codex/sessions", help="Root directory for Codex session files")
+    p.add_argument("--claude-root", default="~/.claude/projects", help="Root directory for Claude project files")
+    p.add_argument("--include-subagents", action="store_true", help="Include sub-agent sessions in maintenance")
+    p.add_argument("--repair-queue", action="store_true", help="Repair stalled or failed queue entries")
+    p.add_argument("--enqueue-missing", action="store_true", help="Scan for and enqueue sessions not yet in the index")
+    p.add_argument("--max-enqueue", type=int, default=2000, help="Maximum sessions to enqueue in one run (default: 2000)")
+    p.add_argument("--stale-minutes", type=int, default=15, help="Treat queue entries older than N minutes as stale (default: 15)")
+    p.add_argument("--dry-run", action="store_true", help="Preview changes without writing to disk or database")
 
     # native-scan
     p = sub.add_parser(
         "native-scan",
-        help="Run the ContextGO native scan workflow",
-        description="Run the native scan workflow that exercises the Rust/Go backends without extra wrappers.",
+        help="Run the native Rust/Go scan backend directly",
+        description=(
+            "Run the native Rust or Go scan backend for high-performance session indexing.\n"
+            "The 'auto' backend selects the fastest available binary (Rust preferred).\n\n"
+            "Examples:\n"
+            "  contextgo native-scan                      # auto-select backend\n"
+            "  contextgo native-scan --backend rust --threads 8\n"
+            "  contextgo native-scan --query 'auth' --json\n\n"
+            "Exit codes: propagated from the native binary."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--backend", choices=["auto", "rust", "go"], default="auto")
-    p.add_argument("--codex-root")
-    p.add_argument("--claude-root")
-    p.add_argument("--threads", type=int, default=4)
-    p.add_argument("--query")
-    p.add_argument("--limit", type=int)
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--debug-build", action="store_true")
+    p.add_argument(
+        "--backend",
+        choices=["auto", "rust", "go"],
+        default="auto",
+        help="Scan backend to use: auto (default), rust, or go",
+    )
+    p.add_argument("--codex-root", help="Override Codex sessions root directory")
+    p.add_argument("--claude-root", help="Override Claude projects root directory")
+    p.add_argument("--threads", type=int, default=4, help="Number of parallel scan threads (default: 4)")
+    p.add_argument("--query", help="Optional filter query passed to the native backend")
+    p.add_argument("--limit", type=int, help="Maximum results to return from the native backend")
+    p.add_argument("--json", action="store_true", help="Output results as JSON")
+    p.add_argument("--debug-build", action="store_true", help="Use debug (unoptimized) build of the native binary")
 
     # smoke
     p = sub.add_parser(
@@ -1277,27 +1434,85 @@ def build_parser() -> object:
     )
 
     # health
-    p = sub.add_parser("health", help="Check context system health")
-    p.add_argument("--verbose", action="store_true", help="Print full health payload")
+    p = sub.add_parser(
+        "health",
+        help="Check context system health and print a JSON status report",
+        description=(
+            "Run all health checks in parallel and print a JSON summary.\n"
+            "Checks: session index DB, memory root, native backends, remote sync policy.\n\n"
+            "Examples:\n"
+            "  contextgo health              # compact JSON summary\n"
+            "  contextgo health --verbose    # full details\n\n"
+            "Exit codes: 0 = all OK, 1 = degraded."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--verbose", action="store_true", help="Print full health payload with all sub-check details")
 
     # vector-sync
-    p = sub.add_parser("vector-sync", help="Embed pending session documents into vector index")
-    p.add_argument("--force", action="store_true", help="Re-embed all documents")
+    p = sub.add_parser(
+        "vector-sync",
+        help="Embed pending session documents into the vector index",
+        description=(
+            "Embed new or updated session documents into the vector index for fast semantic search.\n"
+            "Requires the 'vector' extra: pipx install \"contextgo[vector]\"\n\n"
+            "Examples:\n"
+            "  contextgo vector-sync           # embed only new/changed documents\n"
+            "  contextgo vector-sync --force   # re-embed all documents\n\n"
+            "Exit codes: 0 = success, 1 = vector dependencies missing or error."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--force", action="store_true", help="Re-embed all documents, not just pending ones")
 
     # vector-status
-    sub.add_parser("vector-status", help="Show vector index statistics")
+    sub.add_parser(
+        "vector-status",
+        help="Show vector index statistics (document count, DB path, etc.)",
+    )
 
     # sources
-    sub.add_parser("sources", help="Show detected source platforms and adapter status")
+    sub.add_parser(
+        "sources",
+        help="Show detected source platforms and their adapter status",
+    )
 
     # q (quick recall)
-    p = sub.add_parser("q", help="Quick recall — search or session ID lookup")
-    p.add_argument("query", nargs="+", help="Query text or session ID prefix")
-    p.add_argument("--limit", type=int, default=5)
-    p.add_argument("--json", action="store_true", help="Output as JSON")
+    p = sub.add_parser(
+        "q",
+        help="Quick recall — auto-routes to hybrid search or session ID lookup",
+        description=(
+            "Fast recall: auto-detects whether input is a session ID prefix (hex) or a search query.\n"
+            "Uses vector search when available, falling back to FTS5/LIKE.\n\n"
+            "Examples:\n"
+            "  contextgo q 'how did we fix the auth bug?'   # natural language search\n"
+            "  contextgo q 3f2a1b8c                         # look up session by ID prefix\n"
+            "  contextgo q 'deploy' --limit 10 --json       # JSON output\n\n"
+            "Shell alias: eval \"$(contextgo shell-init)\" adds 'cg' as a shorthand.\n\n"
+            "Exit codes: 0 = results found, 1 = no results, 2 = empty query."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("query", nargs="+", help="Search query text or session ID prefix (8+ hex characters)")
+    p.add_argument("--limit", type=int, default=5, help="Maximum results to return (default: 5)")
+    p.add_argument("--json", action="store_true", help="Output results as JSON array")
 
     # shell-init
-    sub.add_parser("shell-init", help="Print shell integration script (source or eval)")
+    p = sub.add_parser(
+        "shell-init",
+        help="Print shell integration script to add 'cg', 'cgs', 'cgse' aliases",
+        description=(
+            "Print a shell integration script that adds convenience aliases.\n\n"
+            "To activate in your current session:\n"
+            "  eval \"$(contextgo shell-init)\"\n\n"
+            "To make permanent, add the eval line to ~/.bashrc or ~/.zshrc.\n\n"
+            "Aliases added:\n"
+            "  cg  — contextgo q (quick recall)\n"
+            "  cgs — contextgo search\n"
+            "  cgse — contextgo semantic"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # completion
     p = sub.add_parser(
@@ -1335,7 +1550,11 @@ def run(args: object) -> int:
         return 0
     handler = COMMANDS.get(command)
     if handler is None:
-        print(f"Unknown command: {command}", file=sys.stderr)
+        print(
+            f"Error: unknown command '{command}'. Run 'contextgo --help' to see available commands.\n"
+            f"错误：未知命令 '{command}'，运行 'contextgo --help' 查看可用命令。",
+            file=sys.stderr,
+        )
         return 2
     return handler(args)  # type: ignore[return-value]
 
@@ -1346,7 +1565,23 @@ def main(argv: list[str] | None = None) -> int:
     # build_parser() returns argparse.ArgumentParser; the type annotation uses
     # ``object`` to avoid a top-level ``import argparse`` on every startup.
     args = parser.parse_args(argv)  # type: ignore[union-attr]
-    return run(args)
+    try:
+        return run(args)
+    except KeyboardInterrupt:
+        print("\nInterrupted. / 已中断。", file=sys.stderr)
+        return 130
+    except BrokenPipeError:
+        # Silently exit when piped output is closed (e.g. `contextgo search ... | head`)
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        _logger.debug("Unhandled exception in command '%s': %s", getattr(args, "command", "?"), exc, exc_info=True)
+        print(
+            f"Error: {exc}\n"
+            "  Run with CONTEXTGO_LOG_LEVEL=DEBUG for details.\n"
+            f"  错误：{exc}。设置 CONTEXTGO_LOG_LEVEL=DEBUG 可查看详细信息。",
+            file=sys.stderr,
+        )
+        return 1
 
 
 _LAZY_MODULE_GETTERS: dict[str, object] = {

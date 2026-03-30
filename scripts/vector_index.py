@@ -1,1 +1,0 @@
-../src/contextgo/vector_index.py

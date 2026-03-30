@@ -167,13 +167,30 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bsk-proj-[A-Za-z0-9_-]{16,}\b"),
     # Anthropic API keys (sk-ant-api03-…)
     re.compile(r"\bsk-ant-[A-Za-z0-9_-]{16,}\b"),
+    # GitHub tokens: Personal (ghp_), OAuth (gho_), Server (ghs_), Actions refresh (ghr_)
     re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bghs_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bghr_[A-Za-z0-9]{20,}\b"),
     # GitLab personal/project/group access tokens
     re.compile(r"\bglpat-[A-Za-z0-9_-]{16,}\b"),
     re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
     # npm automation / publish tokens
     re.compile(r"\bnpm_[A-Za-z0-9]{20,}\b"),
+    # Slack tokens: bot (xoxb-), user (xoxp-), workspace (xoxs-), app-level (xoxa-), refresh (xoxr-)
+    re.compile(r"\bxox[abprs]-[A-Za-z0-9\-]{10,}\b"),
+    # AWS access key IDs (real keys are prefix + 16 uppercase alphanums, min 12 to catch test fixtures)
+    re.compile(r"\b(?:AKIA|ASIA|AROA|AIPA|ANPA|ANVA|APKA)[A-Z0-9]{12,}\b"),
+    # Stripe secret/restricted keys
+    re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9]{24,}\b"),
+    re.compile(r"\brk_(?:live|test)_[A-Za-z0-9]{24,}\b"),
+    # HuggingFace API tokens
+    re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),
+    # SendGrid API keys
+    re.compile(r"\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b"),
+    # Twilio Account SID / Auth Token patterns
+    re.compile(r"\bAC[a-f0-9]{32}\b"),
+    re.compile(r"\bSK[a-f0-9]{32}\b"),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
 ]
 
@@ -989,7 +1006,14 @@ def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
     clean_tags = [cleaned for tag in raw_tags if (cleaned := _sanitize_text(str(tag))[:80])]
 
     raw_path = _sanitize_text(str(raw.get("file_path") or "import://json"))[:300]
-    if raw_path.startswith(("/", "~", "\\")) or (len(raw_path) >= 2 and raw_path[1] == ":"):
+    # Reject absolute paths, home-dir shortcuts, Windows drive letters, and
+    # any path that contains traversal sequences (../ or ..\).
+    _path_unsafe = (
+        raw_path.startswith(("/", "~", "\\"))
+        or (len(raw_path) >= 2 and raw_path[1] == ":")
+        or ".." in raw_path.replace("\\", "/").split("/")
+    )
+    if _path_unsafe:
         raw_path = "import://local-path-redacted"
 
     title = _sanitize_text(str(raw.get("title") or "imported memory"))[:240]

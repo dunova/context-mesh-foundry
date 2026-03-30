@@ -233,6 +233,7 @@ flowchart LR
 contextgo sources                                 # show detected platforms and adapter status
 contextgo search "schema migration" --limit 10    # full-text keyword search
 contextgo semantic "database design" --limit 5    # memory-first search with keyword fallback
+contextgo q "auth"                                # quick recall — search or session ID lookup
 contextgo native-scan --backend auto --threads 4  # Rust/Go scanner directly
 ```
 
@@ -262,17 +263,30 @@ contextgo maintain --dry-run        # clean and repair local index
 contextgo serve --port 37677        # start local viewer at 127.0.0.1:37677
 ```
 
-### Shell Integration
+### Shell Integration & Completion
 
 ```bash
 eval "$(contextgo shell-init)"      # activate cg alias + shell aliases
-contextgo completion bash            # print bash completion script
-contextgo completion zsh             # print zsh completion script
-contextgo completion fish            # print fish completion script
+```
 
-# Make completions permanent:
-#   echo 'eval "$(contextgo completion bash)"' >> ~/.bashrc
-#   echo 'eval "$(contextgo completion zsh)"'  >> ~/.zshrc
+**Enable tab completion permanently:**
+
+```bash
+# bash — add to ~/.bashrc
+echo 'eval "$(contextgo completion bash)"' >> ~/.bashrc
+source ~/.bashrc
+
+# zsh — add to ~/.zshrc
+echo 'eval "$(contextgo completion zsh)"' >> ~/.zshrc
+source ~/.zshrc
+
+# fish — add to fish config
+echo 'contextgo completion fish | source' >> ~/.config/fish/config.fish
+
+# Or print the script for manual inspection:
+contextgo completion bash
+contextgo completion zsh
+contextgo completion fish
 ```
 
 ---
@@ -636,6 +650,7 @@ flowchart LR
 contextgo sources                                 # 查看已探测的平台与 adapter 状态
 contextgo search "schema 迁移" --limit 10         # 全文关键词检索
 contextgo semantic "数据库设计决策" --limit 5       # 记忆优先检索，关键词兜底
+contextgo q "认证"                                 # 快速召回 — 搜索或会话 ID 查询
 contextgo native-scan --backend auto --threads 4  # 直接调用原生扫描器
 ```
 
@@ -663,6 +678,25 @@ contextgo maintain --enqueue-missing   # 索引所有已有会话
 contextgo smoke                        # 维护者 smoke 测试套件
 contextgo maintain --dry-run           # 清理并修复本地索引
 contextgo serve --port 37677           # 在 127.0.0.1:37677 启动本地 Viewer
+```
+
+### Shell 集成与补全
+
+```bash
+eval "$(contextgo shell-init)"         # 激活 cg 别名
+```
+
+**永久启用 Tab 补全：**
+
+```bash
+# bash — 追加到 ~/.bashrc
+echo 'eval "$(contextgo completion bash)"' >> ~/.bashrc && source ~/.bashrc
+
+# zsh — 追加到 ~/.zshrc
+echo 'eval "$(contextgo completion zsh)"' >> ~/.zshrc && source ~/.zshrc
+
+# fish — 追加到 fish 配置
+echo 'contextgo completion fish | source' >> ~/.config/fish/config.fish
 ```
 
 ---

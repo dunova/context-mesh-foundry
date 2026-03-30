@@ -22,6 +22,8 @@ __all__ = ["main"]
 import hmac
 import json
 import logging
+import signal
+import socket
 import threading
 import time
 from datetime import datetime, timezone
@@ -68,7 +70,12 @@ _MAX_BATCH_IDS: int = env_int("CONTEXTGO_VIEWER_MAX_BATCH_IDS", default=500, min
 _SSE_INTERVAL_SEC: float = env_float("CONTEXTGO_VIEWER_SSE_INTERVAL_SEC", default=1.0, minimum=0.2)
 _SSE_MAX_TICKS: int = env_int("CONTEXTGO_VIEWER_SSE_MAX_TICKS", default=120, minimum=1)
 
-# Shutdown event — set by ``main()`` on KeyboardInterrupt to unblock SSE threads.
+# Per-connection socket timeout in seconds.  Prevents slow/stalled clients from
+# holding a thread indefinitely.  Set CONTEXTGO_VIEWER_REQUEST_TIMEOUT_SEC=0 to
+# disable (not recommended outside of tests).
+_REQUEST_TIMEOUT_SEC: float = env_float("CONTEXTGO_VIEWER_REQUEST_TIMEOUT_SEC", default=30.0, minimum=0.0)
+
+# Shutdown event — set by ``main()`` on KeyboardInterrupt / SIGTERM to unblock SSE threads.
 _SHUTDOWN_EVENT: threading.Event = threading.Event()
 _SYNC_MIN_INTERVAL_SEC: float = env_float("CONTEXTGO_VIEWER_SYNC_MIN_INTERVAL_SEC", default=5.0, minimum=0.0)
 
@@ -307,6 +314,15 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
         return
 
+    def setup(self) -> None:
+        """Apply per-connection socket timeout before the request is read."""
+        super().setup()
+        if _REQUEST_TIMEOUT_SEC > 0:
+            try:
+                self.connection.settimeout(_REQUEST_TIMEOUT_SEC)
+            except OSError:
+                pass
+
     # ------------------------------------------------------------------
     # Security helpers
     # ------------------------------------------------------------------
@@ -451,7 +467,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             stats = index_stats()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _logger.exception("Health check failed: %s", exc)
             self._send_json(
                 500,
@@ -484,7 +500,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             rows = search_index(query=query, limit=limit, offset=offset, source_type=source_type)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _logger.exception("Search failed for query %r: %s", query, exc)
             self._send_json(500, {"ok": False, "error": "search failed"})
             return
@@ -498,7 +514,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             rows = timeline_index(anchor_id=anchor, depth_before=before, depth_after=after) if anchor > 0 else []
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _logger.exception("Timeline failed for anchor %d: %s", anchor, exc)
             self._send_json(500, {"ok": False, "error": "timeline failed"})
             return
@@ -593,7 +609,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             rows = get_observations_by_ids(parsed_ids[:_MAX_BATCH_IDS], limit=limit)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _logger.exception("Batch observations fetch failed: %s", exc)
             self._send_json(500, {"ok": False, "error": "internal error"})
             return
@@ -616,6 +632,22 @@ def main() -> None:
     if HOST not in _LOOPBACK_HOSTS and not VIEWER_TOKEN:
         raise SystemExit("CONTEXTGO_VIEWER_TOKEN must be set when binding a non-loopback host.")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    # Set the server-level socket timeout so accept() does not block forever
+    # when the process receives a signal and serve_forever() needs to exit.
+    server.socket.settimeout(1.0)
+
+    def _sigterm_handler(signum: int, _frame: object) -> None:  # noqa: ARG001
+        """Translate SIGTERM into a graceful server shutdown."""
+        _SHUTDOWN_EVENT.set()
+        # server.shutdown() is thread-safe and signals serve_forever() to stop.
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    try:
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+    except (OSError, ValueError):
+        # SIGTERM handling is best-effort (e.g. not available on Windows).
+        pass
+
     print(f"ContextGO Viewer listening on http://{HOST}:{PORT}")
     try:
         server.serve_forever()

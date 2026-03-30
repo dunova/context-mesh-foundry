@@ -128,7 +128,7 @@ _DDL_INDEXES = [
 
 _DDL_SESSION_DOCUMENTS_FTS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS session_documents_fts
-USING fts5(title, content, file_path, content=session_documents, content_rowid=rowid)
+USING fts5(title, content, file_path, content=session_documents, content_rowid=rowid, tokenize='unicode61 remove_diacritics 1')
 """
 
 # Triggers to keep the FTS5 shadow tables in sync with the main table.
@@ -304,6 +304,20 @@ SOURCE_WEIGHT: dict[str, int] = {
 
 # In-process cache for source-file discovery results.
 _SOURCE_CACHE: dict[str, Any] = {"expires_at": 0.0, "items": [], "home": None}
+
+
+def _cache_put_results(cache_key: str, results: list[dict[str, Any]]) -> None:
+    """Insert *results* into the search result cache, evicting stale/excess entries."""
+    if _SEARCH_RESULT_CACHE_TTL <= 0:
+        return
+    if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+        _now = time.monotonic()
+        expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= _now]
+        for k in expired:
+            del _SEARCH_RESULT_CACHE[k]
+        while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+            _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
+    _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
 
 # ---------------------------------------------------------------------------
 # In-process search result cache (TTL-based)
@@ -943,9 +957,11 @@ def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-8000")
-    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA cache_size=-32000")
+    conn.execute("PRAGMA mmap_size=536870912")
     conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA page_size=4096")
+    conn.execute("PRAGMA wal_autocheckpoint=1000")
     try:
         yield conn
     finally:
@@ -1021,7 +1037,7 @@ def _try_sync(force: bool = False) -> dict[str, int]:
         return {}
     try:
         return sync_session_index(force=force)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning(
             "_try_sync: sync failed (%s) — continuing with existing index",
             exc,
@@ -1231,7 +1247,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
                         _vresult.get("skipped", 0),
                         _vresult.get("deleted", 0),
                     )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _logger.debug("sync_session_index: vector embedding skipped: %s", exc)
 
         total = _retry_sqlite(conn, _SQL_COUNT_DOCS).fetchone()[0]
@@ -1610,14 +1626,15 @@ def _fts5_search_rows(
         return " ".join(parts) if parts else '""'
 
     fts_query = _build_fts_query(query)
-    row_limit = max(1, min(limit * 20, 2000))
+    row_limit = max(1, min(limit * 10, 500))
 
     try:
+        # bm25 weights: title(10x) > content(5x) > file_path(1x) for better relevance
         sql = (
             "SELECT sd.* FROM session_documents sd "
             "JOIN session_documents_fts fts ON sd.rowid = fts.rowid "
             "WHERE session_documents_fts MATCH ? "
-            "ORDER BY bm25(session_documents_fts) "
+            "ORDER BY bm25(session_documents_fts, 10.0, 5.0, 1.0) "
             "LIMIT ?"
         )
         return _retry_sqlite(conn, sql, (fts_query, row_limit)).fetchall()
@@ -1836,31 +1853,15 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
                     if ranked:
                         results = fetch_enriched_results(ranked, db_path, query)
                         if results:
-                            if _SEARCH_RESULT_CACHE_TTL > 0:
-                                if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
-                                    _now = time.monotonic()
-                                    _expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= _now]
-                                    for k in _expired:
-                                        del _SEARCH_RESULT_CACHE[k]
-                                    while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
-                                        _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
-                                _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
+                            _cache_put_results(cache_key, results)
                             return results
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _logger.debug("_search_rows: vector search fallback: %s", exc)
 
         native_rows = _native_search_rows(query, limit=max_results)
         if native_rows:
             results = _enrich_native_rows(native_rows, conn, terms, max_results)
-            if _SEARCH_RESULT_CACHE_TTL > 0:
-                if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
-                    _now = time.monotonic()
-                    _expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= _now]
-                    for k in _expired:
-                        del _SEARCH_RESULT_CACHE[k]
-                    while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
-                        _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
-                _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
+            _cache_put_results(cache_key, results)
             return results
 
         # Try FTS5 first; fall back to LIKE-based scan when unavailable.
@@ -1911,18 +1912,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
             for _, row in ranked[:max_results]
         ]
 
-    if _SEARCH_RESULT_CACHE_TTL > 0:
-        # Evict expired entries and cap cache size to prevent unbounded growth.
-        if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
-            now_mono = time.monotonic()
-            expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= now_mono]
-            for k in expired:
-                del _SEARCH_RESULT_CACHE[k]
-            # If still over limit, drop oldest entries.
-            while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
-                _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
-        _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
-
+    _cache_put_results(cache_key, results)
     return results
 
 

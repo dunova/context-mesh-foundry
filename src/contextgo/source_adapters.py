@@ -95,7 +95,7 @@ def _write_adapter_file(path: Path, texts: list[str], mtime_epoch: int, meta: di
             with contextlib.suppress(OSError):
                 tmp_path.chmod(0o600)
             os.replace(str(tmp_path), str(path))
-        except Exception:
+        except OSError:
             with contextlib.suppress(OSError):
                 tmp_path.unlink()
             raise
@@ -407,7 +407,7 @@ def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
     for name, fn in _adapters.items():
         try:
             result[name] = fn(current_home)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("sync_all_adapters: adapter %r failed: %s", name, exc)
             result[name] = {"sessions": 0, "error": str(exc)}
     return result
@@ -509,7 +509,7 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
                 "path": str(p),
                 "mtime": _iso_or_none(p.stat().st_mtime) if p.exists() else None,
             }
-        except Exception as exc:  # noqa: BLE001
+        except OSError as exc:
             _log.warning("source_freshness_snapshot: source %r failed: %s", name, exc)
             result[name] = {"exists": False, "error": str(exc)}
     try:
@@ -523,7 +523,7 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
             "kilo_session_count": adapter_stats["kilo_session"]["sessions"],
             "openclaw_session_count": adapter_stats["openclaw_session"]["sessions"],
         }
-    except Exception as exc:  # noqa: BLE001
+    except (KeyError, TypeError, ValueError) as exc:
         _log.warning("source_freshness_snapshot: adapter_sessions summary failed: %s", exc)
         result["adapter_sessions"] = {"exists": False, "error": str(exc)}
     return result

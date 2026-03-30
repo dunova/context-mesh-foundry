@@ -29,6 +29,7 @@ data/
 
 # Database files
 *.db
+*.db-journal
 *.db-shm
 *.db-wal
 *.sqlite
@@ -57,6 +58,7 @@ data/
 # Native build artifacts
 target/
 native/session_scan/target/
+native/session_scan_go/bin/
 native/session_scan_go/vendor/
 native/session_scan_go/session_scan_go
 native/session_scan_go/coverage.out
@@ -82,6 +84,9 @@ Desktop.ini
 # artifacts/autoresearch/
 # src/artifacts/ is generated output — never commit
 src/artifacts/
+artifacts/
+!artifacts/autoresearch/
+!artifacts/testsets/
 .coverage
 coverage.xml
 
@@ -95,6 +100,8 @@ coverage.xml
 htmlcov/
 scripts/.coverage
 scripts/coverage.xml
+scripts/__pycache__/
+scripts/.pytest_cache/
 
 # Profiling artifacts
 *.prof

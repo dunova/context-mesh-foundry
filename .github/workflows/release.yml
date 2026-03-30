@@ -53,6 +53,33 @@ jobs:
           fi
           echo "OK: VERSION=$FILE_VERSION"
 
+      - name: Confirm pyproject.toml classifiers include this Python version range
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # Verify pyproject.toml has correct version in classifiers (3.10-3.13)
+          if ! grep -q "Programming Language :: Python :: 3.10" pyproject.toml; then
+            echo "WARNING: pyproject.toml missing Python 3.10 classifier"
+          fi
+          # Verify hatch version path still points to VERSION file
+          if ! grep -q 'path = "VERSION"' pyproject.toml; then
+            echo "ERROR: pyproject.toml hatch version path misconfigured"
+            exit 1
+          fi
+          echo "OK: pyproject.toml version config validated"
+
+      - name: Confirm CHANGELOG mentions this version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ -f "CHANGELOG.md" ]; then
+            if ! grep -q "$TAG_VERSION" CHANGELOG.md; then
+              echo "WARNING: CHANGELOG.md does not mention version $TAG_VERSION"
+            else
+              echo "OK: CHANGELOG.md contains $TAG_VERSION"
+            fi
+          else
+            echo "INFO: No CHANGELOG.md found, skipping check"
+          fi
+
       - name: Check for release notes file
         id: notes
         run: |
