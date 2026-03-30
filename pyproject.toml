@@ -167,6 +167,11 @@ exclude_lines = [
     "raise NotImplementedError",
     "\\.\\.\\.",
 ]
+exclude_also = [
+    # Dual-import fallback pattern: try bare import, fallback to relative
+    "except ImportError:",
+    "from \\. import",
+]
 
 # ---------------------------------------------------------------------------
 # Bandit — security scanner
