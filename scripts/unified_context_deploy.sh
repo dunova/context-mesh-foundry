@@ -77,11 +77,12 @@ sync_dir() {
     local src="$1" dst="$2"
     mkdir -p "$dst"
     if command -v rsync >/dev/null 2>&1; then
-        rsync -a --delete "$src"/ "$dst"/
+        # -L: follow symlinks (scripts/ may contain symlinks to src/)
+        rsync -aL --delete "$src"/ "$dst"/
     else
         rm -rf "$dst"
         mkdir -p "$dst"
-        cp -R "$src"/. "$dst"/
+        cp -RL "$src"/. "$dst"/
     fi
     log "synced: $src -> $dst"
 }
@@ -96,6 +97,9 @@ chmod 700 "$CONTEXTGO_STORAGE_ROOT" "$CONTEXTGO_STORAGE_ROOT/logs" 2>/dev/null |
 
 sync_dir "$REPO_ROOT/scripts"   "$INSTALL_ROOT/scripts"
 sync_dir "$REPO_ROOT/templates" "$INSTALL_ROOT/templates"
+if [ -d "$REPO_ROOT/src" ]; then
+    sync_dir "$REPO_ROOT/src" "$INSTALL_ROOT/src"
+fi
 log "installed canonical runtime at: $INSTALL_ROOT"
 
 resolve_python3() {
@@ -122,6 +126,12 @@ maybe_create_contextgo_shim() {
 
     if [ "$mode" = "0" ]; then
         log "skipping contextgo shim creation (CREATE_CONTEXTGO_SHIM=0)"
+        return 0
+    fi
+
+    # If pipx manages contextgo, never overwrite its entry point
+    if command -v pipx >/dev/null 2>&1 && pipx list 2>/dev/null | grep -q 'contextgo'; then
+        log "contextgo is managed by pipx — skipping shim creation"
         return 0
     fi
 
