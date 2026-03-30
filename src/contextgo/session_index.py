@@ -92,6 +92,24 @@ _FTS5_AVAILABLE: bool | None = None
 #: Number of upsert rows per SQLite transaction batch during sync.
 _BATCH_COMMIT_SIZE: int = env_int("CONTEXTGO_INDEX_BATCH_SIZE", default=100, minimum=10)
 
+# ---------------------------------------------------------------------------
+# Named constants for magic numbers
+# ---------------------------------------------------------------------------
+#: Seconds per day — used in recency scoring.
+_SECS_PER_DAY: int = 86400
+#: SQLite busy_timeout in milliseconds (how long to wait when the DB is locked).
+_DB_BUSY_TIMEOUT_MS: int = 5000
+#: SQLite connect timeout in seconds.
+_DB_CONNECT_TIMEOUT_S: int = 30
+#: SQLite page_size in bytes (must be a power of 2; set at DB creation time).
+_DB_PAGE_SIZE: int = 4096
+#: SQLite cache_size in kibibytes (negative value = KiB, not pages).
+_DB_CACHE_SIZE_KIB: int = -32000
+#: SQLite mmap_size in bytes (512 MiB).
+_DB_MMAP_SIZE: int = 536870912
+#: SQLite WAL auto-checkpoint threshold in pages.
+_DB_WAL_AUTOCHECKPOINT: int = 1000
+
 _logger = logging.getLogger(__name__)
 
 
@@ -990,16 +1008,16 @@ def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(db_path, timeout=30)
+        conn = sqlite3.connect(db_path, timeout=_DB_CONNECT_TIMEOUT_S)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute(f"PRAGMA busy_timeout={_DB_BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-32000")
-        conn.execute("PRAGMA mmap_size=536870912")
+        conn.execute(f"PRAGMA cache_size={_DB_CACHE_SIZE_KIB}")
+        conn.execute(f"PRAGMA mmap_size={_DB_MMAP_SIZE}")
         conn.execute("PRAGMA temp_store=MEMORY")
-        conn.execute("PRAGMA page_size=4096")
-        conn.execute("PRAGMA wal_autocheckpoint=1000")
+        conn.execute(f"PRAGMA page_size={_DB_PAGE_SIZE}")
+        conn.execute(f"PRAGMA wal_autocheckpoint={_DB_WAL_AUTOCHECKPOINT}")
         yield conn
     finally:
         if conn is not None:
@@ -1740,7 +1758,7 @@ def _recency_bonus(created_at_epoch: int) -> float:
     gradual enough not to bury high-quality older results.
     """
     age_secs = max(0, int(time.time()) - int(created_at_epoch))
-    age_days = age_secs / 86400.0
+    age_days = age_secs / _SECS_PER_DAY
     # log2(1) = 0, log2(2) ≈ 1, log2(128) = 7 → scores 20, ~17, ~0
     return max(0.0, 20.0 - math.log2(1.0 + age_days) * 3.0)
 
@@ -1979,9 +1997,9 @@ def lookup_session_by_id(
         rows = conn.execute(
             "SELECT source_type, session_id, title, file_path, "
             "created_at, created_at_epoch, content "
-            "FROM session_documents WHERE LOWER(session_id) LIKE ? "
+            "FROM session_documents WHERE session_id LIKE ? COLLATE NOCASE "
             "ORDER BY created_at_epoch DESC LIMIT ?",
-            (session_id_prefix.lower() + "%", limit),
+            (session_id_prefix + "%", limit),
         ).fetchall()
     return [
         {

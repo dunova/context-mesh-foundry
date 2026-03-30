@@ -68,6 +68,41 @@ def safe_mtime(path: Path | str) -> float:
         return 0.0
 
 
+def _process_entry(
+    entry: os.DirEntry[str],
+    stack: list[str],
+    results: list[tuple[float, Path]],
+) -> None:
+    """Process a single ``os.DirEntry`` during ``_scandir_files`` traversal.
+
+    Pushes subdirectories onto *stack* and appends ``(mtime, Path)`` pairs
+    for qualifying text files to *results*.  Hidden entries (names starting
+    with ``.``) are skipped before this function is called.
+
+    Parameters
+    ----------
+    entry:
+        The directory entry to inspect.
+    stack:
+        Mutable list used as a DFS stack; subdirectory paths are appended.
+    results:
+        Mutable list that accumulates ``(mtime, path)`` pairs for text files.
+    """
+    try:
+        if entry.is_dir(follow_symlinks=False):
+            stack.append(entry.path)
+        elif entry.is_file(follow_symlinks=False):
+            suffix = Path(entry.name).suffix.lower()
+            if suffix in TEXT_FILE_SUFFIXES:
+                try:
+                    st = entry.stat()
+                    results.append((st.st_mtime, Path(entry.path)))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def _scandir_files(root: str) -> list[tuple[float, Path]]:
     """Recursively yield ``(mtime, Path)`` pairs for text files under *root*.
 
@@ -83,19 +118,7 @@ def _scandir_files(root: str) -> list[tuple[float, Path]]:
                 for entry in it:
                     if entry.name.startswith("."):
                         continue
-                    try:
-                        if entry.is_dir(follow_symlinks=False):
-                            stack.append(entry.path)
-                        elif entry.is_file(follow_symlinks=False):
-                            suffix = os.path.splitext(entry.name)[1].lower()
-                            if suffix in TEXT_FILE_SUFFIXES:
-                                try:
-                                    st = entry.stat()
-                                    results.append((st.st_mtime, Path(entry.path)))
-                                except OSError:
-                                    pass
-                    except OSError:
-                        pass
+                    _process_entry(entry, stack, results)
         except OSError:
             pass
     return results

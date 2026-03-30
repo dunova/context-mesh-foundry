@@ -134,17 +134,17 @@ _DAEMON_LOCK_NAME = "contextgo_daemon.lock"
 _LOGGER_NAME = "contextgo.daemon"
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
-# Logging — logger object is available at import time but file handler is
+# Logging — _logger object is available at import time but file handler is
 # added lazily in ``_setup_logging()`` to avoid creating directories on import.
 
-logger = logging.getLogger(_LOGGER_NAME)
-logger.setLevel(logging.INFO)
+_logger = logging.getLogger(_LOGGER_NAME)
+_logger.setLevel(logging.INFO)
 
 # Console handler — always present (warnings and above only).
 _sh = logging.StreamHandler(sys.stderr)
 _sh.setLevel(logging.WARNING)
 _sh.setFormatter(logging.Formatter(_LOG_FORMAT))
-logger.addHandler(_sh)
+_logger.addHandler(_sh)
 
 LOCK_FILE: Path = LOG_DIR / _DAEMON_LOCK_NAME
 _LOCK_FD: int | None = None
@@ -167,7 +167,7 @@ def _setup_logging() -> None:
         encoding="utf-8",
     )
     rfh.setFormatter(logging.Formatter(_LOG_FORMAT))
-    logger.addHandler(rfh)
+    _logger.addHandler(rfh)
 
 
 # Optional httpx (remote-sync transport) — lazily imported to avoid
@@ -191,7 +191,7 @@ def _import_httpx() -> bool:
         except ImportError:
             _httpx = None
             _HTTPX_AVAILABLE = False
-            logger.info("httpx not installed; remote sync disabled.")
+            _logger.info("httpx not installed; remote sync disabled.")
     return _HTTPX_AVAILABLE
 
 # Poll / timing configuration
@@ -263,6 +263,13 @@ CLAUDE_TRANSCRIPTS_DIR: Path = Path.home() / ".claude" / "transcripts"
 CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS: int = _cfg_int("TRANSCRIPTS_LOOKBACK_DAYS", default=7)
 CLAUDE_TRANSCRIPT_SCAN_INTERVAL_SEC: int = max(30, _cfg_int("CLAUDE_TRANSCRIPT_SCAN_INTERVAL_SEC", default=180))
 MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL: int = max(50, _cfg_int("MAX_CLAUDE_TRANSCRIPT_FILES_PER_POLL", default=500))
+
+# Named time constants — avoid bare magic numbers in logic below
+_SECONDS_PER_MINUTE: int = 60
+_SECONDS_PER_HOUR: int = 3600
+_SECONDS_PER_DAY: int = 86400
+# Codex session files inactive for longer than this are skipped during polling.
+_CODEX_SESSION_ACTIVE_WINDOW_SEC: int = _SECONDS_PER_HOUR
 
 # JSONL and shell source definitions
 # Each entry maps a logical source name to one or more candidate Path objects.
@@ -337,7 +344,7 @@ _stop_event: threading.Event = threading.Event()
 
 def _handle_signal(signum: int, _frame: object) -> None:
     global _shutdown
-    logger.info("Received signal %s — initiating graceful shutdown.", signum)
+    _logger.info("Received signal %s — initiating graceful shutdown.", signum)
     _shutdown = True
     _stop_event.set()
 
@@ -392,17 +399,17 @@ def _acquire_single_instance_lock() -> bool:
                 pid = 0
 
             if pid > 0 and _pid_alive(pid):
-                logger.error("Another ContextGO daemon instance is already running (pid=%s).", pid)
+                _logger.error("Another ContextGO daemon instance is already running (pid=%s).", pid)
                 return False
 
             # Stale lock — remove and retry.
             with contextlib.suppress(OSError):
                 LOCK_FILE.unlink(missing_ok=True)
         except OSError as exc:
-            logger.error("Failed to acquire daemon lock: %s", exc)
+            _logger.error("Failed to acquire daemon lock: %s", exc)
             return False
 
-    logger.error("Failed to acquire daemon lock after stale-lock cleanup.")
+    _logger.error("Failed to acquire daemon lock after stale-lock cleanup.")
     return False
 
 
@@ -456,10 +463,10 @@ def _refresh_glob_cache(
             )[:max_results]
         else:
             results = [Path(p) for p in raw]
-        logger.debug("%s cache refreshed: %d entries.", error_context, len(results))
+        _logger.debug("%s cache refreshed: %d entries.", error_context, len(results))
         return results, now, False
     except OSError as exc:
-        logger.error("glob %s: %s", error_context, exc)
+        _logger.error("glob %s: %s", error_context, exc)
         return cached, last_refresh, True
 
 
@@ -537,7 +544,7 @@ class _FileWatcher:
             self._init_inotify()
         else:
             self._init_poll_fallback()
-            logger.debug("_FileWatcher: inotify unavailable — using mtime polling fallback.")
+            _logger.debug("_FileWatcher: inotify unavailable — using mtime polling fallback.")
 
     # ------------------------------------------------------------------
     # Initialisation helpers
@@ -549,7 +556,7 @@ class _FileWatcher:
         fd = _LIBC.inotify_init1(_IN_NONBLOCK)
         if fd < 0:
             err = ctypes.get_errno()
-            logger.warning("_FileWatcher: inotify_init1 failed (errno=%d) — falling back to polling.", err)
+            _logger.warning("_FileWatcher: inotify_init1 failed (errno=%d) — falling back to polling.", err)
             self._init_poll_fallback()
             return
 
@@ -559,7 +566,7 @@ class _FileWatcher:
             wd = _LIBC.inotify_add_watch(fd, str(d).encode("utf-8", errors="replace"), _IN_MASK)
             if wd < 0:
                 err = ctypes.get_errno()
-                logger.debug("_FileWatcher: inotify_add_watch(%s) failed errno=%d — skipped.", d, err)
+                _logger.debug("_FileWatcher: inotify_add_watch(%s) failed errno=%d — skipped.", d, err)
                 continue
             self._wd_to_dir[wd] = d
             added += 1
@@ -568,11 +575,11 @@ class _FileWatcher:
             # No watches registered — fall back to polling.
             self._close_inotify()
             self._init_poll_fallback()
-            logger.debug("_FileWatcher: no inotify watches registered — using polling fallback.")
+            _logger.debug("_FileWatcher: no inotify watches registered — using polling fallback.")
             return
 
         self._available = True
-        logger.debug("_FileWatcher: inotify active on %d/%d directories.", added, len(self._directories))
+        _logger.debug("_FileWatcher: inotify active on %d/%d directories.", added, len(self._directories))
 
     def _init_poll_fallback(self) -> None:
         """Seed the mtime table for all watched directories (polling mode)."""
@@ -651,7 +658,7 @@ class _FileWatcher:
         except BlockingIOError:
             return
         except OSError as exc:
-            logger.debug("_FileWatcher: inotify read error: %s", exc)
+            _logger.debug("_FileWatcher: inotify read error: %s", exc)
             return
 
         if not n:
@@ -818,15 +825,17 @@ class SessionTracker:
         self._export_count: int = 0
         self._error_count: int = 0
         self._index_dirty: bool = False
+        # Consecutive HTTP failures for pending-retry exponential back-off.
+        self._pending_retry_failures: int = 0
 
         # Cached glob results (refreshed on interval to amortise filesystem cost)
         self._cached_codex_session_files: list[Path] = []
         self._cached_claude_transcript_files: list[Path] = []
         self._cached_antigravity_dirs: list[Path] = []
 
-        # Optional HTTP client for remote sync
+        # Optional HTTP client for remote sync (httpx lazily imported)
         self._http_client: Any = None
-        if ENABLE_REMOTE_SYNC and _HTTPX_AVAILABLE:
+        if ENABLE_REMOTE_SYNC and _import_httpx():
             try:
                 self._http_client = _httpx.Client(
                     timeout=EXPORT_HTTP_TIMEOUT_SEC,
@@ -834,7 +843,7 @@ class SessionTracker:
                     follow_redirects=False,
                 )
             except Exception as exc:
-                logger.exception("Failed to initialise HTTP client: %s", exc)
+                _logger.exception("Failed to initialise HTTP client: %s", exc)
 
         PENDING_DIR.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
@@ -855,7 +864,7 @@ class SessionTracker:
         for source_name, candidates in JSONL_SOURCES.items():
             if not SOURCE_MONITOR_FLAGS.get(source_name, True):
                 if source_name in self.active_jsonl:
-                    logger.info("Source disabled by env: %s", source_name)
+                    _logger.info("Source disabled by env: %s", source_name)
                     del self.active_jsonl[source_name]
                 continue
 
@@ -875,9 +884,9 @@ class SessionTracker:
                     except (OSError, FileNotFoundError):
                         continue
                     self._set_cursor(cursor_key, picked["path"], size)
-                    logger.info("Source active: %s -> %s", source_name, picked["path"])
+                    _logger.info("Source active: %s -> %s", source_name, picked["path"])
             elif source_name in self.active_jsonl:
-                logger.info("Source offline: %s", source_name)
+                _logger.info("Source offline: %s", source_name)
                 del self.active_jsonl[source_name]
 
         # Shell sources
@@ -895,9 +904,9 @@ class SessionTracker:
                         except (OSError, FileNotFoundError):
                             continue
                         self._set_cursor(cursor_key, picked_path, size)
-                        logger.info("Source active: %s -> %s", source_name, picked_path)
+                        _logger.info("Source active: %s -> %s", source_name, picked_path)
                 elif source_name in self.active_shell:
-                    logger.info("Source offline: %s", source_name)
+                    _logger.info("Source offline: %s", source_name)
                     del self.active_shell[source_name]
 
     # Cursor management
@@ -944,7 +953,7 @@ class SessionTracker:
             remove_n = max(1, len(self.file_cursors) // 3)
             for _ in range(remove_n):
                 self.file_cursors.popitem(last=False)
-            logger.debug("_set_cursor: evicted %d stale cursors (cap=%d).", remove_n, MAX_FILE_CURSORS)
+            _logger.debug("_set_cursor: evicted %d stale cursors (cap=%d).", remove_n, MAX_FILE_CURSORS)
 
     @staticmethod
     def _is_safe_source(path: Path) -> bool:
@@ -954,13 +963,13 @@ class SessionTracker:
         except OSError:
             return False
         if path.is_symlink():
-            logger.warning("Skipping symlinked source: %s", path)
+            _logger.warning("Skipping symlinked source: %s", path)
             return False
         if hasattr(os, "getuid") and st.st_uid != os.getuid():
-            logger.warning("Skipping source not owned by current user: %s (uid=%d)", path, st.st_uid)
+            _logger.warning("Skipping source not owned by current user: %s (uid=%d)", path, st.st_uid)
             return False
         if not stat.S_ISREG(st.st_mode):
-            logger.warning("Skipping non-regular source: %s", path)
+            _logger.warning("Skipping non-regular source: %s", path)
             return False
         return True
 
@@ -995,7 +1004,7 @@ class SessionTracker:
             return cur_size, lines
         except OSError as exc:
             self._error_count += 1
-            logger.error("%s: %s", error_label, exc)
+            _logger.error("%s: %s", error_label, exc)
             return None
 
     # Polling — JSONL sources
@@ -1069,7 +1078,7 @@ class SessionTracker:
             except OSError:
                 continue
             # Skip files that have not been touched in the last hour.
-            if mtime < now - 3600:
+            if mtime < now - _CODEX_SESSION_ACTIVE_WINDOW_SEC:
                 continue
 
             cursor_key = self._cursor_key("codex_session", "codex_session", path)
@@ -1110,7 +1119,7 @@ class SessionTracker:
             return
 
         now = time.time()
-        lookback_cutoff = now - CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS * 86400
+        lookback_cutoff = now - CLAUDE_TRANSCRIPTS_LOOKBACK_DAYS * _SECONDS_PER_DAY
 
         self._cached_claude_transcript_files, self._last_claude_transcript_scan, _err = _refresh_glob_cache(
             pattern=str(CLAUDE_TRANSCRIPTS_DIR / "**" / "ses_*.jsonl"),
@@ -1187,7 +1196,7 @@ class SessionTracker:
                     self._upsert_session(sid, "claude_transcripts", text, now)
                     messages_added += 1
             if messages_added:
-                logger.debug("claude_transcripts: +%d msgs from %s", messages_added, path.name)
+                _logger.debug("claude_transcripts: +%d msgs from %s", messages_added, path.name)
 
     # Polling — Antigravity (Gemini) brain
 
@@ -1201,7 +1210,7 @@ class SessionTracker:
             if ls_count >= ANTIGRAVITY_BUSY_LS_THRESHOLD:
                 now = time.time()
                 if now - self._last_antigravity_busy_log >= 180:
-                    logger.info(
+                    _logger.info(
                         "poll_antigravity skipped: language_server_macos_arm=%s threshold=%s",
                         ls_count,
                         ANTIGRAVITY_BUSY_LS_THRESHOLD,
@@ -1305,7 +1314,7 @@ class SessionTracker:
                     meta["exported_mtime"] = mtime
             except (OSError, UnicodeDecodeError) as exc:
                 self._error_count += 1
-                logger.error("poll_antigravity(%s): %s", sid, exc)
+                _logger.error("poll_antigravity(%s): %s", sid, exc)
 
         # Evict oldest unseen entries when the tracking map exceeds its limit.
         if len(self.antigravity_sessions) > MAX_ANTIGRAVITY_SESSIONS:
@@ -1485,7 +1494,7 @@ class SessionTracker:
         remove_n = max(1, len(self.file_cursors) // 3)
         for _ in range(remove_n):
             self.file_cursors.popitem(last=False)
-        logger.info("Evicted %d stale file cursors.", remove_n)
+        _logger.info("Evicted %d stale file cursors.", remove_n)
         gc.collect()
 
     def maybe_sync_index(self, force: bool = False) -> None:
@@ -1502,10 +1511,10 @@ class SessionTracker:
         except sqlite3.OperationalError as exc:
             # Graceful degradation: SQLite busy/locked — will retry on next cycle.
             self._error_count += 1
-            logger.warning("sync_index_from_storage sqlite busy: %s", exc)
+            _logger.warning("sync_index_from_storage sqlite busy: %s", exc)
         except OSError as exc:
             self._error_count += 1
-            logger.warning("sync_index_from_storage failed: %s", exc)
+            _logger.warning("sync_index_from_storage failed: %s", exc)
 
     # Export — local write and optional remote push
 
@@ -1551,14 +1560,14 @@ class SessionTracker:
             self._index_dirty = True
             self.maybe_sync_index()
         except OSError as exc:
-            logger.error("Failed to write local export %s: %s", file_path, exc)
+            _logger.error("Failed to write local export %s: %s", file_path, exc)
             return False
 
         if not self._http_client:
             if not ENABLE_REMOTE_SYNC:
                 self._export_count += 1
                 return True
-            logger.warning("Remote sync enabled but HTTP client unavailable; queuing export for %s", source)
+            _logger.warning("Remote sync enabled but HTTP client unavailable; queuing export for %s", source)
             self._queue_pending(file_path, formatted)
             return False
 
@@ -1576,7 +1585,7 @@ class SessionTracker:
             )
             if resp.status_code < 300:
                 self._export_count += 1
-                logger.info(
+                _logger.info(
                     "Synced %s session %s to remote (HTTP %d).",
                     source,
                     sid[:12],
@@ -1584,9 +1593,9 @@ class SessionTracker:
                 )
                 self._retry_pending()
                 return True
-            logger.warning("Remote sync returned HTTP %d for %s %s.", resp.status_code, source, sid[:12])
+            _logger.warning("Remote sync returned HTTP %d for %s %s.", resp.status_code, source, sid[:12])
         except Exception as exc:
-            logger.warning("Remote unreachable — queuing pending export: %s", exc)
+            _logger.warning("Remote unreachable — queuing pending export: %s", exc)
 
         self._queue_pending(file_path, formatted)
         return False
@@ -1608,9 +1617,9 @@ class SessionTracker:
             finally:
                 os.close(fd)
             os.replace(str(tmp_path), str(pending_path))
-            logger.info("Queued pending export: %s", pending_path.name)
+            _logger.info("Queued pending export: %s", pending_path.name)
         except OSError as exc:
-            logger.error("Failed to write pending export: %s", exc)
+            _logger.error("Failed to write pending export: %s", exc)
             with contextlib.suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
 
@@ -1626,9 +1635,11 @@ class SessionTracker:
 
         Processes at most 8 files per call to avoid blocking the main loop.
         Stops on the first HTTP failure to preserve ordering.
+        Uses exponential back-off on 429 / 503 responses so the retry interval
+        grows as: base * 2^failures (capped at ERROR_BACKOFF_MAX_SEC * 16).
         """
         if not self._http_client:
-            logger.warning(
+            _logger.warning(
                 "Cannot retry pending exports: HTTP client not initialized. Check remote sync configuration."
             )
             return
@@ -1656,16 +1667,33 @@ class SessionTracker:
                 )
                 if resp.status_code < 300:
                     pf.unlink(missing_ok=True)
-                    logger.info("Pending retry succeeded: %s", pf.name)
+                    _logger.info("Pending retry succeeded: %s", pf.name)
+                    self._pending_retry_failures = 0
                 else:
-                    logger.warning(
-                        "Pending retry got HTTP %d for %s — stopping batch.",
-                        resp.status_code,
-                        pf.name,
-                    )
+                    self._pending_retry_failures += 1
+                    # Apply exponential back-off for rate-limit / overload responses.
+                    if resp.status_code in (429, 503):
+                        backoff = min(
+                            float(ERROR_BACKOFF_MAX_SEC) * 16,
+                            float(PENDING_RETRY_INTERVAL_SEC) * (2 ** min(self._pending_retry_failures, 8)),
+                        )
+                        self._last_pending_retry = time.time() + backoff - PENDING_RETRY_INTERVAL_SEC
+                        _logger.warning(
+                            "Pending retry got HTTP %d for %s — back-off %.0fs.",
+                            resp.status_code,
+                            pf.name,
+                            backoff,
+                        )
+                    else:
+                        _logger.warning(
+                            "Pending retry got HTTP %d for %s — stopping batch.",
+                            resp.status_code,
+                            pf.name,
+                        )
                     break
             except Exception as exc:
-                logger.warning("Pending retry failed: %s — stopping batch.", exc)
+                self._pending_retry_failures += 1
+                _logger.warning("Pending retry failed: %s — stopping batch.", exc)
                 break
 
     def _prune_pending_files(self) -> None:
@@ -1822,7 +1850,7 @@ class SessionTracker:
         self._expire_active_sources(now)
         hot_sources_count = len(self._active_sources)
 
-        logger.info(
+        _logger.info(
             "heartbeat sessions=%d cursors=%d exported=%d errors=%d pending=%d"
             " mem_mb=%.1f sessions_kb=%.1f cursors_kb=%.1f hot_sources=%d active_sources=%s",
             len(self.sessions),
@@ -1855,7 +1883,7 @@ def main() -> None:
     def _on_off(flag: bool) -> str:
         return "on" if flag else "off"
 
-    logger.info(
+    _logger.info(
         "ContextGO daemon starting. remote_sync=%s remote_url=%s"
         " idle=%ds poll=%ds fast_poll=%ds heartbeat=%ds cycle_budget=%ds"
         " shell=%s claude_history=%s codex_history=%s opencode=%s kilo=%s"
@@ -1890,13 +1918,13 @@ def main() -> None:
     # polling when inotify is unavailable or ENABLE_FILE_WATCHER=false.
     file_watcher: _FileWatcher | None = _build_file_watcher()
     if file_watcher is not None:
-        logger.info(
+        _logger.info(
             "FileWatcher active (inotify=%s) on %d directories.",
             file_watcher._inotify_fd >= 0,
             len(file_watcher._directories),
         )
     else:
-        logger.debug("FileWatcher disabled (CONTEXTGO_ENABLE_FILE_WATCHER=false).")
+        _logger.debug("FileWatcher disabled (CONTEXTGO_ENABLE_FILE_WATCHER=false).")
 
     while not _shutdown:
         had_error = False
@@ -1943,7 +1971,7 @@ def main() -> None:
 
         except Exception as exc:
             had_error = True
-            logger.exception("Unhandled error in main loop: %s", exc)
+            _logger.exception("Unhandled error in main loop: %s", exc)
 
         # Adaptive sleep with exponential back-off on repeated errors
         consecutive_errors = consecutive_errors + 1 if had_error else 0
@@ -1986,7 +2014,7 @@ def main() -> None:
     if file_watcher is not None:
         with contextlib.suppress(Exception):
             file_watcher.close()
-    logger.info("ContextGO daemon stopped. Total sessions exported: %d.", tracker._export_count)
+    _logger.info("ContextGO daemon stopped. Total sessions exported: %d.", tracker._export_count)
 
 
 if __name__ == "__main__":  # pragma: no cover

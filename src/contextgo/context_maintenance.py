@@ -31,7 +31,7 @@ __all__ = [
     "repair_queue",
 ]
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Type alias

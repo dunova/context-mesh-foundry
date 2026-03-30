@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_log = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 try:
     from context_config import storage_root
@@ -408,7 +408,7 @@ def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
         try:
             result[name] = fn(current_home)
         except Exception as exc:
-            _log.warning("sync_all_adapters: adapter %r failed: %s", name, exc)
+            _logger.warning("sync_all_adapters: adapter %r failed: %s", name, exc)
             result[name] = {"sessions": 0, "error": str(exc)}
     return result
 
@@ -510,7 +510,7 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
                 "mtime": _iso_or_none(p.stat().st_mtime) if p.exists() else None,
             }
         except OSError as exc:
-            _log.warning("source_freshness_snapshot: source %r failed: %s", name, exc)
+            _logger.warning("source_freshness_snapshot: source %r failed: %s", name, exc)
             result[name] = {"exists": False, "error": str(exc)}
     try:
         result["adapter_sessions"] = {
@@ -524,7 +524,7 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
             "openclaw_session_count": adapter_stats["openclaw_session"]["sessions"],
         }
     except (KeyError, TypeError, ValueError) as exc:
-        _log.warning("source_freshness_snapshot: adapter_sessions summary failed: %s", exc)
+        _logger.warning("source_freshness_snapshot: adapter_sessions summary failed: %s", exc)
         result["adapter_sessions"] = {"exists": False, "error": str(exc)}
     return result
 
