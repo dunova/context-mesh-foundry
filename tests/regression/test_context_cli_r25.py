@@ -498,20 +498,22 @@ class TestCmdSemanticConcurrency(unittest.TestCase):
 
         def run_semantic() -> None:
             try:
-                with (
-                    mock.patch.object(context_cli, "_local_memory_matches", return_value=[]),
-                    mock.patch.object(context_cli, "_get_session_index", return_value=si_mock),
-                    contextlib.redirect_stdout(io.StringIO()),
-                ):
+                with contextlib.redirect_stdout(io.StringIO()):
                     rc = context_cli.cmd_semantic(args)
                 results.append(rc)
             except Exception as exc:
                 errors.append(exc)
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = [pool.submit(run_semantic) for _ in range(4)]
-            for f in futures:
-                f.result(timeout=10)
+        # Patch once at the outer level so all threads share the same mock
+        # context — avoids races from per-thread patch/unpatch cycles.
+        with (
+            mock.patch.object(context_cli, "_local_memory_matches", return_value=[]),
+            mock.patch.object(context_cli, "_get_session_index", return_value=si_mock),
+        ):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = [pool.submit(run_semantic) for _ in range(4)]
+                for f in futures:
+                    f.result(timeout=10)
 
         self.assertEqual(errors, [])
         self.assertEqual(results, [0, 0, 0, 0])
