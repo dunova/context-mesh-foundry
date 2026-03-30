@@ -89,6 +89,14 @@ _MODEL_LOCK = threading.Lock()
 _BM25_CACHE: dict[str, tuple[int, Any]] = {}  # sdb_path -> (row_count, retriever)
 _BM25_CACHE_LOCK = threading.Lock()
 
+# Whitelist of safe path characters for ATTACH DATABASE path validation.
+_SAFE_PATH_CHARS: frozenset[str] = frozenset(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    "/.-_"
+)
+
 
 def _load_model() -> Any:
     """Load and cache the model2vec StaticModel.  Thread-safe."""
@@ -249,12 +257,6 @@ def embed_pending_session_docs(
         # characters (alphanumeric, '/', '.', '-', '_').  This guards against
         # SQL-injection payloads even though ATTACH DATABASE does not support
         # parameter binding in SQLite.
-        _SAFE_PATH_CHARS = frozenset(
-            "abcdefghijklmnopqrstuvwxyz"
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            "0123456789"
-            "/.-_"
-        )
         if not all(c in _SAFE_PATH_CHARS for c in sdb_str):
             raise ValueError(f"Unsafe characters in database path: {sdb_str}")
         conn.execute(f"ATTACH DATABASE '{sdb_str}' AS sessions")

@@ -30,7 +30,7 @@ keywords = [
     "coding-assistant",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU Affero General Public License v3",
@@ -63,7 +63,7 @@ dev = [
     "safety>=3.3",
     "mypy>=1.10",
 ]
-all = ["contextgo[remote,vector,dev]"]
+all = ["contextgo[remote,vector]"]
 
 [project.scripts]
 contextgo = "contextgo.context_cli:main"
@@ -170,15 +170,11 @@ exclude_lines = [
 ]
 
 # ---------------------------------------------------------------------------
-# Mypy
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Bandit — security scanner
 # ---------------------------------------------------------------------------
 
 [tool.bandit]
-exclude_dirs = ["scripts/test_*.py"]
+exclude_dirs = ["tests"]
 skips = ["B101"]  # assert used in tests and retry helpers
 
 # ---------------------------------------------------------------------------

@@ -33,7 +33,7 @@ import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +55,14 @@ try:
 except (ValueError, TypeError):
     _SEARCH_CACHE_TTL: int = 5
 
+# Maximum number of entries in the in-process search cache.
+_SEARCH_CACHE_MAX_SIZE: int = 256
+
 # Mapping of cache_key -> (expiry_epoch_float, results)
 _SEARCH_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+# Module-level set of db paths for which the schema has already been applied.
+_SCHEMA_INITIALIZED: set[str] = set()
 
 try:
     from context_config import storage_root
@@ -233,6 +239,7 @@ def _open_db(db_path: Path) -> Generator[sqlite3.Connection, None, None]:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA cache_size=-8000")
         conn.execute("PRAGMA mmap_size=268435456")
         conn.execute("PRAGMA temp_store=MEMORY")
@@ -405,7 +412,10 @@ def ensure_index_db() -> Path:
     did not previously exist.  Returns the resolved path to the database file.
     """
     db_path = get_index_db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _db_key = str(db_path)
+    if _db_key in _SCHEMA_INITIALIZED:
+        return db_path
     with _open_db(db_path) as conn:
         _retry_sqlite(conn, _DDL_OBSERVATIONS)
         for idx_sql in _DDL_INDEXES:
@@ -421,12 +431,13 @@ def ensure_index_db() -> Path:
                 # Newly created — rebuild to populate from existing rows.
                 _retry_sqlite(conn, _SQL_FTS5_REBUILD)
                 # Invalidate the cache entry so the next call re-checks.
-                _FTS5_AVAILABLE_CACHE.pop(str(db_path), None)
+                _FTS5_AVAILABLE_CACHE.pop(_db_key, None)
         except sqlite3.OperationalError:
             # FTS5 extension not available in this SQLite build; continue
             # without it — LIKE-based search will be used as the fallback.
-            _FTS5_AVAILABLE_CACHE[str(db_path)] = False
+            _FTS5_AVAILABLE_CACHE[_db_key] = False
         _retry_commit(conn)
+    _SCHEMA_INITIALIZED.add(_db_key)
     return db_path
 
 
@@ -441,7 +452,7 @@ def sync_index_from_storage() -> dict[str, int]:
     """
     db_path = ensure_index_db()
     added = updated = removed = scanned = 0
-    now_epoch = int(datetime.now().timestamp())
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
     seen_local_paths: set[str] = set()
 
     with _open_db(db_path) as conn:
@@ -638,6 +649,11 @@ def search_index(
         )
 
     if _SEARCH_CACHE_TTL > 0:
+        # Evict oldest half when cache exceeds max size.
+        if len(_SEARCH_CACHE) > _SEARCH_CACHE_MAX_SIZE:
+            evict_count = len(_SEARCH_CACHE) // 2
+            for _k in list(_SEARCH_CACHE.keys())[:evict_count]:
+                _SEARCH_CACHE.pop(_k, None)
         _SEARCH_CACHE[cache_key] = (time.monotonic() + _SEARCH_CACHE_TTL, results)
 
     return results
@@ -841,7 +857,7 @@ def index_stats() -> dict[str, Any]:
         total = conn.execute(_SQL_COUNT).fetchone()[0]
         newest = conn.execute(_SQL_MAX_EPOCH).fetchone()[0]
     return {
-        "db_path": str(db_path),
+        "db_name": db_path.name,
         "total_observations": int(total or 0),
         "latest_epoch": int(newest or 0),
     }
@@ -891,7 +907,7 @@ def export_observations_payload(
             offset += len(batch)
 
     return {
-        "exported_at": datetime.now().isoformat(),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "source_type": source_type,
         "sync": sync_info,
@@ -918,7 +934,7 @@ def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
 
     title = _sanitize_text(str(raw.get("title") or "imported memory"))[:240]
     content = _sanitize_text(str(raw.get("content") or ""))
-    created_at_epoch = int(raw.get("created_at_epoch") or int(datetime.now().timestamp()))
+    created_at_epoch = int(raw.get("created_at_epoch") or int(datetime.now(timezone.utc).timestamp()))
 
     fingerprint = str(raw.get("fingerprint") or "").strip()
     if not fingerprint and content:
@@ -933,7 +949,7 @@ def _normalize_import_observation(raw: dict[str, Any]) -> dict[str, Any]:
         "content": content,
         "tags_json": json.dumps(clean_tags, ensure_ascii=False),
         "file_path": raw_path,
-        "created_at": str(raw.get("created_at") or datetime.now().isoformat()),
+        "created_at": str(raw.get("created_at") or datetime.now(timezone.utc).isoformat()),
         "created_at_epoch": created_at_epoch,
     }
 
@@ -968,7 +984,7 @@ def import_observations_payload(
     db_path = ensure_index_db()
     inserted = 0
     skipped = 0
-    now_epoch = int(datetime.now().timestamp())
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
 
     # Normalise all incoming records and drop those with no usable content.
     candidates: list[dict[str, Any]] = []

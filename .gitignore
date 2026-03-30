@@ -82,3 +82,10 @@ Desktop.ini
 # artifacts/autoresearch/
 .coverage
 coverage.xml
+
+# Test / lint caches and reports
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+scripts/.coverage
+scripts/coverage.xml

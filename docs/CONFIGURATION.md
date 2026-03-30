@@ -13,9 +13,9 @@ cp .env.example .env   # edit only what you need / 仅修改需要的项
 # Never commit a populated .env file.
 ```
 
-Variables are read at process startup; changes take effect only after restarting the affected process (daemon, server, or CLI invocation). The storage root is resolved once at import time by `scripts/context_config.py`.
+Variables are read at process startup; changes take effect only after restarting the affected process (daemon, server, or CLI invocation). The storage root is resolved once at import time by `src/contextgo/context_config.py`.
 
-变量在进程启动时读取，修改后需重启相应进程（daemon、server 或 CLI）才能生效。存储根目录由 `scripts/context_config.py` 在导入时一次性解析。
+变量在进程启动时读取，修改后需重启相应进程（daemon、server 或 CLI）才能生效。存储根目录由 `src/contextgo/context_config.py` 在导入时一次性解析。
 
 ---
 
@@ -240,9 +240,9 @@ Remote sync is disabled by default. Enable only when a ContextGO sync server is 
 
 ```bash
 # Print the resolved storage root / 打印实际存储根目录
-python3 -c "from scripts.context_config import storage_root; print(storage_root())"
+python3 -c "from contextgo.context_config import storage_root; print(storage_root())"
 
 # Full health check / 完整健康检查
-python3 scripts/context_cli.py health
+contextgo health
 bash scripts/context_healthcheck.sh --deep
 ```

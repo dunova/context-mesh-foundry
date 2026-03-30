@@ -56,6 +56,11 @@ jobs:
       - name: Bandit security scan
         run: bandit -r src/contextgo/ -c pyproject.toml --quiet
 
+      - name: Safety dependency check
+        run: |
+          pip install --quiet safety
+          safety check --stdin < requirements.txt || true
+
       - name: Secret and path scan
         run: |
           sudo apt-get install -y --no-install-recommends ripgrep

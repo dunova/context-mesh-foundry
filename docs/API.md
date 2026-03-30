@@ -2,9 +2,9 @@
 
 > [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
-The ContextGO viewer exposes a local HTTP API for querying the memory index and streaming live updates. The HTTP handler lives in `scripts/memory_viewer.py`; `scripts/context_server.py` is a thin entry-point wrapper.
+The ContextGO viewer exposes a local HTTP API for querying the memory index and streaming live updates. The HTTP handler lives in `src/contextgo/memory_viewer.py`; `src/contextgo/context_server.py` is a thin entry-point wrapper.
 
-ContextGO viewer 暴露本地 HTTP API，用于查询记忆索引和流式获取实时更新。HTTP 处理逻辑位于 `scripts/memory_viewer.py`，`scripts/context_server.py` 是薄封装入口。
+ContextGO viewer 暴露本地 HTTP API，用于查询记忆索引和流式获取实时更新。HTTP 处理逻辑位于 `src/contextgo/memory_viewer.py`，`src/contextgo/context_server.py` 是薄封装入口。
 
 ---
 
@@ -16,19 +16,19 @@ ContextGO viewer 暴露本地 HTTP API，用于查询记忆索引和流式获取
 
 ```bash
 # Via CLI
-python3 scripts/context_cli.py serve --host 127.0.0.1 --port 37677 --token <token>
+contextgo serve --host 127.0.0.1 --port 37677 --token <token>
 
 # Via environment variables
 CONTEXTGO_VIEWER_HOST=127.0.0.1 \
 CONTEXTGO_VIEWER_PORT=37677 \
 CONTEXTGO_VIEWER_TOKEN=<token> \
-python3 scripts/context_cli.py serve
+contextgo serve
 ```
 
 ```python
 # Programmatically
-import sys; sys.path.insert(0, "scripts")
-import context_server
+import sys; sys.path.insert(0, "src")
+import contextgo.context_server as context_server
 context_server.apply_runtime_config(host="127.0.0.1", port=37677, token="<token>")
 context_server.main()  # blocks until KeyboardInterrupt
 ```

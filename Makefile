@@ -43,12 +43,12 @@ install-remote: ## Also install optional remote/httpx extra
 # ---------------------------------------------------------------------------
 
 lint: ## Run ruff check and format-check (non-destructive)
-	$(RUFF) check $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
-	$(RUFF) format --check $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
+	$(RUFF) check src/contextgo/ $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
+	$(RUFF) format --check src/contextgo/ $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
 
 format: ## Auto-format and auto-fix with ruff
-	$(RUFF) format $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
-	$(RUFF) check --fix $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
+	$(RUFF) format src/contextgo/ $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
+	$(RUFF) check --fix src/contextgo/ $(SCRIPTS)/ $(TESTS)/ $(BENCHMARKS)/
 
 type-check: ## Run mypy type checking (informational)
 	$(PYTHON) -m mypy $(SCRIPTS)/ --ignore-missing-imports || true

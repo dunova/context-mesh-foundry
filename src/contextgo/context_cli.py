@@ -83,6 +83,47 @@ def _get_memory_index() -> ModuleType:
     return _m
 
 
+def _read_version() -> str:
+    """Read and return the version string from the VERSION file next to pyproject.toml.
+
+    Falls back to "unknown" if the file cannot be located or read.
+    """
+    # When running from source: VERSION lives at the repo root (two levels above
+    # src/contextgo/context_cli.py).  When installed as a package, importlib
+    # metadata is the authoritative source.
+    try:
+        import importlib.metadata as _meta  # noqa: PLC0415
+
+        return _meta.version("contextgo")
+    except Exception:  # noqa: BLE001
+        pass
+    # Fallback: walk up from this file to find VERSION
+    _candidate = Path(__file__).resolve()
+    for _ in range(5):
+        _candidate = _candidate.parent
+        _version_file = _candidate / "VERSION"
+        if _version_file.is_file():
+            return _version_file.read_text(encoding="utf-8").strip()
+    return "unknown"
+
+
+def _import_vector_index() -> ModuleType:
+    """Import and return the vector_index module (deferred; raises ImportError with hint on failure)."""
+    try:
+        import vector_index as _m  # type: ignore[import-not-found]  # noqa: PLC0415
+        return _m
+    except ImportError:
+        pass
+    try:
+        from . import vector_index as _m  # type: ignore[import-not-found]  # noqa: PLC0415
+        return _m
+    except ImportError:
+        raise ImportError(
+            'vector dependencies not installed. Run: pipx install "contextgo[vector]"'
+            " / 向量依赖未安装，请运行：pipx install \"contextgo[vector]\""
+        ) from None
+
+
 HOME = Path.home()
 LOCAL_STORAGE_ROOT = storage_root()
 LOCAL_SHARED_ROOT = LOCAL_STORAGE_ROOT / "resources" / "shared"
@@ -622,7 +663,10 @@ def cmd_health(args: object) -> int:
     # Collect memory root existence check.
     try:
         memory_root_exists: bool = future_memory_root.result(timeout=_HEALTH_TIMEOUT)
-    except (FuturesTimeoutError, Exception):  # noqa: BLE001
+    except FuturesTimeoutError:
+        print("Warning: memory root check timed out, falling back to direct stat. / 警告：内存根目录检查超时，回退到直接检测。", file=sys.stderr)
+        memory_root_exists = LOCAL_SHARED_ROOT.exists()
+    except Exception:  # noqa: BLE001
         memory_root_exists = LOCAL_SHARED_ROOT.exists()
 
     # Collect native backends health.
@@ -688,16 +732,13 @@ def cmd_vector_sync(args: object) -> int:
     db_path = si.ensure_session_db() if hasattr(si, "ensure_session_db") else si.get_session_db_path()
 
     try:
-        from vector_index import embed_pending_session_docs, get_vector_db_path, vector_available  # noqa: PLC0415
-    except ImportError:
-        try:
-            from .vector_index import embed_pending_session_docs, get_vector_db_path, vector_available  # type: ignore[import-not-found]  # noqa: PLC0415, I001
-        except ImportError:
-            print(
-                'Error: vector dependencies not installed. Run: pipx install "contextgo[vector]" / 错误：向量依赖未安装，请运行：pipx install "contextgo[vector]"',
-                file=sys.stderr,
-            )
-            return 1
+        _vi = _import_vector_index()
+    except ImportError as _exc:
+        print(f"Error: {_exc}", file=sys.stderr)
+        return 1
+    embed_pending_session_docs = _vi.embed_pending_session_docs
+    get_vector_db_path = _vi.get_vector_db_path
+    vector_available = _vi.vector_available
 
     if not vector_available():
         print(
@@ -731,16 +772,12 @@ def cmd_vector_status(args: object) -> int:
     db_path = si.get_session_db_path()
 
     try:
-        from vector_index import get_vector_db_path, vector_status  # noqa: PLC0415
-    except ImportError:
-        try:
-            from .vector_index import get_vector_db_path, vector_status  # type: ignore[import-not-found]  # noqa: PLC0415, I001
-        except ImportError:
-            print(
-                'Error: vector dependencies not installed. Run: pipx install "contextgo[vector]" / 错误：向量依赖未安装，请运行：pipx install "contextgo[vector]"',
-                file=sys.stderr,
-            )
-            return 1
+        _vi = _import_vector_index()
+    except ImportError as _exc:
+        print(f"Error: {_exc}", file=sys.stderr)
+        return 1
+    get_vector_db_path = _vi.get_vector_db_path
+    vector_status = _vi.vector_status
 
     vdb = get_vector_db_path(db_path)
     status = vector_status(db_path, vdb)
@@ -812,20 +849,11 @@ def _q_search(query: str, limit: int, as_json: bool) -> int:
 
     # Try vector search (always, regardless of EXPERIMENTAL_SEARCH_BACKEND)
     try:
-        try:
-            from vector_index import (  # noqa: PLC0415
-                fetch_enriched_results,
-                get_vector_db_path,
-                hybrid_search_session,
-                vector_available,
-            )
-        except ImportError:
-            from .vector_index import (  # type: ignore[import-not-found]  # noqa: PLC0415, I001
-                fetch_enriched_results,
-                get_vector_db_path,
-                hybrid_search_session,
-                vector_available,
-            )
+        _vi = _import_vector_index()
+        fetch_enriched_results = _vi.fetch_enriched_results
+        get_vector_db_path = _vi.get_vector_db_path
+        hybrid_search_session = _vi.hybrid_search_session
+        vector_available = _vi.vector_available
         if vector_available():
             vdb = get_vector_db_path(db_path)
             ranked = hybrid_search_session(query, db_path, vdb, limit=limit)
@@ -936,7 +964,13 @@ def build_parser() -> object:
     parser = argparse.ArgumentParser(
         description="ContextGO unified CLI (search, viewer, native scan, smoke, and maintenance)."
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"contextgo {_read_version()}",
+        help="Show version and exit",
+    )
+    sub = parser.add_subparsers(dest="command", required=False)
 
     # search
     p = sub.add_parser("search", help="Search session/history context")
@@ -1052,9 +1086,14 @@ def build_parser() -> object:
 
 def run(args: object) -> int:
     """Dispatch parsed arguments to the appropriate command handler."""
-    handler = COMMANDS.get(args.command)  # type: ignore[union-attr]
+    command = getattr(args, "command", None)
+    if not command:
+        # No sub-command given — print friendly help instead of an error.
+        build_parser().print_help()  # type: ignore[union-attr]
+        return 0
+    handler = COMMANDS.get(command)
     if handler is None:
-        print(f"Unknown command: {args.command}", file=sys.stderr)
+        print(f"Unknown command: {command}", file=sys.stderr)
         return 2
     return handler(args)  # type: ignore[return-value]
 

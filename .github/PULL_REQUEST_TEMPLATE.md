@@ -32,7 +32,7 @@ Closes #
 
 <!-- Describe how you verified this change. Include commands run and output observed. -->
 
-- [ ] Existing tests pass locally (`python -m pytest scripts/test_context_cli.py ...`)
+- [ ] Existing tests pass locally (`python -m pytest tests/test_context_cli.py ...`)
 - [ ] New tests added to cover the change
 - [ ] Go tests pass (`go test ./...` in `native/session_scan_go/`)
 - [ ] Rust check passes (`cargo check --manifest-path native/session_scan/Cargo.toml`)

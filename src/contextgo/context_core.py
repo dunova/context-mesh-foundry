@@ -13,6 +13,7 @@ write_memory_markdown   -- write a memory entry as a Markdown file
 
 from __future__ import annotations
 
+import contextlib
 import heapq
 import json
 import mmap
@@ -444,8 +445,15 @@ def write_memory_markdown(
 
     body = f"# {clean_title}\n\nTags: {', '.join(normalized_tags)}\nDate: {now.isoformat()}\n\n{clean_content}\n"
 
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(body)
+    tmp_path = path.with_suffix(".tmp")
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(body)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink()
+        raise
+    os.replace(tmp_path, path)
 
     return path

@@ -38,7 +38,7 @@ import threading
 import time
 import weakref
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse as _urlparse
@@ -1517,7 +1517,7 @@ class SessionTracker:
 
         prefix = title_prefix or f"Live {source} Session"
         title = f"{prefix} {sid[:12]}"
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
         local_dir = LOCAL_STORAGE_ROOT / "resources" / "shared" / "history"
         local_dir.mkdir(parents=True, exist_ok=True)
@@ -1531,7 +1531,7 @@ class SessionTracker:
         formatted = (
             f"# {title}\n\n"
             f"Tags: {source}, live_sync, unified_context\n"
-            f"Date: {datetime.now().isoformat()}\n\n"
+            f"Date: {datetime.now(timezone.utc).isoformat()}\n\n"
             f"## Content\n- {content}\n"
         )
 
@@ -1709,7 +1709,7 @@ class SessionTracker:
         - Active sources (changes in last ``ACTIVE_SOURCE_WINDOW_SEC``) → ``FAST_POLL_INTERVAL_SEC``
         - After ``IDLE_TIMEOUT_SEC`` with no activity on *any* source → ``NIGHT_POLL_INTERVAL_SEC``
         """
-        current_hour = datetime.now().hour
+        current_hour = datetime.now(timezone.utc).hour
         start_h = NIGHT_POLL_START_HOUR % 24
         end_h = NIGHT_POLL_END_HOUR % 24
 

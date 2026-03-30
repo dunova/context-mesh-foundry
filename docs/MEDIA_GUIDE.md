@@ -17,7 +17,7 @@ The goal is for a first-time visitor to understand three things within 10 second
 Suggested command:
 
 ```bash
-python3 scripts/context_cli.py search "NotebookLM" --limit 3 --literal
+contextgo search "NotebookLM" --limit 3 --literal
 ```
 
 The screenshot should show a session hit, a timestamp, and a snippet. This demonstrates that the tool is functional and that context retrieval is concrete and visible.
@@ -27,8 +27,8 @@ The screenshot should show a session hit, a timestamp, and a snippet. This demon
 Suggested commands:
 
 ```bash
-python3 scripts/context_cli.py health
-python3 scripts/context_cli.py smoke
+contextgo health
+contextgo smoke
 ```
 
 Show the health status and a passing smoke result. This demonstrates that the project has a validation chain, not just features.
@@ -38,7 +38,7 @@ Show the health status and a passing smoke result. This demonstrates that the pr
 Suggested commands:
 
 ```bash
-python3 scripts/context_cli.py serve
+contextgo serve
 # then open http://127.0.0.1:37677 in a browser
 # or show the /api/health or /api/search response
 ```

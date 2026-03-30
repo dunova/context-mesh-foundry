@@ -11,7 +11,7 @@ This checklist must be completed in order for every release. Each step has a def
 - [ ] **CHANGELOG entry added.** `CHANGELOG.md` contains a new section at the top for the new version with date, Story, Added, Changed, Fixed, and Removed subsections as applicable.
 - [ ] **Release notes file created.** `docs/RELEASE_NOTES_<version>.md` exists and contains Highlights, Breaking Changes, New Features, Improvements, Bug Fixes, Performance, Documentation, Contributors, Verification, and Upgrade Path sections.
 - [ ] **No secrets or personal paths in code.** Run `grep -r "REDACTED\|password\|secret\|token\|/Users/\|/home/[a-z]\+" scripts/ native/ benchmarks/` and confirm zero matches on sensitive patterns. Confirm no hardcoded absolute local paths remain.
-- [ ] **Storage root configuration verified.** `scripts/context_config.py` `storage_root()` defaults to `~/.contextgo` (or the value of `CONTEXTGO_STORAGE_ROOT`). Confirm the path is readable and writable under the deploying user on the target machine.
+- [ ] **Storage root configuration verified.** `src/contextgo/context_config.py` `storage_root()` defaults to `~/.contextgo` (or the value of `CONTEXTGO_STORAGE_ROOT`). Confirm the path is readable and writable under the deploying user on the target machine.
 - [ ] **Environment variable inventory reviewed.** All `CONTEXTGO_*` environment variables referenced in code are documented in `docs/ARCHITECTURE.md` or `CONTRIBUTING.md`.
 
 ---
@@ -26,7 +26,7 @@ This checklist must be completed in order for every release. Each step has a def
 
 - [ ] **Python compile check passes.**
   ```bash
-  python3 -m py_compile scripts/*.py benchmarks/*.py
+  python3 -m py_compile src/contextgo/*.py benchmarks/*.py
   ```
   Expected: no output, exit code 0.
 
@@ -48,7 +48,7 @@ This checklist must be completed in order for every release. Each step has a def
 
 - [ ] **Python unit tests pass.**
   ```bash
-  python3 -m pytest scripts/test_context_cli.py scripts/test_context_core.py scripts/test_context_native.py scripts/test_context_smoke.py scripts/test_session_index.py scripts/test_autoresearch_contextgo.py -v
+  python3 -m pytest tests/ -v
   ```
   Expected: all tests pass, no errors, no unexpected skips.
 
@@ -76,7 +76,7 @@ This checklist must be completed in order for every release. Each step has a def
 
 - [ ] **Health check passes.**
   ```bash
-  python3 scripts/context_cli.py health
+  contextgo health
   ```
   or
   ```bash
@@ -86,7 +86,7 @@ This checklist must be completed in order for every release. Each step has a def
 
 - [ ] **Smoke test passes.**
   ```bash
-  python3 scripts/context_cli.py smoke
+  contextgo smoke
   ```
   Expected: native contract checks for both Rust and Go backends pass, all smoke cases reported as passed, exit code 0.
 
@@ -94,11 +94,11 @@ This checklist must be completed in order for every release. Each step has a def
   ```bash
   python3 scripts/smoke_installed_runtime.py
   ```
-  Expected: `INSTALL_ROOT` (`~/.local/share/contextgo/scripts` by default) contains `context_cli.py`, `e2e_quality_gate.py`, `context_healthcheck.sh`, and `benchmarks/run.py`; all smoke cases pass; exit code 0.
+  Expected: `INSTALL_ROOT` (`~/.local/share/contextgo` by default) contains `src/contextgo/context_cli.py`, `scripts/e2e_quality_gate.py`, `scripts/context_healthcheck.sh`, and `benchmarks/run.py`; all smoke cases pass; exit code 0.
 
 - [ ] **Native scan produces non-empty results.**
   ```bash
-  python3 scripts/context_cli.py native-scan --backend auto --threads 4
+  contextgo native-scan --backend auto --threads 4
   ```
   Expected: at least one result returned, no errors, exit code 0.
 

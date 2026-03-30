@@ -115,15 +115,15 @@ Save only **durable knowledge** (decisions, root causes, warnings). The daemon a
 
 | Path | Role / 说明 |
 |---|---|
-| `scripts/context_cli.py` | CLI entry point / 命令入口 |
-| `scripts/context_config.py` | Storage root, env resolution / 存储配置 |
-| `scripts/session_index.py` | SQLite session index / 会话索引 |
-| `scripts/memory_index.py` | Memory index, export/import / 记忆索引 |
-| `scripts/context_daemon.py` | Session capture daemon / 会话捕获守护进程 |
-| `scripts/context_server.py` | Local viewer API / 本地查看器 |
-| `scripts/context_core.py` | Shared helpers / 共享工具函数 |
-| `scripts/context_native.py` | Rust/Go backend orchestration / 原生后端调度 |
-| `scripts/context_smoke.py` | Smoke test suite / 冒烟测试套件 |
+| `src/contextgo/context_cli.py` | CLI entry point / 命令入口 |
+| `src/contextgo/context_config.py` | Storage root, env resolution / 存储配置 |
+| `src/contextgo/session_index.py` | SQLite session index / 会话索引 |
+| `src/contextgo/memory_index.py` | Memory index, export/import / 记忆索引 |
+| `src/contextgo/context_daemon.py` | Session capture daemon / 会话捕获守护进程 |
+| `src/contextgo/context_server.py` | Local viewer API / 本地查看器 |
+| `src/contextgo/context_core.py` | Shared helpers / 共享工具函数 |
+| `src/contextgo/context_native.py` | Rust/Go backend orchestration / 原生后端调度 |
+| `src/contextgo/context_smoke.py` | Smoke test suite / 冒烟测试套件 |
 | `native/session_scan/` | Rust hot-path scanner / Rust 扫描器 |
 | `native/session_scan_go/` | Go parallel scanner / Go 并行扫描器 |
 | `artifacts/` | Autoresearch outputs — **do not edit** / 自动研究产物，勿修改 |

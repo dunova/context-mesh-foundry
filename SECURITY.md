@@ -4,12 +4,12 @@
 
 This policy covers the ContextGO monorepo runtime. The primary entry points are:
 
-- `scripts/context_cli.py` - unified CLI
-- `scripts/context_daemon.py` - background sync daemon
-- `scripts/context_maintenance.py` - maintenance utility
-- `scripts/session_index.py` - session indexing
-- `scripts/memory_index.py` - memory/observation indexing
-- `scripts/memory_viewer.py` - local HTTP viewer server
+- `src/contextgo/context_cli.py` - unified CLI
+- `src/contextgo/context_daemon.py` - background sync daemon
+- `src/contextgo/context_maintenance.py` - maintenance utility
+- `src/contextgo/session_index.py` - session indexing
+- `src/contextgo/memory_index.py` - memory/observation indexing
+- `src/contextgo/memory_viewer.py` - local HTTP viewer server
 - Native backends: `native/session_scan` (Rust), `native/session_scan_go` (Go)
 
 Out-of-scope: third-party dependencies, downstream forks, or deployment infrastructure not included in this repository.
@@ -112,16 +112,16 @@ The HTML viewer page is served with a restrictive `Content-Security-Policy` head
 - **Verification commands** (run before each PR and after security-relevant changes):
 
   ```
-  python3 scripts/context_cli.py health
-  python3 scripts/context_smoke.py
+  contextgo health
+  contextgo smoke
   python3 scripts/smoke_installed_runtime.py
   python3 -m benchmarks --iterations 1 --warmup 0 --query benchmark
   bash -n scripts/*.sh
-  python3 -m pytest scripts/test_context_core.py
+  python3 -m pytest tests/test_context_core.py
   ```
 
 ## Known Limitations and Non-Goals
 
-- The local memory viewer (`context_cli.py serve`) is intended for single-user localhost use only. It is not hardened against adversarial clients on the network. Do not expose it to untrusted networks even with a token.
+- The local memory viewer (`contextgo serve`) is intended for single-user localhost use only. It is not hardened against adversarial clients on the network. Do not expose it to untrusted networks even with a token.
 - Shell history indexing reads `~/.zsh_history` and `~/.bash_history`. These files may contain sensitive commands. The daemon applies secret-pattern redaction before indexing, but this is best-effort and not a substitute for managing shell history hygiene.
 - The tool does not encrypt data at rest. Filesystem-level encryption (e.g. FileVault, LUKS) is recommended for sensitive environments.

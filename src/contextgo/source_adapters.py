@@ -16,7 +16,7 @@ import re
 import shutil
 import sqlite3
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +112,7 @@ def _dirty_marker(home: Path | None = None) -> Path:
 def _mark_dirty(home: Path | None = None) -> None:
     marker = _dirty_marker(home)
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(datetime.now().isoformat(), encoding="utf-8")
+    marker.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
 
 
 def adapter_dirty_epoch(home: Path | None = None) -> int:
@@ -223,7 +223,7 @@ def _sync_opencode_sessions(home: Path) -> dict[str, object]:
         removed = _prune_stale(adapter_dir, keep)
         return {"detected": False, "sessions": 0, "removed": removed, "path": None}
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=10)
     conn.row_factory = sqlite3.Row
     sessions_written = 0
     changed = False

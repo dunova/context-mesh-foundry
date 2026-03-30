@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import random
 import sqlite3
 import time
 from typing import Any
@@ -57,6 +58,7 @@ def retry_sqlite(
             last_exc = exc
             if attempt < max_retries:
                 delay = SQLITE_RETRY_DELAYS[min(attempt, len(SQLITE_RETRY_DELAYS) - 1)]
+                delay = delay * (1 + random.uniform(-0.1, 0.1))
                 if _logger is not None:
                     _logger.warning(
                         "retry_sqlite: database locked, retrying in %.1fs (attempt %d/%d)",
@@ -108,6 +110,7 @@ def retry_sqlite_many(
             last_exc = exc
             if attempt < max_retries:
                 delay = SQLITE_RETRY_DELAYS[min(attempt, len(SQLITE_RETRY_DELAYS) - 1)]
+                delay = delay * (1 + random.uniform(-0.1, 0.1))
                 if _logger is not None:
                     _logger.warning(
                         "retry_sqlite_many: database locked, retrying in %.1fs (attempt %d/%d)",
@@ -152,6 +155,7 @@ def retry_commit(
             last_exc = exc
             if attempt < max_retries:
                 delay = SQLITE_RETRY_DELAYS[min(attempt, len(SQLITE_RETRY_DELAYS) - 1)]
+                delay = delay * (1 + random.uniform(-0.1, 0.1))
                 if _logger is not None:
                     _logger.warning(
                         "retry_commit: database locked, retrying in %.1fs (attempt %d/%d)",

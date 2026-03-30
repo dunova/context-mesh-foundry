@@ -27,19 +27,17 @@ import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 try:
-    import context_native
     from context_config import env_int, storage_root
     from source_adapters import adapter_dirty_epoch, discover_index_sources, sync_all_adapters
     from sqlite_retry import retry_commit as _rc
     from sqlite_retry import retry_sqlite as _rs
     from sqlite_retry import retry_sqlite_many as _rsm
 except ImportError:  # pragma: no cover
-    from . import context_native  # type: ignore[import-not-found]
     from .context_config import env_int, storage_root  # type: ignore[import-not-found]
     from .source_adapters import (  # type: ignore[import-not-found]
         adapter_dirty_epoch,
@@ -49,6 +47,15 @@ except ImportError:  # pragma: no cover
     from .sqlite_retry import retry_commit as _rc  # type: ignore[import-not-found]
     from .sqlite_retry import retry_sqlite as _rs
     from .sqlite_retry import retry_sqlite_many as _rsm
+
+
+def _get_context_native() -> Any:
+    """Lazily import and return the context_native module."""
+    try:
+        import context_native as _cn  # type: ignore[import-not-found]
+    except ImportError:  # pragma: no cover
+        from . import context_native as _cn  # type: ignore[import-not-found]
+    return _cn
 
 
 # Configuration
@@ -193,15 +200,38 @@ def _load_noise_config() -> dict[str, list[str]]:
     return {k: [] for k in _keys}
 
 
-# Loaded once at import time; all marker constants are derived from this dict.
-_NOISE_CONFIG: dict[str, list[str]] = _load_noise_config()
+# Lazily loaded on first use; None means not yet loaded.
+_NOISE_CONFIG: dict[str, list[str]] | None = None
 
-# Markers sourced from config/noise_markers.json.
-# Run ``scripts/check_noise_sync.py`` to verify sync with the Rust/Go backends.
-SEARCH_NOISE_MARKERS: tuple[str, ...] = tuple(_NOISE_CONFIG["search_noise_markers"])
-NATIVE_NOISE_MARKERS: tuple[str, ...] = tuple(_NOISE_CONFIG["native_noise_markers"])
-_NOISE_TEXT_MARKERS: tuple[str, ...] = tuple(_NOISE_CONFIG["text_noise_markers"])
-_NOISE_TEXT_LOWER_MARKERS: tuple[str, ...] = tuple(_NOISE_CONFIG["text_noise_lower_markers"])
+
+def _get_noise_config() -> dict[str, list[str]]:
+    """Return the noise config dict, loading it on first call (lazy initializer)."""
+    global _NOISE_CONFIG
+    if _NOISE_CONFIG is None:
+        _NOISE_CONFIG = _load_noise_config()
+    return _NOISE_CONFIG
+
+
+# Module-level sentinel tuples; populated lazily via _ensure_noise_markers().
+SEARCH_NOISE_MARKERS: tuple[str, ...] = ()
+NATIVE_NOISE_MARKERS: tuple[str, ...] = ()
+_NOISE_TEXT_MARKERS: tuple[str, ...] = ()
+_NOISE_TEXT_LOWER_MARKERS: tuple[str, ...] = ()
+_noise_markers_initialized: bool = False
+
+
+def _ensure_noise_markers() -> None:
+    """Populate noise-marker module globals on first call (idempotent)."""
+    global SEARCH_NOISE_MARKERS, NATIVE_NOISE_MARKERS
+    global _NOISE_TEXT_MARKERS, _NOISE_TEXT_LOWER_MARKERS, _noise_markers_initialized
+    if _noise_markers_initialized:
+        return
+    cfg = _get_noise_config()
+    SEARCH_NOISE_MARKERS = tuple(cfg["search_noise_markers"])
+    NATIVE_NOISE_MARKERS = tuple(cfg["native_noise_markers"])
+    _NOISE_TEXT_MARKERS = tuple(cfg["text_noise_markers"])
+    _NOISE_TEXT_LOWER_MARKERS = tuple(cfg["text_noise_lower_markers"])
+    _noise_markers_initialized = True
 
 STOPWORDS: frozenset[str] = frozenset(
     {
@@ -372,6 +402,7 @@ def _compact_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
 
 def _is_noise_text(text: str) -> bool:
     """Return ``True`` if *text* should be excluded from the session index."""
+    _ensure_noise_markers()
     compact = _WHITESPACE_RE.sub(" ", str(text or "")).strip()
     if not compact:
         return True
@@ -392,6 +423,7 @@ def _search_noise_penalty(*parts: str) -> int:
 
     Higher penalties push results further down the ranking.
     """
+    _ensure_noise_markers()
     haystack = "\n".join(str(part or "") for part in parts).lower()
     penalty = 0
 
@@ -816,7 +848,8 @@ def _iter_sources() -> list[tuple[str, Path]]:
     native_backend = EXPERIMENTAL_SYNC_BACKEND
     if native_backend in {"rust", "go"}:
         try:
-            result = context_native.run_native_scan(
+            _cn = _get_context_native()
+            result = _cn.run_native_scan(
                 backend=native_backend,
                 threads=4,
                 json_output=True,
@@ -824,7 +857,7 @@ def _iter_sources() -> list[tuple[str, Path]]:
                 timeout=180,
             )
             if result.returncode == 0:
-                items: list[tuple[str, Path]] = context_native.inventory_items(result)
+                items: list[tuple[str, Path]] = _cn.inventory_items(result)
                 if items:
                     _update_source_cache(items, now, current_home)
                     return items
@@ -959,7 +992,7 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
     _t_start = time.monotonic()
     db_path = ensure_session_db()
     added = updated = removed = scanned = 0
-    now_epoch = int(datetime.now().timestamp())
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
     seen_paths: set[str] = set()
 
     with _open_db(db_path) as conn:
@@ -1325,6 +1358,7 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
 
     Returns an empty list when the backend is not configured or fails.
     """
+    _ensure_noise_markers()
     if not query.strip():
         return []
     backend = EXPERIMENTAL_SEARCH_BACKEND
@@ -1332,7 +1366,8 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
         return []
 
     try:
-        result = context_native.run_native_scan(
+        _cn = _get_context_native()
+        result = _cn.run_native_scan(
             backend=backend,
             threads=4,
             query=query,
@@ -1350,7 +1385,7 @@ def _native_search_rows(query: str, limit: int = 10) -> list[dict[str, Any]]:
     query_lower = query.lower().strip()
     rows: list[dict[str, Any]] = []
 
-    for item in context_native.extract_matches(result):
+    for item in _cn.extract_matches(result):
         snippet = str(item.get("snippet", "") or "")
         snippet_lower = snippet.lower()
         if not snippet_lower:
@@ -1723,6 +1758,13 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
                         results = fetch_enriched_results(ranked, db_path, query)
                         if results:
                             if _SEARCH_RESULT_CACHE_TTL > 0:
+                                if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+                                    _now = time.monotonic()
+                                    _expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= _now]
+                                    for k in _expired:
+                                        del _SEARCH_RESULT_CACHE[k]
+                                    while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+                                        _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
                                 _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
                             return results
             except Exception as exc:  # noqa: BLE001
@@ -1732,6 +1774,13 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
         if native_rows:
             results = _enrich_native_rows(native_rows, conn, terms, max_results)
             if _SEARCH_RESULT_CACHE_TTL > 0:
+                if len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+                    _now = time.monotonic()
+                    _expired = [k for k, (exp, _) in _SEARCH_RESULT_CACHE.items() if exp <= _now]
+                    for k in _expired:
+                        del _SEARCH_RESULT_CACHE[k]
+                    while len(_SEARCH_RESULT_CACHE) >= _SEARCH_CACHE_MAX_ENTRIES:
+                        _SEARCH_RESULT_CACHE.pop(next(iter(_SEARCH_RESULT_CACHE)))
                 _SEARCH_RESULT_CACHE[cache_key] = (time.monotonic() + _SEARCH_RESULT_CACHE_TTL, results)
             return results
 

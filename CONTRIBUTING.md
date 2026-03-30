@@ -85,8 +85,8 @@ go build .
 ## Project principles
 
 1. **All changes serve the core entry points.**
-   Contributions must relate clearly to `context_cli.py`, `context_daemon.py`,
-   `session_index.py`, `memory_index.py`, or the validation chain.
+   Contributions must relate clearly to `src/contextgo/context_cli.py`, `src/contextgo/context_daemon.py`,
+   `src/contextgo/session_index.py`, `src/contextgo/memory_index.py`, or the validation chain.
    Changes to legacy or bridge paths require explicit justification.
 
 2. **Local-first by default.**
@@ -95,7 +95,7 @@ go build .
    feature flags with documentation.
 
 3. **Smoke and benchmark are health thresholds.**
-   If a change degrades `context_smoke.py` or the benchmark harness, it must
+   If a change degrades `src/contextgo/context_smoke.py` or the benchmark harness, it must
    be addressed before merging.
 
 4. **No secrets or machine-specific paths in commits.**
@@ -109,11 +109,11 @@ go build .
 
 ## 项目原则
 
-1. **所有变更服务于核心入口点。** 贡献必须与 `context_cli.py`、`context_daemon.py`、`session_index.py`、`memory_index.py` 或验证链有明确关联。修改旧桥接路径须附理由。
+1. **所有变更服务于核心入口点。** 贡献必须与 `src/contextgo/context_cli.py`、`src/contextgo/context_daemon.py`、`src/contextgo/session_index.py`、`src/contextgo/memory_index.py` 或验证链有明确关联。修改旧桥接路径须附理由。
 
 2. **默认本地优先。** 默认代码路径不得引入外部服务调用、网络连接或云依赖。远程功能必须放在显式特性标志后面并配套文档。
 
-3. **Smoke 和 benchmark 是健康门槛。** 变更导致 `context_smoke.py` 或 benchmark 退化，必须在合并前修复。
+3. **Smoke 和 benchmark 是健康门槛。** 变更导致 `src/contextgo/context_smoke.py` 或 benchmark 退化，必须在合并前修复。
 
 4. **禁止提交密钥或机器绝对路径。** 用 `~` 或环境变量替代本地路径。
 
@@ -184,9 +184,9 @@ description.
 Test dependencies:
 
 - `CONTEXTGO_STORAGE_ROOT` defaults to `~/.contextgo`; confirm
-  `scripts/context_config.py` resolves correctly before running.
+  `src/contextgo/context_config.py` resolves correctly before running.
 - The installed-runtime smoke (`smoke_installed_runtime.py`) expects
-  `context_cli.py` at `~/.local/share/contextgo/scripts` (or
+  `context_cli.py` at `~/.local/share/contextgo/src/contextgo` (or
   `CONTEXTGO_INSTALL_ROOT`).
 
 ---
