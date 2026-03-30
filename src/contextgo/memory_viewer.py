@@ -448,13 +448,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             stats = index_stats()
-        except Exception as exc:
+        except Exception:  # noqa: BLE001
             self._send_json(
                 500,
                 {
                     "ok": False,
                     "error": "health check failed",
-                    "detail": str(exc),
                     "checked_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
@@ -582,8 +581,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sync = _maybe_sync_index()
             rows = get_observations_by_ids(parsed_ids[:_MAX_BATCH_IDS], limit=limit)
-        except Exception as exc:
-            self._send_json(500, {"ok": False, "error": "internal error", "detail": str(exc)})
+        except Exception:  # noqa: BLE001
+            self._send_json(500, {"ok": False, "error": "internal error"})
             return
 
         self._send_json(200, {"ok": True, "sync": sync, "count": len(rows), "observations": rows})
@@ -600,6 +599,7 @@ def main() -> None:
     Raises:
         SystemExit: When a non-loopback bind address is used without a token.
     """
+    _SHUTDOWN_EVENT.clear()
     if HOST not in _LOOPBACK_HOSTS and not VIEWER_TOKEN:
         raise SystemExit("CONTEXTGO_VIEWER_TOKEN must be set when binding a non-loopback host.")
     server = ThreadingHTTPServer((HOST, PORT), Handler)

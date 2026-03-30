@@ -65,7 +65,8 @@ def retry_sqlite(
                         max_retries,
                     )
                 time.sleep(delay)
-    assert last_exc is not None
+    if last_exc is None:
+        raise RuntimeError("retry loop exited without exception")
     raise last_exc
 
 
@@ -115,7 +116,8 @@ def retry_sqlite_many(
                         max_retries,
                     )
                 time.sleep(delay)
-    assert last_exc is not None
+    if last_exc is None:
+        raise RuntimeError("retry loop exited without exception")
     raise last_exc
 
 
@@ -158,5 +160,6 @@ def retry_commit(
                         max_retries,
                     )
                 time.sleep(delay)
-    assert last_exc is not None
+    if last_exc is None:
+        raise RuntimeError("retry loop exited without exception")
     raise last_exc

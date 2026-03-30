@@ -58,6 +58,12 @@ data/
 target/
 native/session_scan/target/
 native/session_scan_go/vendor/
+native/session_scan_go/session_scan_go
+native/session_scan_go/coverage.out
+
+# Temporary and output directories
+tmp/
+outputs/
 
 # Node / frontend (integrations)
 node_modules/

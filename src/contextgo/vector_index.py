@@ -245,7 +245,17 @@ def embed_pending_session_docs(
         if sdb_path.suffix != ".db" or not sdb_path.exists():
             raise ValueError(f"Invalid session database path: {sdb_path}")
         sdb_str = str(sdb_path)
-        if any(c in sdb_str for c in ("'", '"', ";", "\x00")):
+        # Strict whitelist: resolve the path and verify it only contains safe
+        # characters (alphanumeric, '/', '.', '-', '_').  This guards against
+        # SQL-injection payloads even though ATTACH DATABASE does not support
+        # parameter binding in SQLite.
+        _SAFE_PATH_CHARS = frozenset(
+            "abcdefghijklmnopqrstuvwxyz"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "0123456789"
+            "/.-_"
+        )
+        if not all(c in _SAFE_PATH_CHARS for c in sdb_str):
             raise ValueError(f"Unsafe characters in database path: {sdb_str}")
         conn.execute(f"ATTACH DATABASE '{sdb_str}' AS sessions")
 
@@ -397,6 +407,9 @@ def bm25s_search_session(
     conn = sqlite3.connect(sdb, timeout=30)
     try:
         rows = conn.execute("SELECT file_path, title, content FROM session_documents").fetchall()
+        # Fetch MAX(rowid) alongside COUNT(*) so that delete-then-insert
+        # sequences (same count, different rows) properly invalidate the cache.
+        max_rowid: int = conn.execute("SELECT MAX(rowid) FROM session_documents").fetchone()[0] or 0
     finally:
         conn.close()
 
@@ -406,19 +419,22 @@ def bm25s_search_session(
     paths = [r[0] for r in rows]
     corpus = [f"{r[1]} {r[2][:VECTOR_TEXT_CAP]}" for r in rows]
     row_count = len(rows)
+    # Cache key combines row count and max rowid to detect both additions and
+    # delete-then-insert cycles that leave the count unchanged.
+    cache_key = (row_count, max_rowid)
 
     try:
         import bm25s  # noqa: PLC0415
 
         with _BM25_CACHE_LOCK:
             cached = _BM25_CACHE.get(sdb)
-            if cached is not None and cached[0] == row_count:
+            if cached is not None and cached[0] == cache_key:
                 retriever = cached[1]
             else:
                 tokenized_corpus = bm25s.tokenize(corpus, show_progress=False)
                 retriever = bm25s.BM25()
                 retriever.index(tokenized_corpus, show_progress=False)
-                _BM25_CACHE[sdb] = (row_count, retriever)
+                _BM25_CACHE[sdb] = (cache_key, retriever)
 
         tokenized_query = bm25s.tokenize([query], show_progress=False)
         results, scores = retriever.retrieve(

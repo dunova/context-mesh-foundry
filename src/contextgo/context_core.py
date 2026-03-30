@@ -435,7 +435,7 @@ def write_memory_markdown(
     root = Path(conversations_root)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     safe_ts = safe_filename((timestamp or "").strip() or now.strftime("%Y%m%d_%H%M%S"))
     path = root / f"{safe_ts}_{safe_filename(clean_title)}.md"
     # Containment check

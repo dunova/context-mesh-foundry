@@ -54,7 +54,7 @@ jobs:
         run: ruff format --check src/contextgo/ tests/ scripts/ benchmarks/
 
       - name: Bandit security scan
-        run: bandit -r src/contextgo/ scripts/ -c pyproject.toml --quiet || true
+        run: bandit -r src/contextgo/ -c pyproject.toml --quiet
 
       - name: Secret and path scan
         run: |

@@ -19,16 +19,20 @@ flowchart LR
         S2["Codex sessions<br/>~/.codex/"]
         S3["Claude transcripts<br/>~/.claude/"]
         S4["Antigravity brain<br/>~/.gemini/antigravity/"]
+        S5["OpenCode sessions<br/>(source_adapters)"]
+        S6["Kilo local storage<br/>(source_adapters)"]
+        S7["OpenClaw session JSONL<br/>(source_adapters)"]
     end
 
     subgraph Core
         D["context_daemon<br/>capture · sanitize · write"]
         SI["session_index<br/>SQLite"]
         MI["memory_index<br/>SQLite"]
+        VI["vector_index<br/>model2vec · BM25 · RRF"]
     end
 
     subgraph Interface
-        CLI["context_cli<br/>search · semantic · save · export · import · serve · maintain · native-scan · smoke · health"]
+        CLI["context_cli<br/>search · semantic · save · export · import · serve · maintain · native-scan · smoke · health · vector-sync · vector-status · sources · q · shell-init"]
         SRV["context_server<br/>local viewer HTTP API"]
     end
 
@@ -40,8 +44,10 @@ flowchart LR
     Sources --> D
     D --> SI
     D --> MI
+    SI --> VI
     SI --> CLI
     MI --> CLI
+    VI --> CLI
     CLI --> SRV
     CLI -.-> RS
     CLI -.-> GO
@@ -91,21 +97,27 @@ ContextGO/
 
 ### 1. Capture layer / 采集层
 
-`context_daemon.py` monitors shell history files, Codex sessions, Claude transcripts, and Antigravity brain directories. Before writing to disk, it applies `<private>` redaction to strip sensitive content.
+`context_daemon.py` monitors shell history files, Codex sessions, Claude transcripts, and Antigravity brain directories. Before writing to disk, it applies `<private>` redaction to strip sensitive content. `source_adapters.py` provides normalized ingestion for additional platforms — OpenCode session databases, Kilo local storage, and OpenClaw session JSONL roots — without requiring manual reconfiguration when new tools are installed.
 
-`context_daemon.py` 监控 shell 历史、Codex 会话、Claude 转录文件与 Antigravity brain 目录。写入前执行 `<private>` 脱敏。
+`context_daemon.py` 监控 shell 历史、Codex 会话、Claude 转录文件与 Antigravity brain 目录。写入前执行 `<private>` 脱敏。`source_adapters.py` 为额外平台提供规范化摄取——OpenCode 会话数据库、Kilo 本地存储、OpenClaw 会话 JSONL 根目录——安装新工具后无需手动重新配置。
 
 ### 2. Index layer / 索引层
 
-`session_index.py` and `memory_index.py` maintain two independent SQLite databases under the storage root (`~/.contextgo/index/`). Session entries and memory observations are indexed separately to keep query paths clean. Search uses LIKE-based queries.
+`session_index.py` and `memory_index.py` maintain two independent SQLite databases under the storage root (`~/.contextgo/index/`). Session entries and memory observations are indexed separately to keep query paths clean. Search uses LIKE-based queries with optional WAL mode for concurrent access resilience.
 
-`session_index.py` 与 `memory_index.py` 在存储根目录下分别维护两个独立的 SQLite 数据库。会话条目与记忆观测分库存储，保持查询路径清晰。搜索使用基于 LIKE 的查询。
+`session_index.py` 与 `memory_index.py` 在存储根目录下分别维护两个独立的 SQLite 数据库。会话条目与记忆观测分库存储，保持查询路径清晰。搜索使用基于 LIKE 的查询，可选 WAL 模式提升并发访问韧性。
+
+### 2a. Vector index layer / 向量索引层
+
+`vector_index.py` provides an optional hybrid search engine gated by `CONTEXTGO_EXPERIMENTAL_SEARCH_BACKEND=vector`. It combines dense vector embeddings (model2vec `potion-base-8M`, 256-dim) with BM25 keyword scoring, fused via Reciprocal Rank Fusion (RRF, k=60). Results are stored in a separate `vector_index.db` SQLite database. The index degrades gracefully to LIKE-based search when `model2vec` is absent.
+
+`vector_index.py` 提供可选的混合搜索引擎，由 `CONTEXTGO_EXPERIMENTAL_SEARCH_BACKEND=vector` 开关控制。结合稠密向量嵌入（model2vec `potion-base-8M`，256 维）与 BM25 关键词评分，通过倒数排名融合（RRF，k=60）合并结果。索引存储于独立的 `vector_index.db` SQLite 数据库。缺少 `model2vec` 时自动降级为基于 LIKE 的搜索。
 
 ### 3. Interface layer / 接口层
 
-`context_cli.py` is the single operator entry point. It exposes ten subcommands:
+`context_cli.py` is the single operator entry point. It exposes fifteen subcommands:
 
-`context_cli.py` 是唯一的操作入口，提供以下十个子命令：
+`context_cli.py` 是唯一的操作入口，提供以下十五个子命令：
 
 | Subcommand | Purpose / 用途 |
 |---|---|
@@ -119,6 +131,11 @@ ContextGO/
 | `maintain` | Index cleanup and repair / 索引清理与修复 |
 | `native-scan` | Run native Rust/Go scan backend directly / 直接调用原生扫描后端 |
 | `smoke` | Run end-to-end smoke gate / 运行端到端 smoke 验证 |
+| `vector-sync` | Embed pending session documents into vector index / 向量嵌入待处理会话文档 |
+| `vector-status` | Show vector index statistics / 显示向量索引统计 |
+| `sources` | Show detected source platforms and adapter status / 显示已探测平台与 adapter 状态 |
+| `q` | Quick recall — search or session ID lookup / 快速召回 — 搜索或会话 ID 查询 |
+| `shell-init` | Print shell integration script / 打印 shell 集成脚本 |
 
 `context_server.py` and `memory_viewer.py` implement the local HTTP viewer API (see [API.md](API.md)).
 

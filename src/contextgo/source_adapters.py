@@ -357,7 +357,11 @@ def _sync_openclaw_sessions(home: Path) -> dict[str, object]:
                 with contextlib.suppress(json.JSONDecodeError):
                     texts.extend(_extract_text_fragments(json.loads(raw)))
         out_path = adapter_dir / f"{_safe_name(source_file.stem)}__{_safe_name(source_file.stem, 'session')}.jsonl"
-        mtime = max(1, int(source_file.stat().st_mtime))
+        try:
+            mtime = max(1, int(source_file.stat().st_mtime))
+        except OSError:
+            # File was deleted between read_text and stat (TOCTOU); skip it.
+            continue
         out_changed = _write_adapter_file(
             out_path,
             texts,

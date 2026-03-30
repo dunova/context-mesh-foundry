@@ -235,7 +235,7 @@ Test dependencies:
 - [ ] Secret scan passes:
       `rg -i 'AKIA|password|secret|token' scripts/ docs/`
 - [ ] `make lint` passes with zero errors.
-- [ ] `make test` passes (all tests green, coverage ≥ 50%).
+- [ ] `make test` passes (all tests green, coverage ≥ 97%).
 - [ ] `make smoke` passes.
 - [ ] PR description includes test output or justification for skipping.
 - [ ] Documentation updated for any new environment variables or behavior
