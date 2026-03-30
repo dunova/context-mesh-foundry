@@ -15,6 +15,24 @@ _No unreleased changes._
 
 ---
 
+## [0.11.1] — 2026-03-30
+
+### Fixed / 修复
+- **Adapter fault isolation / 适配器容错隔离**: `sync_all_adapters()` and `source_freshness_snapshot()` now catch per-source exceptions, preventing a single broken adapter from blocking the entire sync pipeline / 单个适配器异常不再阻断整个同步流水线
+- **Search/sync decoupling / 搜索与同步解耦**: `sync_all_adapters()` moved after throttle check in `sync_session_index()` — frequent search calls no longer trigger full adapter filesystem scans / 频繁搜索不再触发全量适配器扫描
+- **Smoke test path resolution / 冒烟测试路径解析**: `smoke --sandbox` now uses `Path.resolve()` to handle symlinked installations correctly / 正确处理软链接安装路径
+- **CI release gate / CI发布门禁**: `release.yml` now includes Go/Rust verification steps matching `verify.yml`; removed `|| true` from safety check to make it a blocking gate / 发布流水线增加Go/Rust验证，安全检查改为阻塞门禁
+- **Test adapter dirty compatibility / 测试适配器dirty兼容**: Fixed `test_sync_rechecks_immediately_when_adapter_dirty` to mark adapter dirty after creating test data / 修复测试中adapter dirty标记时序
+
+### Changed / 变更
+- **Documentation alignment / 文档路径对齐**: Updated stale `scripts/` references to `src/contextgo/` across AGENTS.md, CONTRIBUTING.md, ARCHITECTURE.md, RELEASE_CHECKLIST.md, native/README.md, and .claude/CLAUDE.md / 全量修复过期路径引用
+
+### Added / 新增
+- **CHANGELOG v0.11.0 entry**: Full change documentation for the v0.11.0 release / 补充v0.11.0完整变更记录
+- **Release notes**: Added `docs/RELEASE_NOTES_0.11.0.md` / 新增发布说明文档
+
+---
+
 ## [0.11.0] — 2026-03-30
 
 ### Overview
