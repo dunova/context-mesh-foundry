@@ -1354,7 +1354,7 @@ def _add_maintain_subcommand(sub: object) -> None:
         ),
         formatter_class=_ap.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--db", default="~/.contextgo/db/contextgo.db", help="Path to the session index database")
+    p.add_argument("--db", default="~/.contextgo/index/session_index.db", help="Path to the session index database")
     p.add_argument("--codex-root", default="~/.codex/sessions", help="Root directory for Codex session files")
     p.add_argument("--claude-root", default="~/.claude/projects", help="Root directory for Claude project files")
     p.add_argument("--include-subagents", action="store_true", help="Include sub-agent sessions in maintenance")

@@ -682,9 +682,9 @@ def _obs_where_clause(query: str, source_type: str) -> tuple[str, list[Any]]:
     if q:
         # COLLATE NOCASE lets SQLite skip the per-row lower() call and
         # potentially leverage an index with the same collation.
-        like_q = f"%{q.lower()}%"
+        like_q = "%{}%".format(q.lower().replace("%", r"\%").replace("_", r"\_"))
         where.append(
-            "(title LIKE ? COLLATE NOCASE OR content LIKE ? COLLATE NOCASE OR tags_json LIKE ? COLLATE NOCASE)"
+            "(title LIKE ? ESCAPE '\\' COLLATE NOCASE OR content LIKE ? ESCAPE '\\' COLLATE NOCASE OR tags_json LIKE ? ESCAPE '\\' COLLATE NOCASE)"
         )
         args.extend([like_q, like_q, like_q])
     if source_type and source_type != "all":

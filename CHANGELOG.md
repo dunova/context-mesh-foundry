@@ -9,6 +9,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.11.10] — 2026-03-30
+
+### Security / 安全
+- **LIKE wildcard escape**: All LIKE queries now escape `%` and `_` wildcards with `ESCAPE '\'` clause / 所有 LIKE 查询现已转义通配符
+- **Extended secret redaction**: Added JWT, `github_pat_`, Azure SAS, HashiCorp Vault (`hvs.`), Docker PAT (`dckr_pat_`), DB DSN patterns / 新增 7 种密钥脱敏模式
+- **Directory permissions**: All `mkdir` calls now use `mode=0o700` for user-only access / 所有目录创建统一使用 0o700 权限
+- **License alignment**: Unified SPDX `AGPL-3.0-only` with PyPI classifier / License SPDX 与 Classifier 统一
+
+### Reliability / 可靠性
+- **`_export()` fsync**: Added `os.fsync(fd)` before close to prevent data loss on power failure / 导出文件写入后 fsync 防断电丢失
+- **`maintain --db` path fix**: Default DB path corrected from `db/contextgo.db` to `index/session_index.db` / 维护命令默认数据库路径修正
+- **`_find_json_snippet` balanced parse**: Replaced greedy `rfind('}')` with depth-counting brace matcher / JSON 片段提取改为平衡括号匹配
+
+### Go / Go 语言
+- **Windows mmap isolation**: Extracted `mmapFile` into build-tagged files (`mmap_unix.go` / `mmap_windows.go`) / mmap 函数按平台隔离
+
+### Rust
+- **`extract_timestamp` root key**: Added root-level `"timestamp"` fallback before `"createdAt"` / 时间戳提取新增根级 `timestamp` 字段
+
+---
+
 ## [0.11.9] — 2026-03-30
 
 ### Security / 安全

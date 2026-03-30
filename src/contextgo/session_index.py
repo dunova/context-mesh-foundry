@@ -1715,9 +1715,9 @@ def _fetch_rows(
     where_parts: list[str] = []
     args: list[Any] = []
     for term in active_terms:
-        like_term = f"%{term.lower()}%"
+        like_term = "%{}%".format(term.lower().replace("%", r"\%").replace("_", r"\_"))
         where_parts.append(
-            "(title LIKE ? COLLATE NOCASE OR content LIKE ? COLLATE NOCASE OR file_path LIKE ? COLLATE NOCASE)"
+            "(title LIKE ? ESCAPE '\\' COLLATE NOCASE OR content LIKE ? ESCAPE '\\' COLLATE NOCASE OR file_path LIKE ? ESCAPE '\\' COLLATE NOCASE)"
         )
         args.extend([like_term, like_term, like_term])
     where_clause = f"WHERE {' OR '.join(where_parts)}" if where_parts else ""

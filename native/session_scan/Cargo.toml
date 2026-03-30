@@ -1,6 +1,6 @@
 [package]
 name = "session_scan"
-version = "0.11.9"
+version = "0.11.10"
 edition = "2021"
 description = "High-performance scanner for Codex/Claude session files with structured JSON output."
 license = "AGPL-3.0"

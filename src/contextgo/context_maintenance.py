@@ -50,7 +50,7 @@ _TERMINAL_STATUSES = frozenset({"done", "failed", "error"})
 
 # Default DB path — derived from CONTEXTGO_STORAGE_ROOT or ~/.contextgo.
 # Individual callers override this via --db when needed (e.g. aline integration).
-_DEFAULT_DB = "~/.contextgo/db/contextgo.db"
+_DEFAULT_DB = "~/.contextgo/index/session_index.db"
 
 # ---------------------------------------------------------------------------
 # SQL statements

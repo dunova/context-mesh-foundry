@@ -67,6 +67,18 @@ _SECRET_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
         "***PEM_KEY_REDACTED***",
     ),
+    # JWT tokens (three base64url segments separated by dots)
+    (re.compile(r"\beyJhb[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b"), "***JWT_REDACTED***"),
+    # GitHub fine-grained PAT (github_pat_)
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), "github_pat_***"),
+    # Azure SAS tokens
+    (re.compile(r"([\?&]sig=)[A-Za-z0-9%+/=]{20,}", re.IGNORECASE), r"\1***"),
+    # HashiCorp Vault tokens
+    (re.compile(r"\bhvs\.[A-Za-z0-9_-]{20,}\b"), "hvs.***"),
+    # Docker PAT (dckr_pat_)
+    (re.compile(r"\bdckr_pat_[A-Za-z0-9_-]{20,}\b"), "dckr_pat_***"),
+    # Database connection strings (postgres://, mysql://, mongodb:// with embedded credentials)
+    (re.compile(r"((?:postgres|mysql|mongodb|redis)(?:ql)?://[^:]+:)[^\s@]+(@)", re.IGNORECASE), r"\1***\2"),
 ]
 
 

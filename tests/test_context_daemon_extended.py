@@ -1083,7 +1083,7 @@ class TestHeartbeat(unittest.TestCase):
         try:
             context_daemon.PENDING_DIR = pending_dir
             self.tracker._last_heartbeat = 0  # force heartbeat
-            with patch.object(context_daemon.logger, "info") as mock_log:
+            with patch.object(context_daemon._logger, "info") as mock_log:
                 self.tracker.heartbeat()
             # Should have logged at least one heartbeat message
             self.assertTrue(
@@ -1095,7 +1095,7 @@ class TestHeartbeat(unittest.TestCase):
 
     def test_heartbeat_skips_when_interval_not_elapsed(self) -> None:
         self.tracker._last_heartbeat = time.time()  # just ran
-        with patch.object(context_daemon.logger, "info") as mock_log:
+        with patch.object(context_daemon._logger, "info") as mock_log:
             self.tracker.heartbeat()
         heartbeat_calls = [c for c in mock_log.call_args_list if "heartbeat" in str(c)]
         self.assertEqual(len(heartbeat_calls), 0)
@@ -1732,7 +1732,7 @@ class TestPollAntigravityDetailed(unittest.TestCase):
             fake_brain.is_dir.return_value = True
             with patch("context_daemon.ANTIGRAVITY_BRAIN", fake_brain):
                 with patch("context_daemon._count_antigravity_language_servers", return_value=5):
-                    with patch.object(context_daemon.logger, "info") as mock_log:
+                    with patch.object(context_daemon._logger, "info") as mock_log:
                         self.tracker.poll_antigravity()
             # Should have logged the busy message
             calls = [c for c in mock_log.call_args_list if "poll_antigravity skipped" in str(c)]
@@ -2537,7 +2537,7 @@ class TestHeartbeatResourceModule(unittest.TestCase):
 
             with patch.object(context_daemon, "_resource_mod", mock_resource):
                 with patch("sys.platform", "linux"):
-                    with patch.object(context_daemon.logger, "info"):
+                    with patch.object(context_daemon._logger, "info"):
                         self.tracker.heartbeat()
             # Should not raise
         finally:
@@ -2551,7 +2551,7 @@ class TestHeartbeatResourceModule(unittest.TestCase):
             context_daemon.PENDING_DIR = pending_dir
             self.tracker._last_heartbeat = 0
             with patch.object(context_daemon, "_resource_mod", None):
-                with patch.object(context_daemon.logger, "info"):
+                with patch.object(context_daemon._logger, "info"):
                     self.tracker.heartbeat()
         finally:
             context_daemon.PENDING_DIR = original_pending
@@ -2568,7 +2568,7 @@ class TestHeartbeatResourceModule(unittest.TestCase):
             mock_resource.RUSAGE_SELF = 0
 
             with patch.object(context_daemon, "_resource_mod", mock_resource):
-                with patch.object(context_daemon.logger, "info"):
+                with patch.object(context_daemon._logger, "info"):
                     self.tracker.heartbeat()
         finally:
             context_daemon.PENDING_DIR = original_pending

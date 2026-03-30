@@ -170,14 +170,20 @@ class NativeRunResult:
         return errors
 
     def _find_json_snippet(self, text: str) -> str | None:
-        """Extract the outermost ``{…}`` substring from *text*, or ``None``."""
+        """Extract the outermost balanced ``{…}`` substring from *text*, or ``None``."""
         start = text.find("{")
         if start == -1:
             return None
-        end = text.rfind("}")
-        if end <= start:
-            return None
-        return text[start : end + 1]
+        # Walk forward to find the matching closing brace via depth counting
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        return None
 
 
 @dataclass(frozen=True)

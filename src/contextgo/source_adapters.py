@@ -47,7 +47,7 @@ def _adapter_root(home: Path | None = None) -> Path:
     current_home = home or _home()
     digest = hashlib.sha256(str(current_home).encode("utf-8")).hexdigest()[:12]
     root = storage_root() / "raw" / "adapters" / digest
-    root.mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
     _ensure_adapter_schema(root)
     return root
 
@@ -76,7 +76,7 @@ def _safe_name(raw: str, default: str = "session") -> str:
 
 
 def _write_adapter_file(path: Path, texts: list[str], mtime_epoch: int, meta: dict[str, object] | None = None) -> bool:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     payload: list[dict[str, object]] = []
     if meta:
         payload.append({k: v for k, v in meta.items() if v not in (None, "")})
@@ -123,7 +123,7 @@ def _dirty_marker(home: Path | None = None) -> Path:
 
 def _mark_dirty(home: Path | None = None) -> None:
     marker = _dirty_marker(home)
-    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     marker.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
 
 

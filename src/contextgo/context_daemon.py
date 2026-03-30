@@ -157,9 +157,7 @@ def _setup_logging() -> None:
     if _logging_initialized:
         return
     _logging_initialized = True
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(LOG_DIR, 0o700)
+    LOG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     rfh = logging.handlers.RotatingFileHandler(
         LOG_DIR / _DAEMON_LOG_NAME,
         maxBytes=5 * 1024 * 1024,
@@ -379,7 +377,7 @@ def _release_single_instance_lock() -> None:
 def _acquire_single_instance_lock() -> bool:
     """Atomically create the PID lock file; removes stale lock and retries once."""
     global _LOCK_FD
-    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     for _ in range(2):
         try:
@@ -847,9 +845,7 @@ class SessionTracker:
             except Exception as exc:
                 _logger.exception("Failed to initialise HTTP client: %s", exc)
 
-        PENDING_DIR.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            os.chmod(PENDING_DIR, 0o700)
+        PENDING_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         self.refresh_sources(force=True)
 
@@ -1531,9 +1527,7 @@ class SessionTracker:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
         local_dir = LOCAL_STORAGE_ROOT / "resources" / "shared" / "history"
-        local_dir.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            os.chmod(local_dir, 0o700)
+        local_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         source_safe = self._sanitize_filename_part(source, default="source")
         sid_safe = self._sanitize_filename_part(sid, default="sid")
@@ -1551,6 +1545,7 @@ class SessionTracker:
             fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 os.write(fd, formatted.encode("utf-8"))
+                os.fsync(fd)
             finally:
                 os.close(fd)
             try:

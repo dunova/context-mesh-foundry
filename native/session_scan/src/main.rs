@@ -1193,6 +1193,7 @@ fn extract_session_id(value: &Value) -> Option<String> {
 #[inline]
 fn extract_timestamp(value: &Value) -> Option<String> {
     nested_str(value, &["payload", "timestamp"])
+        .or_else(|| nested_str(value, &["timestamp"]))
         .or_else(|| nested_str(value, &["createdAt"]))
         .or_else(|| nested_str(value, &["created_at"]))
         .or_else(|| nested_str(value, &["time"]))
