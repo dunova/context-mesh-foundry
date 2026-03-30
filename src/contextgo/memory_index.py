@@ -444,16 +444,61 @@ def ensure_index_db() -> Path:
 # Sync
 
 
+_SYNC_BATCH_SIZE = 100
+
+
 def sync_index_from_storage() -> dict[str, int]:
     """Scan local history directories and reconcile the index database.
 
     Returns a summary dict with keys ``scanned``, ``added``, ``updated``,
     and ``removed``.
+
+    DML operations are collected into batches of up to ``_SYNC_BATCH_SIZE``
+    rows and flushed with ``executemany`` + ``commit`` rather than one
+    round-trip per file.  The FTS5 rebuild is deferred to a single call after
+    all batches have been committed.
     """
     db_path = ensure_index_db()
     added = updated = removed = scanned = 0
     now_epoch = int(datetime.now(timezone.utc).timestamp())
     seen_local_paths: set[str] = set()
+
+    # Pending batch buffers: (sql, params_list)
+    _insert_batch: list[tuple] = []
+    _update_full_batch: list[tuple] = []
+    _update_path_batch: list[tuple] = []
+    _touch_batch: list[tuple] = []
+    _delete_batch: list[tuple] = []
+
+    def _flush(conn: sqlite3.Connection) -> None:
+        """Flush all pending batch buffers in a single commit."""
+        if _delete_batch:
+            _retry_sqlite_many(conn, _SQL_DELETE_OBS, _delete_batch)
+            _delete_batch.clear()
+        if _touch_batch:
+            _retry_sqlite_many(conn, _SQL_TOUCH_OBS, _touch_batch)
+            _touch_batch.clear()
+        if _update_path_batch:
+            _retry_sqlite_many(conn, _SQL_UPDATE_PATH, _update_path_batch)
+            _update_path_batch.clear()
+        if _update_full_batch:
+            _retry_sqlite_many(conn, _SQL_UPDATE_OBS_FULL, _update_full_batch)
+            _update_full_batch.clear()
+        if _insert_batch:
+            _retry_sqlite_many(conn, _SQL_INSERT_OBS, _insert_batch)
+            _insert_batch.clear()
+        _retry_commit(conn)
+
+    def _maybe_flush(conn: sqlite3.Connection) -> None:
+        total = (
+            len(_insert_batch)
+            + len(_update_full_batch)
+            + len(_update_path_batch)
+            + len(_touch_batch)
+            + len(_delete_batch)
+        )
+        if total >= _SYNC_BATCH_SIZE:
+            _flush(conn)
 
     with _open_db(db_path) as conn:
         for base in _history_dirs():
@@ -471,12 +516,10 @@ def sync_index_from_storage() -> dict[str, int]:
                 if same_path_rows:
                     keep_id = int(same_path_rows[0]["id"])
                     for dup in same_path_rows[1:]:
-                        _retry_sqlite(conn, _SQL_DELETE_OBS, (int(dup["id"]),))
+                        _delete_batch.append((int(dup["id"]),))
                         removed += 1
                     if str(same_path_rows[0]["fingerprint"]) != obs.fingerprint:
-                        _retry_sqlite(
-                            conn,
-                            _SQL_UPDATE_OBS_FULL,
+                        _update_full_batch.append(
                             (
                                 obs.fingerprint,
                                 obs.source_type,
@@ -488,23 +531,22 @@ def sync_index_from_storage() -> dict[str, int]:
                                 obs.created_at_epoch,
                                 now_epoch,
                                 keep_id,
-                            ),
+                            )
                         )
                         updated += 1
                     else:
-                        _retry_sqlite(conn, _SQL_TOUCH_OBS, (now_epoch, keep_id))
+                        _touch_batch.append((now_epoch, keep_id))
+                    _maybe_flush(conn)
                     continue
 
                 # Reconcile by fingerprint to handle renames.
                 row = _retry_sqlite(conn, _SQL_FIND_BY_FP, (obs.fingerprint,)).fetchone()
                 if row:
                     if row["file_path"] != obs.file_path:
-                        _retry_sqlite(conn, _SQL_UPDATE_PATH, (obs.file_path, now_epoch, row["id"]))
+                        _update_path_batch.append((obs.file_path, now_epoch, row["id"]))
                         updated += 1
                 else:
-                    _retry_sqlite(
-                        conn,
-                        _SQL_INSERT_OBS,
+                    _insert_batch.append(
                         (
                             obs.fingerprint,
                             obs.source_type,
@@ -516,28 +558,32 @@ def sync_index_from_storage() -> dict[str, int]:
                             obs.created_at,
                             obs.created_at_epoch,
                             now_epoch,
-                        ),
+                        )
                     )
                     added += 1
+                _maybe_flush(conn)
 
         # Remove stale rows whose backing files have been deleted.
         for row in _retry_sqlite(conn, _SQL_STALE_LOCAL).fetchall():
             if row["file_path"] not in seen_local_paths:
-                _retry_sqlite(conn, _SQL_DELETE_OBS, (row["id"],))
+                _delete_batch.append((row["id"],))
                 removed += 1
 
-        # Rebuild the FTS5 index after bulk DML so the content table stays
-        # consistent.  The 'rebuild' command is transactionally safe under WAL.
+        # Flush any remaining buffered operations.
+        _flush(conn)
+
+        # Rebuild the FTS5 index once after all batches are committed so the
+        # content table stays consistent.  The 'rebuild' command is
+        # transactionally safe under WAL.
         if added or updated or removed:
             try:
                 if _fts5_available(conn, db_path):
                     conn.execute(_SQL_FTS5_REBUILD)
+                    _retry_commit(conn)
             except sqlite3.OperationalError as fts_exc:
                 import logging as _logging
 
                 _logging.getLogger(__name__).warning("FTS5 rebuild failed: %s", fts_exc)
-
-        _retry_commit(conn)
 
     return {"scanned": scanned, "added": added, "updated": updated, "removed": removed}
 

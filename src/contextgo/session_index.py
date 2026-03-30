@@ -1039,6 +1039,14 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
         upsert_batch: list[tuple[Any, ...]] = []
         queued_paths: set[str] = set()
 
+        # --- P0 Fix 1: bulk-load all existing mtime/size into memory to avoid N+1 SELECTs ---
+        existing_meta: dict[str, tuple[int, int]] = {
+            row[0]: (int(row[1]), int(row[2]))
+            for row in _retry_sqlite(
+                conn, "SELECT file_path, file_mtime, file_size FROM session_documents"
+            ).fetchall()
+        }
+
         def _flush_upsert_batch() -> None:
             """Flush the current upsert batch to the database and commit."""
             if upsert_batch:
@@ -1061,8 +1069,10 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
             except FileNotFoundError:
                 continue
 
-            row = _retry_sqlite(conn, _SQL_CHECK_CHANGED, (canonical_path,)).fetchone()
-            if row and int(row[0]) == int(stat.st_mtime) and int(row[1]) == int(stat.st_size):
+            # O(1) in-memory lookup instead of per-file SELECT query.
+            cached = existing_meta.get(canonical_path)
+            row = cached  # truthy when the record already exists
+            if cached and cached[0] == int(stat.st_mtime) and cached[1] == int(stat.st_size):
                 continue
 
             # Pass the already-fetched stat result to avoid redundant syscalls
@@ -1106,21 +1116,34 @@ def sync_session_index(force: bool = False) -> dict[str, int]:
         )
 
         # Remove index entries whose source files no longer exist.
+        # --- P0 Fix 2: use a temporary table + single DELETE to avoid full-scan + Python set-diff ---
         _t_remove_start = time.monotonic()
-        delete_batch: list[tuple[str]] = []
-        for (file_path,) in _retry_sqlite(conn, _SQL_ALL_PATHS).fetchall():
-            if file_path not in seen_paths:
-                delete_batch.append((file_path,))
-                removed += 1
-                if len(delete_batch) >= _BATCH_COMMIT_SIZE:
-                    _retry_sqlite_many(conn, _SQL_DELETE_DOC, delete_batch)
-                    _retry_commit(conn)
-                    _logger.debug("sync_session_index: flushed %d delete rows", len(delete_batch))
-                    delete_batch.clear()
-
-        if delete_batch:
-            _retry_sqlite_many(conn, _SQL_DELETE_DOC, delete_batch)
-            _retry_commit(conn)
+        conn.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS _temp_seen_paths (path TEXT PRIMARY KEY)"
+        )
+        conn.execute("DELETE FROM _temp_seen_paths")
+        # Insert seen paths in batches to avoid SQLite variable limit.
+        seen_list = list(seen_paths)
+        for i in range(0, len(seen_list), _BATCH_COMMIT_SIZE):
+            chunk = seen_list[i : i + _BATCH_COMMIT_SIZE]
+            conn.executemany(
+                "INSERT OR IGNORE INTO _temp_seen_paths(path) VALUES (?)",
+                ((p,) for p in chunk),
+            )
+        # Count stale rows before deletion for the return value.
+        stale_count_row = conn.execute(
+            "SELECT COUNT(*) FROM session_documents"
+            " WHERE file_path NOT IN (SELECT path FROM _temp_seen_paths)"
+        ).fetchone()
+        removed = int(stale_count_row[0]) if stale_count_row else 0
+        if removed:
+            conn.execute(
+                "DELETE FROM session_documents"
+                " WHERE file_path NOT IN (SELECT path FROM _temp_seen_paths)"
+            )
+            _logger.debug("sync_session_index: deleted %d stale rows via temp table", removed)
+        conn.execute("DROP TABLE IF EXISTS _temp_seen_paths")
+        _retry_commit(conn)
 
         _meta_set(conn, "last_sync_epoch", str(now_epoch))
 

@@ -90,6 +90,8 @@ _BM25_CACHE: dict[str, tuple[int, Any]] = {}  # sdb_path -> (row_count, retrieve
 _BM25_CACHE_LOCK = threading.Lock()
 
 # Whitelist of safe path characters for ATTACH DATABASE path validation.
+# Colon (':') is intentionally excluded to block SQLite URI schemes such as
+# "file:///etc/passwd?mode=ro" that could be injected via env vars.
 _SAFE_PATH_CHARS: frozenset[str] = frozenset(
     "abcdefghijklmnopqrstuvwxyz"
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -259,6 +261,14 @@ def embed_pending_session_docs(
         # parameter binding in SQLite.
         if not all(c in _SAFE_PATH_CHARS for c in sdb_str):
             raise ValueError(f"Unsafe characters in database path: {sdb_str}")
+        # Explicit colon guard: blocks SQLite URI schemes (e.g. file:///etc/passwd?mode=ro)
+        # that could be injected via CONTEXTGO_VECTOR_DB_PATH or session_db_path.
+        if ":" in sdb_str:
+            raise ValueError(f"Colon not allowed in database path: {sdb_str}")
+        # Path traversal guard: the resolved path must share the same parent directory.
+        resolved = Path(sdb_str).resolve()
+        if not str(resolved).startswith(str(Path(sdb_str).parent.resolve())):
+            raise ValueError(f"Path traversal detected: {sdb_str}")
         conn.execute(f"ATTACH DATABASE '{sdb_str}' AS sessions")
 
         # Find pending documents

@@ -79,7 +79,8 @@ def _cfg_str(name: str, default: str) -> str:
 
 # Optional remote sync; the default (local-only) path never contacts a server.
 REMOTE_SYNC_URL: str = _cfg_str("REMOTE_URL", default="http://127.0.0.1:8090/api/v1")
-REMOTE_RESOURCE_ENDPOINT: str = f"{REMOTE_SYNC_URL.rstrip('/')}/resources"
+def _remote_resource_endpoint() -> str:
+    return f"{REMOTE_SYNC_URL.rstrip('/')}/resources"
 REMOTE_HISTORY_TARGET: str = "contextgo://resources/shared/history"
 
 # Storage paths
@@ -901,8 +902,7 @@ class SessionTracker:
     # Cursor management
 
     def _cursor_key(self, kind: str, source_name: str, path: Path | str) -> str:
-        digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:10]
-        return f"{kind}:{source_name}:{digest}"
+        return f"{kind}:{source_name}:{str(path)}"
 
     def _get_cursor(self, cursor_key: str, path: Path) -> int:
         """Return the current read offset for *path* (0 on rotation/truncation, size on first encounter)."""
@@ -1536,11 +1536,13 @@ class SessionTracker:
         )
 
         try:
-            fd = os.open(str(file_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            tmp_path = file_path.with_suffix(".tmp")
+            fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
                 os.write(fd, formatted.encode("utf-8"))
             finally:
                 os.close(fd)
+            os.replace(str(tmp_path), str(file_path))
             self._index_dirty = True
             self.maybe_sync_index()
         except OSError as exc:
@@ -1563,7 +1565,7 @@ class SessionTracker:
         }
         try:
             resp = self._http_client.post(
-                REMOTE_RESOURCE_ENDPOINT,
+                _remote_resource_endpoint(),
                 json=payload,
                 timeout=EXPORT_HTTP_TIMEOUT_SEC,
             )
@@ -1634,7 +1636,7 @@ class SessionTracker:
             }
             try:
                 resp = self._http_client.post(
-                    REMOTE_RESOURCE_ENDPOINT,
+                    _remote_resource_endpoint(),
                     json=payload,
                     timeout=PENDING_HTTP_TIMEOUT_SEC,
                 )

@@ -86,7 +86,16 @@ def _write_adapter_file(path: Path, texts: list[str], mtime_epoch: int, meta: di
         if path.read_text(encoding="utf-8") == rendered:
             changed = False
     if changed:
-        path.write_text(rendered, encoding="utf-8")
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp_path.write_text(rendered, encoding="utf-8")
+            with contextlib.suppress(OSError):
+                tmp_path.chmod(0o600)
+            os.replace(str(tmp_path), str(path))
+        except Exception:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
+            raise
     with contextlib.suppress(OSError):
         path.chmod(0o600)
         os.utime(path, (mtime_epoch, mtime_epoch))
