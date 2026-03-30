@@ -251,7 +251,8 @@ class TestHandlerHealth(unittest.TestCase):
         self.assertEqual(h._status_code, 500)
         payload = _parse_json_response(wfile)
         self.assertFalse(payload["ok"])
-        self.assertIn("boom", payload["detail"])
+        # detail field was removed to prevent internal info leakage
+        self.assertNotIn("detail", payload)
 
 
 # ---------------------------------------------------------------------------
@@ -835,7 +836,8 @@ class TestHandlerBatchFetchExtended(unittest.TestCase):
         self.assertEqual(h._status_code, 500)
         payload = _parse_json_response(wfile)
         self.assertFalse(payload["ok"])
-        self.assertIn("db exploded", payload["detail"])
+        # detail field was removed to prevent internal info leakage
+        self.assertNotIn("detail", payload)
 
     def test_batch_with_all_invalid_ids(self) -> None:
         """All IDs are non-integer; parsed_ids is empty list."""
