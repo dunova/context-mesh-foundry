@@ -74,6 +74,7 @@ ContextGO automatically discovers and normalizes supported local sources includi
 - `OpenCode`
 - `Kilo`
 - `OpenClaw`
+- `Antigravity` (Gemini)
 - `zsh` / `bash` shell history
 
 If you install a new supported tool later, you do not need to reconfigure ContextGO.
@@ -464,6 +465,7 @@ contextgo sources
 - `OpenCode`
 - `Kilo`
 - `OpenClaw`
+- `Antigravity`（Gemini）
 - `zsh` / `bash` 终端历史
 
 以后如果你又安装了新的受支持工具，不需要重新配置。下一次执行

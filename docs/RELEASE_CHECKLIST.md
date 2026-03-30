@@ -7,7 +7,7 @@ This checklist must be completed in order for every release. Each step has a def
 ## Phase 1: Pre-release — Code and Configuration Audit
 
 - [ ] **Version file updated.** `VERSION` contains exactly the new version string (e.g. `0.11.0`) with no trailing whitespace or extra lines.
-- [ ] **VERSION references updated in README.** `README.md` version badge and the `## Version` section reference the new version and link to the correct release notes file.
+- [ ] **VERSION references updated in README.** `README.md` version badge and the **Key numbers** line reference the new version. The CHANGELOG link table at the bottom of `CHANGELOG.md` includes a comparison link for the new version.
 - [ ] **CHANGELOG entry added.** `CHANGELOG.md` contains a new section at the top for the new version with date, Story, Added, Changed, Fixed, and Removed subsections as applicable.
 - [ ] **Release notes file created.** `docs/RELEASE_NOTES_<version>.md` exists and contains Highlights, Breaking Changes, New Features, Improvements, Bug Fixes, Performance, Documentation, Contributors, Verification, and Upgrade Path sections.
 - [ ] **No secrets or personal paths in code.** Run `grep -r "REDACTED\|password\|secret\|token\|/Users/\|/home/[a-z]\+" scripts/ native/ benchmarks/` and confirm zero matches on sensitive patterns. Confirm no hardcoded absolute local paths remain.

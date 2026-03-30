@@ -12,6 +12,7 @@ from types import ModuleType
 
 __all__ = [
     "build_parser",
+    "cmd_completion",
     "cmd_export",
     "cmd_health",
     "cmd_import",
@@ -946,6 +947,173 @@ def cmd_shell_init(args: object) -> int:
 
 
 # ───────────────────────────────────────────────
+# Shell completion support
+# ───────────────────────────────────────────────
+
+_BASH_COMPLETION = """\
+# ContextGO bash completion
+# Add to ~/.bashrc or source directly:
+#   source <(contextgo completion bash)
+
+_contextgo_complete() {
+    local cur prev words
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    local commands="search semantic save export import serve maintain native-scan smoke health vector-sync vector-status sources q shell-init completion"
+
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "${commands} --version --help" -- "${cur}") )
+        return 0
+    fi
+
+    case "${prev}" in
+        search|semantic|q)
+            # These take free-form text — no completion
+            ;;
+        --type)
+            COMPREPLY=( $(compgen -W "all event session turn content" -- "${cur}") )
+            ;;
+        --backend)
+            COMPREPLY=( $(compgen -W "auto rust go" -- "${cur}") )
+            ;;
+        --source-type)
+            COMPREPLY=( $(compgen -W "all history conversation" -- "${cur}") )
+            ;;
+        export|import)
+            COMPREPLY=( $(compgen -f -- "${cur}") )
+            ;;
+        completion)
+            COMPREPLY=( $(compgen -W "bash zsh fish" -- "${cur}") )
+            ;;
+    esac
+}
+complete -F _contextgo_complete contextgo
+"""
+
+_ZSH_COMPLETION = """\
+# ContextGO zsh completion
+# Add to ~/.zshrc or source directly:
+#   source <(contextgo completion zsh)
+
+_contextgo() {
+    local -a commands
+    commands=(
+        'search:Search session/history context'
+        'semantic:Semantic search local memories then history fallback'
+        'save:Save key conclusion to local memory'
+        'export:Export indexed observations to JSON'
+        'import:Import observations from JSON'
+        'serve:Start local memory viewer'
+        'maintain:Run local maintenance workflow'
+        'native-scan:Run native Rust/Go scan backend'
+        'smoke:Run end-to-end smoke gate'
+        'health:Check context system health'
+        'vector-sync:Embed pending session docs into vector index'
+        'vector-status:Show vector index statistics'
+        'sources:Show detected source platforms'
+        'q:Quick recall — search or session ID lookup'
+        'shell-init:Print shell integration script'
+        'completion:Print shell completion script'
+    )
+
+    _arguments -C \\
+        '--version[Show version and exit]' \\
+        '--help[Show help]' \\
+        '1: :->command' \\
+        '*: :->args'
+
+    case $state in
+        command)
+            _describe 'contextgo commands' commands ;;
+        args)
+            case $words[2] in
+                search|semantic|q)
+                    _message 'query text' ;;
+                export|import)
+                    _files ;;
+                completion)
+                    _values 'shell' bash zsh fish ;;
+            esac ;;
+    esac
+}
+compdef _contextgo contextgo
+"""
+
+_FISH_COMPLETION = """\
+# ContextGO fish completion
+# Add to ~/.config/fish/completions/contextgo.fish or source directly:
+#   source (contextgo completion fish | psub)
+
+set -l commands search semantic save export import serve maintain native-scan smoke health vector-sync vector-status sources q shell-init completion
+
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a search        -d 'Search session/history context'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a semantic      -d 'Semantic search memories + history fallback'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a save          -d 'Save key conclusion to local memory'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a export        -d 'Export indexed observations to JSON'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a import        -d 'Import observations from JSON'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a serve         -d 'Start local memory viewer'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a maintain      -d 'Run local maintenance workflow'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a native-scan   -d 'Run native Rust/Go scan backend'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a smoke         -d 'Run end-to-end smoke gate'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a health        -d 'Check context system health'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a vector-sync   -d 'Embed pending session docs into vector index'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a vector-status -d 'Show vector index statistics'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a sources       -d 'Show detected source platforms'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a q             -d 'Quick recall — search or session ID lookup'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a shell-init    -d 'Print shell integration script'
+complete -c contextgo -f -n "not __fish_seen_subcommand_from $commands" -a completion    -d 'Print shell completion script'
+
+complete -c contextgo -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish" -d 'Target shell'
+"""
+
+_COMPLETION_SCRIPTS: dict[str, str] = {
+    "bash": _BASH_COMPLETION,
+    "zsh": _ZSH_COMPLETION,
+    "fish": _FISH_COMPLETION,
+}
+
+
+def cmd_completion(args: object) -> int:
+    """Print a shell completion script for bash, zsh, or fish.
+
+    Usage::
+
+        # bash
+        source <(contextgo completion bash)
+        # or add to ~/.bashrc:
+        eval "$(contextgo completion bash)"
+
+        # zsh
+        source <(contextgo completion zsh)
+
+        # fish
+        contextgo completion fish | source
+    """
+    shell = getattr(args, "shell", "").strip().lower()
+    if not shell:
+        print(
+            "Error: shell argument required. Choose: bash, zsh, fish.\n"
+            "  contextgo completion bash\n"
+            "  contextgo completion zsh\n"
+            "  contextgo completion fish\n"
+            "错误：请指定 shell 类型（bash/zsh/fish）。",
+            file=sys.stderr,
+        )
+        return 2
+    script = _COMPLETION_SCRIPTS.get(shell)
+    if script is None:
+        print(
+            f"Error: unsupported shell '{shell}'. Supported: bash, zsh, fish. / "
+            f"错误：不支持的 shell '{shell}'，支持：bash、zsh、fish。",
+            file=sys.stderr,
+        )
+        return 2
+    print(script)
+    return 0
+
+
+# ───────────────────────────────────────────────
 # Command dispatch table
 # ───────────────────────────────────────────────
 
@@ -965,6 +1133,7 @@ COMMANDS: dict[str, object] = {
     "sources": cmd_sources,
     "q": cmd_q,
     "shell-init": cmd_shell_init,
+    "completion": cmd_completion,
 }
 
 
@@ -986,7 +1155,26 @@ def build_parser() -> object:
     import argparse  # deferred: only needed when the parser is first built
 
     parser = argparse.ArgumentParser(
-        description="ContextGO unified CLI (search, viewer, native scan, smoke, and maintenance)."
+        prog="contextgo",
+        description=(
+            "ContextGO — local-first context & memory runtime for AI coding teams.\n"
+            "Local-first context and memory runtime (上下文与记忆运行时).\n\n"
+            "Quick start:\n"
+            "  contextgo q 'how did we fix the auth bug?'   # fast hybrid recall\n"
+            "  contextgo search 'deploy pipeline'            # full-text search\n"
+            "  contextgo save --title 'Fix' --content '...' # save a memory\n"
+            "  contextgo health                              # system health check\n"
+            "  contextgo serve                               # start memory viewer\n"
+            "  eval \"$(contextgo shell-init)\"               # add cg/cgs/cgse aliases"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Run 'contextgo <command> --help' for detailed help on any subcommand.\n"
+            "Environment variables: see .env.example in the project root.\n"
+            "Shell integration: eval \"$(contextgo shell-init)\"\n\n"
+            "Documentation: https://github.com/dunova/ContextGO\n"
+            "Bug reports: https://github.com/dunova/ContextGO/issues"
+        ),
     )
     parser.add_argument(
         "--version",
@@ -994,7 +1182,12 @@ def build_parser() -> object:
         version=f"contextgo {_read_version()}",
         help="Show version and exit",
     )
-    sub = parser.add_subparsers(dest="command", required=False)
+    sub = parser.add_subparsers(
+        dest="command",
+        required=False,
+        metavar="<command>",
+        title="available commands",
+    )
 
     # search
     p = sub.add_parser("search", help="Search session/history context")
@@ -1098,6 +1291,24 @@ def build_parser() -> object:
 
     # shell-init
     sub.add_parser("shell-init", help="Print shell integration script (source or eval)")
+
+    # completion
+    p = sub.add_parser(
+        "completion",
+        help="Print shell completion script for bash, zsh, or fish",
+        description=(
+            "Print a shell completion script for bash, zsh, or fish.\n\n"
+            "Examples:\n"
+            "  source <(contextgo completion bash)     # activate in current bash session\n"
+            "  eval \"$(contextgo completion zsh)\"      # activate in current zsh session\n"
+            "  contextgo completion fish | source      # activate in current fish session\n\n"
+            "To make completions permanent, add the eval line to your shell rc file\n"
+            "(~/.bashrc, ~/.zshrc) or copy the fish output to\n"
+            "~/.config/fish/completions/contextgo.fish."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("shell", choices=["bash", "zsh", "fish"], help="Target shell")
 
     _PARSER = parser
     return _PARSER
