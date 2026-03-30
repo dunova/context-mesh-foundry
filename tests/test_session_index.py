@@ -164,55 +164,47 @@ class SessionIndexTests(unittest.TestCase):
     def test_native_search_rows_when_enabled(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 0
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.extract_matches.return_value = [
+            {
+                "source": "codex_session",
+                "session_id": "abc",
+                "path": "/tmp/a.jsonl",
+                "snippet": "NotebookLM match",
+            }
+        ]
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(
-                session_index.context_native,
-                "run_native_scan",
-                return_value=mock_result,
-            ) as mock_run,
-            mock.patch.object(
-                session_index.context_native,
-                "extract_matches",
-                return_value=[
-                    {
-                        "source": "codex_session",
-                        "session_id": "abc",
-                        "path": "/tmp/a.jsonl",
-                        "snippet": "NotebookLM match",
-                    }
-                ],
-            ),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
         ):
             rows = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["session_id"], "abc")
-        mock_run.assert_called_once()
+        mock_cn.run_native_scan.assert_called_once()
 
     def test_native_search_rows_filters_agents_noise(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 0
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.extract_matches.return_value = [
+            {
+                "source": "codex_session",
+                "session_id": "noise",
+                "path": "/tmp/noise.jsonl",
+                "snippet": "# AGENTS.md instructions for /tmp NotebookLM",
+            },
+            {
+                "source": "codex_session",
+                "session_id": "clean",
+                "path": "/tmp/clean.jsonl",
+                "snippet": "NotebookLM integration decision",
+            },
+        ]
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-            mock.patch.object(
-                session_index.context_native,
-                "extract_matches",
-                return_value=[
-                    {
-                        "source": "codex_session",
-                        "session_id": "noise",
-                        "path": "/tmp/noise.jsonl",
-                        "snippet": "# AGENTS.md instructions for /tmp NotebookLM",
-                    },
-                    {
-                        "source": "codex_session",
-                        "session_id": "clean",
-                        "path": "/tmp/clean.jsonl",
-                        "snippet": "NotebookLM integration decision",
-                    },
-                ],
-            ),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
         ):
             rows = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual([row["session_id"] for row in rows], ["clean"])
@@ -220,18 +212,16 @@ class SessionIndexTests(unittest.TestCase):
     def test_iter_sources_can_use_native_inventory(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 0
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.inventory_items.return_value = [("codex_session", Path("/tmp/native.jsonl"))]
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result) as mock_run,
-            mock.patch.object(
-                session_index.context_native,
-                "inventory_items",
-                return_value=[("codex_session", Path("/tmp/native.jsonl"))],
-            ),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
         ):
             items = session_index._iter_sources()
         self.assertEqual(items, [("codex_session", Path("/tmp/native.jsonl"))])
-        mock_run.assert_called_once()
+        mock_cn.run_native_scan.assert_called_once()
 
     def test_fetch_session_docs_by_paths_skips_duplicates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2050,10 +2040,12 @@ class TestIterSourcesNativeBackend(unittest.TestCase):
         mock_result = mock.Mock()
         mock_result.returncode = 0
         items = [("codex_session", Path("/tmp/native.jsonl"))]
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.inventory_items.return_value = items
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-            mock.patch.object(session_index.context_native, "inventory_items", return_value=items),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
         ):
             session_index._SOURCE_CACHE["expires_at"] = 0.0
             result = session_index._iter_sources()
@@ -2064,9 +2056,11 @@ class TestIterSourcesNativeBackend(unittest.TestCase):
             home = Path(tmpdir)
             zsh = home / ".zsh_history"
             zsh.write_text("ls\n", encoding="utf-8")
+            mock_cn = mock.MagicMock()
+            mock_cn.run_native_scan.side_effect = OSError("no bin")
             with (
                 mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"),
-                mock.patch.object(session_index.context_native, "run_native_scan", side_effect=OSError("no bin")),
+                mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
                 mock.patch.object(session_index, "_home", return_value=home),
             ):
                 session_index._SOURCE_CACHE["expires_at"] = 0.0
@@ -2081,9 +2075,11 @@ class TestIterSourcesNativeBackend(unittest.TestCase):
             bash.write_text("echo hi\n", encoding="utf-8")
             mock_result = mock.Mock()
             mock_result.returncode = 1
+            mock_cn = mock.MagicMock()
+            mock_cn.run_native_scan.return_value = mock_result
             with (
                 mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "rust"),
-                mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
+                mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
                 mock.patch.object(session_index, "_home", return_value=home),
             ):
                 session_index._SOURCE_CACHE["expires_at"] = 0.0
@@ -2099,10 +2095,12 @@ class TestIterSourcesNativeBackend(unittest.TestCase):
             bash.write_text("pwd\n", encoding="utf-8")
             mock_result = mock.Mock()
             mock_result.returncode = 0
+            mock_cn = mock.MagicMock()
+            mock_cn.run_native_scan.return_value = mock_result
+            mock_cn.inventory_items.return_value = []
             with (
                 mock.patch.object(session_index, "EXPERIMENTAL_SYNC_BACKEND", "go"),
-                mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-                mock.patch.object(session_index.context_native, "inventory_items", return_value=[]),
+                mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
                 mock.patch.object(session_index, "_home", return_value=home),
             ):
                 session_index._SOURCE_CACHE["expires_at"] = 0.0
@@ -2231,10 +2229,12 @@ class TestNativeSearchRowsFiltering(unittest.TestCase):
         # Patch NATIVE_NOISE_MARKERS to contain our test marker
         noise_snippet = "this_is_native_noise_xyz snippet text"
         items = [{"snippet": noise_snippet, "source": "native", "session_id": "s1", "path": "/tmp/x.jsonl"}]
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.extract_matches.return_value = items
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-            mock.patch.object(session_index.context_native, "extract_matches", return_value=items),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
             mock.patch.object(session_index, "NATIVE_NOISE_MARKERS", ("this_is_native_noise_xyz",)),
         ):
             result = session_index._native_search_rows("query", limit=10)
@@ -2243,10 +2243,12 @@ class TestNativeSearchRowsFiltering(unittest.TestCase):
     def test_filters_snippets_not_containing_query(self) -> None:
         mock_result = self._make_mock_result(0)
         items = [{"snippet": "unrelated content here", "source": "native", "session_id": "s1", "path": "/tmp/x.jsonl"}]
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.extract_matches.return_value = items
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-            mock.patch.object(session_index.context_native, "extract_matches", return_value=items),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
             mock.patch.object(session_index, "NATIVE_NOISE_MARKERS", ()),
         ):
             result = session_index._native_search_rows("target_query_xyz", limit=10)
@@ -2259,10 +2261,12 @@ class TestNativeSearchRowsFiltering(unittest.TestCase):
             {"snippet": "hello world", "source": "native", "session_id": f"s{i}", "path": f"/tmp/x{i}.jsonl"}
             for i in range(10)
         ]
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.extract_matches.return_value = items
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-            mock.patch.object(session_index.context_native, "extract_matches", return_value=items),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
             mock.patch.object(session_index, "NATIVE_NOISE_MARKERS", ()),
         ):
             result = session_index._native_search_rows("hello", limit=3)
@@ -2602,10 +2606,12 @@ class TestNativeSearchRowsEmptySnippet(unittest.TestCase):
             {"snippet": "", "source": "native", "session_id": "s0", "path": "/tmp/empty.jsonl"},
             {"snippet": "valid content hello", "source": "native", "session_id": "s1", "path": "/tmp/ok.jsonl"},
         ]
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
+        mock_cn.extract_matches.return_value = items
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
-            mock.patch.object(session_index.context_native, "extract_matches", return_value=items),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
             mock.patch.object(session_index, "NATIVE_NOISE_MARKERS", ()),
         ):
             result = session_index._native_search_rows("hello", limit=10)

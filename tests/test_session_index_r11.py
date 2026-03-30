@@ -684,9 +684,11 @@ class TestNativeSearchRowsEmptyQuery(unittest.TestCase):
 
 class TestNativeSearchRowsNativeFailure(unittest.TestCase):
     def test_returns_empty_on_os_error(self) -> None:
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.side_effect = OSError("no binary")
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", side_effect=OSError("no binary")),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
         ):
             result = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual(result, [])
@@ -694,9 +696,11 @@ class TestNativeSearchRowsNativeFailure(unittest.TestCase):
     def test_returns_empty_on_nonzero_returncode(self) -> None:
         mock_result = mock.Mock()
         mock_result.returncode = 1
+        mock_cn = mock.MagicMock()
+        mock_cn.run_native_scan.return_value = mock_result
         with (
             mock.patch.object(session_index, "EXPERIMENTAL_SEARCH_BACKEND", "go"),
-            mock.patch.object(session_index.context_native, "run_native_scan", return_value=mock_result),
+            mock.patch.object(session_index, "_get_context_native", return_value=mock_cn),
         ):
             result = session_index._native_search_rows("NotebookLM", limit=5)
         self.assertEqual(result, [])
