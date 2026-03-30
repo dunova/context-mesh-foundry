@@ -348,6 +348,13 @@ class TestCmdMaintain(unittest.TestCase):
 
 
 class TestCmdSmoke(unittest.TestCase):
+    def setUp(self) -> None:
+        self._path_exists_patcher = mock.patch("pathlib.Path.exists", return_value=True)
+        self._path_exists_patcher.start()
+
+    def tearDown(self) -> None:
+        self._path_exists_patcher.stop()
+
     def test_cmd_smoke_all_pass(self) -> None:
         payload = {
             "summary": {"ok": True, "total": 2},
