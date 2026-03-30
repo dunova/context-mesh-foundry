@@ -262,6 +262,19 @@ contextgo maintain --dry-run        # clean and repair local index
 contextgo serve --port 37677        # start local viewer at 127.0.0.1:37677
 ```
 
+### Shell Integration
+
+```bash
+eval "$(contextgo shell-init)"      # activate cg alias + shell aliases
+contextgo completion bash            # print bash completion script
+contextgo completion zsh             # print zsh completion script
+contextgo completion fish            # print fish completion script
+
+# Make completions permanent:
+#   echo 'eval "$(contextgo completion bash)"' >> ~/.bashrc
+#   echo 'eval "$(contextgo completion zsh)"'  >> ~/.zshrc
+```
+
 ---
 
 ## For AI Agents

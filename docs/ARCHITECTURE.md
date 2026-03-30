@@ -32,7 +32,7 @@ flowchart LR
     end
 
     subgraph Interface
-        CLI["context_cli<br/>search · semantic · save · export · import · serve · maintain · native-scan · smoke · health · vector-sync · vector-status · sources · q · shell-init"]
+        CLI["context_cli<br/>search · semantic · save · export · import · serve · maintain · native-scan · smoke · health · vector-sync · vector-status · sources · q · shell-init · completion"]
         SRV["context_server<br/>local viewer HTTP API"]
     end
 
@@ -136,6 +136,7 @@ ContextGO/
 | `sources` | Show detected source platforms and adapter status / 显示已探测平台与 adapter 状态 |
 | `q` | Quick recall — search or session ID lookup / 快速召回 — 搜索或会话 ID 查询 |
 | `shell-init` | Print shell integration script / 打印 shell 集成脚本 |
+| `completion` | Print shell completion script (bash/zsh/fish) / 打印 shell 补全脚本 |
 
 `context_server.py` and `memory_viewer.py` implement the local HTTP viewer API (see [API.md](API.md)).
 
