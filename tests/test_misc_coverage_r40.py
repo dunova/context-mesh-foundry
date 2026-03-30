@@ -48,7 +48,7 @@ def _exec_main_block(module_obj, stub_name: str, stub_fn):
     # Locate ``if __name__ == "__main__":``
     block_start = None
     for i, line in enumerate(lines):
-        if line.strip() == 'if __name__ == "__main__":':
+        if line.strip().startswith('if __name__ == "__main__":'):
             block_start = i
             break
     if block_start is None:
