@@ -179,7 +179,7 @@ class TestRetrySqliteMany(unittest.TestCase):
             "retry_sqlite_many: database locked, retrying in %.2fs (attempt %d/%d)",
             SQLITE_RETRY_DELAYS[0],
             1,
-            3,
+            5,
         )
 
     @patch("sqlite_retry.time.sleep")
@@ -261,7 +261,7 @@ class TestRetryCommit(unittest.TestCase):
             "retry_commit: database locked, retrying in %.2fs (attempt %d/%d)",
             SQLITE_RETRY_DELAYS[0],
             1,
-            3,
+            5,
         )
 
     @patch("sqlite_retry.time.sleep")
