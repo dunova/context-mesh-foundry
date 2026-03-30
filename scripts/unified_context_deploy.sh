@@ -239,17 +239,6 @@ patches = [
             ),
         },
     ),
-    (
-        template_dir / 'com.contextgo.auto-update.plist',
-        launch / 'com.contextgo.auto-update.plist',
-        ['/bin/bash', str(script_dir / 'auto_update.sh')],
-        None,
-        {
-            'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
-            'CONTEXTGO_REPO_DIR': str(home / 'ContextGO'),
-            'CONTEXTGO_LOG_DIR': str(home / '.contextgo' / 'logs'),
-        },
-    ),
 ]
 
 for template_path, plist_path, args, wd, extra_env in patches:
@@ -287,7 +276,7 @@ from pathlib import Path
 
 home = Path.home()
 uid_num = os.environ["UID_NUM"]
-labels = ["com.contextgo.daemon", "com.contextgo.healthcheck", "com.contextgo.auto-update"]
+labels = ["com.contextgo.daemon", "com.contextgo.healthcheck"]
 
 
 def run(cmd, timeout=8):
