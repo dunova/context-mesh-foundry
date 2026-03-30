@@ -9,9 +9,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.11.8] — 2026-03-30
 
-_No unreleased changes._
+### Changed / 变更
+- **Repository cleanup / 仓库清理**: Moved 6 non-core utility scripts from `src/contextgo/` to `scripts/` — autoresearch_contextgo.py, check_noise_sync.py, export_memories.py, memory_hit_first_regression.py, smoke_installed_cli.py, smoke_installed_runtime.py / 6个非核心脚本移至scripts/
+- **Coverage reporting / 覆盖率优化**: Exclude `__main__.py` entry point from coverage metrics (entry-point-only code) / 从覆盖率指标中排除纯入口文件
+
+### Fixed / 修复
+- **v0.11.7 mock pattern fix / Mock模式修复**: Fixed 5 test failures caused by `__getattr__` lazy module caching — all tests now mock `_get_*` getter functions directly / 修复延迟加载模块缓存导致的测试失败
+- **Test path regression / 测试路径回归**: Fixed `parents[1]` → `parents[2]` for tests moved to `tests/regression/` subdirectory / 适配regression子目录的路径索引
+
+---
+
+## [0.11.7] — 2026-03-30
+
+### Added / 新增
+- **Quick recall command `contextgo q` / 快速搜索**: Unified fast search entry — auto-routes between hybrid search and session ID lookup / 统一快速搜索入口，自动路由搜索和会话ID查找
+- **Shell integration `contextgo shell-init` / Shell集成**: `eval "$(contextgo shell-init)"` adds `cg`/`cgs`/`cgse` aliases / 一行命令添加快捷别名
+- **Search result highlighting / 搜索高亮**: ANSI bold highlighting of query terms in search results (TTY only) / 终端搜索结果关键词高亮
+- **`python -m contextgo` entry point / 模块入口**: `__main__.py` for running as Python module / 支持python -m方式运行
+- **Package data relocation / 包数据迁移**: `noise_markers.json` moved to `src/contextgo/data/` for proper wheel packaging / 噪声配置文件随包分发
+- **Documentation suite / 文档套件**: FAQ.md, MIGRATION.md, docs/index.md (bilingual) / 新增FAQ、迁移指南、文档索引
+- **Session ID lookup / 会话ID查找**: `lookup_session_by_id()` public API for prefix-based session retrieval / 按ID前缀快速查找会话
+
+### Changed / 变更
+- **Type annotations / 类型标注**: All 16 `cmd_*` functions now use `argparse.Namespace` instead of `object` / CLI函数类型标注升级
+- **sdist completeness / 源码包完整性**: Added `/native`, `/benchmarks`, `/CONTRIBUTING.md`, `/SECURITY.md` to sdist includes / 源码包包含更多文件
+- **Go module path fix / Go模块路径**: `session_scan_go` module path updated to canonical GitHub path / Go模块路径修正
 
 ---
 

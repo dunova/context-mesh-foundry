@@ -174,7 +174,7 @@ addopts = [
 
 [tool.coverage.run]
 source = ["src/contextgo"]
-omit = ["tests/test_*.py", "tests/*_test.py"]
+omit = ["tests/test_*.py", "tests/*_test.py", "src/contextgo/__main__.py"]
 branch = true
 
 [tool.coverage.report]
