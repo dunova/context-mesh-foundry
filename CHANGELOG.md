@@ -15,6 +15,26 @@ _No unreleased changes._
 
 ---
 
+## [0.11.2] — 2026-03-30
+
+### Fixed / 修复
+- **[Go P0] sync.Pool buffer aliasing / 缓冲区别名**: Fixed pool buffer to use fixed 32MB allocation; Scanner never grows, pool reuse now effective / 修复缓冲池别名问题，Scanner永不增长，池化真正有效
+- **[Rust P1] active_workdir per-file syscall / 每文件重复syscall**: Computed once at scan entry, passed to all parallel workers / 在扫描入口计算一次，传入所有并行worker
+- **[Rust P1] ASCII fast-path heap allocation / ASCII快路径堆分配**: Replaced `Vec<u8>` lowercase copy with `eq_ignore_ascii_case` zero-alloc comparison / 用零分配比较替代Vec复制
+- **[Go P1] unconditional lineStr allocation / 无条件字符串分配**: Deferred string conversion to JSON-parse-failure path only / 延迟到JSON解析失败时才转换
+- **[Go P1] IsNoiseLower strings.Split on single lines / 单行Split**: Added newline check before Split to avoid allocation in common case / 单行时跳过Split
+- **[Python] wheel force-include "scripts" removed / 移除重复打包**: Eliminated duplicate `scripts` package from wheel distribution / 消除wheel中重复的scripts包
+- **[CI] safety scan scope / 安全扫描范围**: Changed from `requirements.txt` to `pip freeze` for full dependency coverage / 全量依赖扫描
+- **[CI] release.yml concurrency / 发布并发保护**: Added concurrency group to prevent duplicate releases / 防止重复发布
+- **[Python] memory_viewer db_name leak / 信息泄露**: Filtered `db_name` from `/api/health` and SSE responses / 过滤健康接口中的数据库路径信息
+
+### Changed / 变更
+- **pyproject.toml**: Added `numpy>=1.24` to dev extras; removed incorrect `Libraries` classifier / dev依赖补充numpy，移除错误分类
+- **Makefile**: Updated mypy/py_compile targets to scan `src/contextgo/` / 更新扫描路径
+- **docs/TROUBLESHOOTING.md**: Fixed stale `context_cli serve` → `contextgo serve` / 修复过期命令名
+
+---
+
 ## [0.11.1] — 2026-03-30
 
 ### Fixed / 修复
