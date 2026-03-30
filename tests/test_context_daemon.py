@@ -378,9 +378,8 @@ class TestCursorKey(unittest.TestCase):
     def test_cursor_key_format(self) -> None:
         key = self.tracker._cursor_key("jsonl", "claude_code", "/home/user/.claude/history.jsonl")
         self.assertTrue(key.startswith("jsonl:claude_code:"))
-        # digest should be 10 hex chars
-        digest = key.split(":")[-1]
-        self.assertEqual(len(digest), 10)
+        # key now uses plain path string instead of sha256 digest
+        self.assertEqual(key, "jsonl:claude_code:/home/user/.claude/history.jsonl")
 
     def test_different_paths_produce_different_keys(self) -> None:
         k1 = self.tracker._cursor_key("jsonl", "claude_code", "/path/a")

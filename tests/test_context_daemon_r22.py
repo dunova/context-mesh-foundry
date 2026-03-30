@@ -847,14 +847,10 @@ class TestCursorKey(unittest.TestCase):
         self.assertNotEqual(k1, k2)
 
     def test_key_format_matches_expected_pattern(self) -> None:
-        """Key follows kind:source:digest format."""
+        """Key follows kind:source:path format."""
         p = Path("/some/path/file.jsonl")
         k = self.tracker._cursor_key("shell", "shell_zsh", p)
-        parts = k.split(":")
-        self.assertEqual(len(parts), 3)
-        self.assertEqual(parts[0], "shell")
-        self.assertEqual(parts[1], "shell_zsh")
-        self.assertEqual(len(parts[2]), 10)
+        self.assertEqual(k, "shell:shell_zsh:/some/path/file.jsonl")
 
 
 # ---------------------------------------------------------------------------
