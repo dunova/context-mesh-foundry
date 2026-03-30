@@ -41,13 +41,11 @@ class ContextCliTests(unittest.TestCase):
 
     def test_semantic_falls_back_to_session_index(self) -> None:
         args = context_cli.build_parser().parse_args(["semantic", "foo", "--limit", "2"])
+        si_mock = mock.Mock()
+        si_mock.format_search_results.return_value = "Found 1 sessions\nSession: abc"
         with (
             mock.patch.object(context_cli, "_local_memory_matches", return_value=[]),
-            mock.patch.object(
-                context_cli.session_index,
-                "format_search_results",
-                return_value="Found 1 sessions\nSession: abc",
-            ),
+            mock.patch.object(context_cli, "_get_session_index", return_value=si_mock),
             mock.patch("builtins.print") as mock_print,
         ):
             rc = context_cli.run(args)
@@ -123,13 +121,15 @@ class ContextCliTests(unittest.TestCase):
         result.returncode = 0
         result.stdout = "native ok\n"
         result.stderr = ""
+        native_mock = mock.Mock()
+        native_mock.run_native_scan.return_value = result
         with (
-            mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result) as mock_run,
+            mock.patch.object(context_cli, "_get_context_native", return_value=native_mock),
             mock.patch("builtins.print") as mock_print,
         ):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
-        mock_run.assert_called_once_with(
+        native_mock.run_native_scan.assert_called_once_with(
             backend="go",
             codex_root=None,
             claude_root=None,
@@ -151,8 +151,10 @@ class ContextCliTests(unittest.TestCase):
         result.stdout = 'Compiling...\n{"matches":[{"session_id":"abc"}],"errors":[]}\n'
         result.stderr = "build noise\n"
         result.json_payload.return_value = {"matches": [{"session_id": "abc"}], "errors": []}
+        native_mock = mock.Mock()
+        native_mock.run_native_scan.return_value = result
         with (
-            mock.patch.object(context_cli.context_native, "run_native_scan", return_value=result),
+            mock.patch.object(context_cli, "_get_context_native", return_value=native_mock),
             mock.patch("builtins.print") as mock_print,
             mock.patch("sys.stderr") as mock_stderr,
         ):
@@ -169,14 +171,16 @@ class ContextCliTests(unittest.TestCase):
             "summary": {"status": "pass"},
             "results": [{"name": "health", "ok": True, "rc": 0, "detail": {"x": 1}}],
         }
+        smoke_mock = mock.Mock()
+        smoke_mock.run_smoke.return_value = payload
         with (
             mock.patch("pathlib.Path.exists", return_value=True),
-            mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload) as mock_run,
+            mock.patch.object(context_cli, "_get_context_smoke", return_value=smoke_mock),
             mock.patch("builtins.print") as mock_print,
         ):
             rc = context_cli.run(args)
         self.assertEqual(rc, 0)
-        mock_run.assert_called_once()
+        smoke_mock.run_smoke.assert_called_once()
         printed = "\n".join(" ".join(str(x) for x in call.args) for call in mock_print.call_args_list)
         self.assertIn('"health"', printed)
         self.assertNotIn('"x"', printed)
@@ -187,9 +191,11 @@ class ContextCliTests(unittest.TestCase):
             "summary": {"status": "pass"},
             "results": [{"name": "health", "ok": True, "rc": 0, "detail": {"x": 1}}],
         }
+        smoke_mock = mock.Mock()
+        smoke_mock.run_smoke.return_value = payload
         with (
             mock.patch("pathlib.Path.exists", return_value=True),
-            mock.patch.object(context_cli.context_smoke, "run_smoke", return_value=payload),
+            mock.patch.object(context_cli, "_get_context_smoke", return_value=smoke_mock),
             mock.patch("builtins.print") as mock_print,
         ):
             rc = context_cli.run(args)
@@ -199,21 +205,19 @@ class ContextCliTests(unittest.TestCase):
 
     def test_health_subcommand_compacts_payload_by_default(self) -> None:
         args = context_cli.build_parser().parse_args(["health"])
+        si_mock = mock.Mock()
+        si_mock.health_payload.return_value = {
+            "session_index_db_exists": True,
+            "total_sessions": 7,
+            "session_index_db": "/tmp/session.db",
+            "sync": {"scanned": 1},
+        }
+        native_mock = mock.Mock()
+        native_mock.health_payload.return_value = {"available_backends": ["go"]}
         with (
-            mock.patch.object(
-                context_cli.session_index,
-                "health_payload",
-                return_value={
-                    "session_index_db_exists": True,
-                    "total_sessions": 7,
-                    "session_index_db": "/tmp/session.db",
-                    "sync": {"scanned": 1},
-                },
-            ),
+            mock.patch.object(context_cli, "_get_session_index", return_value=si_mock),
             mock.patch.object(context_cli, "_source_freshness", return_value={"x": 1}),
-            mock.patch.object(
-                context_cli.context_native, "health_payload", return_value={"available_backends": ["go"]}
-            ),
+            mock.patch.object(context_cli, "_get_context_native", return_value=native_mock),
             mock.patch("builtins.print") as mock_print,
         ):
             rc = context_cli.run(args)
@@ -224,21 +228,19 @@ class ContextCliTests(unittest.TestCase):
 
     def test_health_subcommand_verbose_prints_full_payload(self) -> None:
         args = context_cli.build_parser().parse_args(["health", "--verbose"])
+        si_mock = mock.Mock()
+        si_mock.health_payload.return_value = {
+            "session_index_db_exists": True,
+            "total_sessions": 7,
+            "session_index_db": "/tmp/session.db",
+            "sync": {"scanned": 1},
+        }
+        native_mock = mock.Mock()
+        native_mock.health_payload.return_value = {"available_backends": ["go"]}
         with (
-            mock.patch.object(
-                context_cli.session_index,
-                "health_payload",
-                return_value={
-                    "session_index_db_exists": True,
-                    "total_sessions": 7,
-                    "session_index_db": "/tmp/session.db",
-                    "sync": {"scanned": 1},
-                },
-            ),
+            mock.patch.object(context_cli, "_get_session_index", return_value=si_mock),
             mock.patch.object(context_cli, "_source_freshness", return_value={"x": 1}),
-            mock.patch.object(
-                context_cli.context_native, "health_payload", return_value={"available_backends": ["go"]}
-            ),
+            mock.patch.object(context_cli, "_get_context_native", return_value=native_mock),
             mock.patch("builtins.print") as mock_print,
         ):
             rc = context_cli.run(args)
