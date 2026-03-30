@@ -289,13 +289,8 @@ class ContextCliTests(unittest.TestCase):
         self.assertIn('"platform": "opencode"', printed)
 
     def test_package_import_context_cli(self) -> None:
-        sys.path.insert(0, str(SCRIPT_DIR.parent))
-        try:
-            mod = importlib.import_module("scripts.context_cli")
-            self.assertTrue(callable(mod.main))
-        finally:
-            if str(SCRIPT_DIR.parent) in sys.path:
-                sys.path.remove(str(SCRIPT_DIR.parent))
+        mod = importlib.import_module("contextgo.context_cli")
+        self.assertTrue(callable(mod.main))
 
     def test_configure_viewer_module_prefers_apply_runtime_config(self) -> None:
         class Viewer:

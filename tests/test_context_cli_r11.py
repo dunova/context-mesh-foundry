@@ -672,9 +672,9 @@ class TestLazyImportFallbacks(unittest.TestCase):
         fake_mod = mock.MagicMock()
 
         # We mock the relative import by patching sys.modules for the package path.
-        import scripts  # noqa: F401
+        import contextgo  # noqa: F401
 
-        pkg_key = f"scripts.{module_name}"
+        pkg_key = f"contextgo.{module_name}"
         orig = sys.modules.get(pkg_key)
         sys.modules[pkg_key] = fake_mod
         try:
