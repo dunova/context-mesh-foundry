@@ -927,6 +927,10 @@ class SessionIndexParserTests(unittest.TestCase):
                 conn.commit()
                 conn.close()
 
+                # Mark adapter dirty so the throttle check sees a recent
+                # change and allows the non-forced re-sync to proceed.
+                source_adapters._mark_dirty(root)
+
                 second = session_index.sync_session_index(force=False)
                 self.assertEqual(second["added"], 1)
 
