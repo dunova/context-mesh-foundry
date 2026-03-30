@@ -204,11 +204,19 @@ def _load_noise_config() -> dict[str, list[str]]:
         "text_noise_lower_markers",
         "noise_prefixes",
     )
-    config_path = Path(__file__).parent.parent / "config" / "noise_markers.json"
-    if config_path.exists():
-        with open(config_path) as fh:
-            data = json.load(fh)
-        return {k: list(data.get(k, [])) for k in _keys}
+    # Search multiple candidate locations for the config file:
+    # 1. Installed package: src/contextgo/../config/ → src/config/ (hatch force-include)
+    # 2. Repository root: src/contextgo/../../config/ → config/
+    _here = Path(__file__).resolve().parent
+    candidates = [
+        _here.parent / "config" / "noise_markers.json",         # pip-installed (force-include)
+        _here.parent.parent / "config" / "noise_markers.json",  # in-repo: config/ at project root
+    ]
+    for config_path in candidates:
+        if config_path.exists():
+            with open(config_path) as fh:
+                data = json.load(fh)
+            return {k: list(data.get(k, [])) for k in _keys}
     return {k: [] for k in _keys}
 
 
