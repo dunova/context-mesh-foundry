@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import sqlite3
+import tempfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,9 +90,11 @@ def _write_adapter_file(path: Path, texts: list[str], mtime_epoch: int, meta: di
         if path.read_text(encoding="utf-8") == rendered:
             changed = False
     if changed:
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        tmp_path = Path(tmp_name)
         try:
-            tmp_path.write_text(rendered, encoding="utf-8")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(rendered)
             with contextlib.suppress(OSError):
                 tmp_path.chmod(0o600)
             os.replace(str(tmp_path), str(path))
@@ -144,7 +147,7 @@ def _resolve_existing(candidates: list[Path]) -> Path | None:
 def _iso_or_none(epoch: float | None) -> str | None:
     if epoch is None:
         return None
-    return datetime.fromtimestamp(epoch).isoformat()
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
 
 
 def _normalize_text_value(value: Any) -> str | None:
@@ -161,7 +164,7 @@ def _normalize_text_value(value: Any) -> str | None:
     return text
 
 
-def _extract_text_fragments(value: Any) -> list[str]:
+def _extract_text_fragments(value: Any, *, _max_depth: int = 20) -> list[str]:
     texts: list[str] = []
     seen: set[str] = set()
 
@@ -173,15 +176,15 @@ def _extract_text_fragments(value: Any) -> list[str]:
         seen.add(text)
         texts.append(text)
 
-    def walk(node: Any) -> None:
-        if node is None:
+    def walk(node: Any, depth: int = 0) -> None:
+        if depth > _max_depth or node is None:
             return
         if isinstance(node, str):
             add(_normalize_text_value(node))
             return
         if isinstance(node, list):
             for item in node:
-                walk(item)
+                walk(item, depth + 1)
             return
         if not isinstance(node, dict):
             return
@@ -193,7 +196,7 @@ def _extract_text_fragments(value: Any) -> list[str]:
             add(_normalize_text_value(node.get(key)))
         for key in ("content", "parts", "messages", "items", "payload", "data", "state", "response"):
             if key in node:
-                walk(node[key])
+                walk(node[key], depth + 1)
 
     walk(value)
     return texts
@@ -232,13 +235,23 @@ def _openclaw_session_candidates(home: Path) -> list[Path]:
     return sorted(matches)
 
 
+_ALLOWED_EXTENSION_IDS = frozenset({
+    "saoudrizwan.claude-dev",
+    "rooveterinaryinc.roo-cline",
+})
+
+
 def _cline_family_task_roots(home: Path, extension_id: str) -> list[Path]:
     """Return existing task root directories for a Cline-family VS Code extension."""
-    candidates = [
-        home / "Library" / "Application Support" / "Code" / "User" / "globalStorage" / extension_id / "tasks",
-        home / ".config" / "Code" / "User" / "globalStorage" / extension_id / "tasks",
-        home / ".vscode-server" / "data" / "User" / "globalStorage" / extension_id / "tasks",
-    ]
+    if extension_id not in _ALLOWED_EXTENSION_IDS:
+        _logger.warning("_cline_family_task_roots: unknown extension_id %r", extension_id)
+        return []
+    code_variants = ("Code", "Code - Insiders", "VSCodium", "Code - OSS")
+    candidates: list[Path] = []
+    for variant in code_variants:
+        candidates.append(home / "Library" / "Application Support" / variant / "User" / "globalStorage" / extension_id / "tasks")
+        candidates.append(home / ".config" / variant / "User" / "globalStorage" / extension_id / "tasks")
+    candidates.append(home / ".vscode-server" / "data" / "User" / "globalStorage" / extension_id / "tasks")
     return [p for p in candidates if p.is_dir()]
 
 
@@ -246,7 +259,6 @@ def _continue_session_roots(home: Path) -> list[Path]:
     """Return existing Continue.dev session directories."""
     candidates = [
         home / ".continue" / "sessions",
-        home / "Library" / "Application Support" / "Continue" / "sessions",
     ]
     return [p for p in candidates if p.is_dir()]
 
@@ -254,40 +266,81 @@ def _continue_session_roots(home: Path) -> list[Path]:
 def _zed_conversation_roots(home: Path) -> list[Path]:
     """Return existing Zed conversation directories."""
     candidates = [
-        home / "Library" / "Application Support" / "Zed" / "conversations",
         home / ".config" / "zed" / "conversations",
+        home / ".local" / "share" / "zed" / "conversations",
+        home / "Library" / "Application Support" / "Zed" / "conversations",
     ]
     return [p for p in candidates if p.is_dir()]
+
+
+_MAX_AIDER_SCAN_DEPTH = 5
+_MAX_AIDER_FILES = 50
+
+
+def _aider_walk_limited(root: Path, max_depth: int) -> list[Path]:
+    """Walk directories up to max_depth looking for .aider.chat.history.md, skipping symlinks."""
+    results: list[Path] = []
+    try:
+        for entry in root.iterdir():
+            if entry.is_symlink():
+                continue
+            if entry.name == ".aider.chat.history.md" and entry.is_file():
+                results.append(entry)
+            elif entry.is_dir() and max_depth > 0 and not entry.name.startswith("."):
+                results.extend(_aider_walk_limited(entry, max_depth - 1))
+            if len(results) >= _MAX_AIDER_FILES * 2:
+                break
+    except OSError:
+        pass
+    return results
 
 
 def _aider_history_candidates(home: Path) -> list[Path]:
     """Find .aider.chat.history.md files in common project directories."""
     matches: list[Path] = []
+    # Check home root (user running aider directly in ~)
+    root_hist = home / ".aider.chat.history.md"
+    if root_hist.is_file() and not root_hist.is_symlink():
+        matches.append(root_hist)
     scan_roots = [home]
     for name in ("Projects", "projects", "code", "Code", "dev", "src", "repos", "work"):
         candidate = home / name
-        if candidate.is_dir():
+        if candidate.is_dir() and not candidate.is_symlink():
             scan_roots.append(candidate)
     for root in scan_roots:
         try:
             if root == home:
                 for child in root.iterdir():
-                    if child.is_dir() and not child.name.startswith("."):
+                    if child.is_dir() and not child.name.startswith(".") and not child.is_symlink():
                         hist = child / ".aider.chat.history.md"
                         if hist.is_file():
                             matches.append(hist)
             else:
-                matches.extend(root.rglob(".aider.chat.history.md"))
+                matches.extend(_aider_walk_limited(root, _MAX_AIDER_SCAN_DEPTH))
         except OSError:
             continue
-    return sorted(matches, key=lambda p: _safe_mtime(p), reverse=True)[:50]
+    seen: set[str] = set()
+    deduped: list[Path] = []
+    for p in matches:
+        key = str(p.resolve())
+        if key not in seen:
+            seen.add(key)
+            deduped.append(p)
+    return sorted(deduped, key=lambda p: _safe_mtime(p), reverse=True)[:_MAX_AIDER_FILES]
+
+
+_ALLOWED_APP_NAMES = frozenset({"Cursor", "Windsurf"})
 
 
 def _vscdb_workspace_roots(home: Path, app_name: str) -> list[Path]:
     """Return existing workspaceStorage directories for a VS Code fork (Cursor, Windsurf)."""
+    if app_name not in _ALLOWED_APP_NAMES:
+        _logger.warning("_vscdb_workspace_roots: unknown app_name %r", app_name)
+        return []
     candidates = [
         home / "Library" / "Application Support" / app_name / "User" / "workspaceStorage",
         home / ".config" / app_name / "User" / "workspaceStorage",
+        home / ".config" / app_name.lower() / "User" / "workspaceStorage",
     ]
     return [p for p in candidates if p.is_dir()]
 
@@ -486,7 +539,11 @@ def _sync_cline_family_sessions(home: Path, extension_id: str, source_type: str)
 
     for tasks_dir in task_roots:
         detected = True
-        for task_dir in sorted(tasks_dir.iterdir()):
+        try:
+            task_entries = sorted(tasks_dir.iterdir())
+        except OSError:
+            continue
+        for task_dir in task_entries:
             if not task_dir.is_dir():
                 continue
             history_file = task_dir / "api_conversation_history.json"
@@ -674,10 +731,14 @@ def _sync_aider_sessions(home: Path) -> dict[str, object]:
         chunks: list[str] = []
         current: list[str] = []
         for line in raw.splitlines():
-            if line.startswith("####") or (line.strip() == "---" and current):
+            if line.startswith("####"):
                 if current:
                     chunks.append("\n".join(current).strip())
-                    current = []
+                # Keep the #### line itself (contains role info like "#### user" / "#### assistant")
+                current = [line]
+            elif line.strip() == "---" and current:
+                chunks.append("\n".join(current).strip())
+                current = []
             else:
                 current.append(line)
         if current:
@@ -722,13 +783,22 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
     changed = False
     detected = False
 
-    _CHAT_KEY_PATTERNS = ("%chat%", "%conversation%", "%Cascade%", "%aiChat%")
-
     for ws_root in ws_roots:
         detected = True
-        for ws_dir in sorted(ws_root.iterdir()):
+        try:
+            ws_dirs = sorted(ws_root.iterdir())
+        except OSError:
+            continue
+        for ws_dir in ws_dirs:
             vscdb = ws_dir / "state.vscdb"
             if not vscdb.is_file():
+                continue
+            # Skip very large vscdb files (>200MB)
+            try:
+                if vscdb.stat().st_size > 200 * 1024 * 1024:
+                    _logger.debug("_sync_vscdb_sessions: skipping large file %s", vscdb)
+                    continue
+            except OSError:
                 continue
             texts: list[str] = []
             workspace_name = ws_dir.name
@@ -738,15 +808,16 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
                     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
                     if "ItemTable" not in tables:
                         continue
-                    for pattern in _CHAT_KEY_PATTERNS:
-                        rows = conn.execute("SELECT key, value FROM ItemTable WHERE key LIKE ?", (pattern,)).fetchall()
-                        for _key, value in rows:
-                            if not isinstance(value, str) or len(value) < 10:
-                                continue
-                            with contextlib.suppress(json.JSONDecodeError, TypeError):
-                                texts.extend(_extract_text_fragments(json.loads(value)))
+                    chat_patterns = ("%chat%", "%conversation%", "%Cascade%", "%cascade%", "%aiChat%", "%aichat%", "%composer%")
+                    where_clause = " OR ".join("key LIKE ?" for _ in chat_patterns)
+                    rows = conn.execute(f"SELECT key, value FROM ItemTable WHERE {where_clause} LIMIT 200", chat_patterns).fetchall()
+                    for _key, value in rows:
+                        if not isinstance(value, str) or not (10 <= len(value) <= 10_000_000):
+                            continue
+                        with contextlib.suppress(json.JSONDecodeError, TypeError):
+                            texts.extend(_extract_text_fragments(json.loads(value)))
             except (sqlite3.Error, OSError) as exc:
-                _logger.debug("_sync_vscdb_sessions: %s/%s: %s", app_name, workspace_name, exc)
+                _logger.warning("_sync_vscdb_sessions: %s/%s: %s", app_name, workspace_name, exc)
                 continue
             if not texts:
                 continue
@@ -754,7 +825,7 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
             title = f"{app_name}: {workspace_name}"
             texts.insert(0, f"[title] {title}")
             mtime = max(1, int(_safe_mtime(vscdb)))
-            out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(app_name, 'workspace')}.jsonl"
+            out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(workspace_name, 'workspace')}.jsonl"
             out_changed = _write_adapter_file(
                 out_path, texts, mtime,
                 meta={"session_id": sid, "title": title, "source_type": source_type},
@@ -822,9 +893,10 @@ _ALL_ADAPTER_TYPES = (
 )
 
 
-def discover_index_sources(home: Path | None = None) -> list[tuple[str, Path]]:
+def discover_index_sources(home: Path | None = None, *, _skip_sync: bool = False) -> list[tuple[str, Path]]:
     current_home = home or _home()
-    sync_all_adapters(current_home)
+    if not _skip_sync:
+        sync_all_adapters(current_home)
     discovered: list[tuple[str, Path]] = []
 
     for source_type, root in [
@@ -873,11 +945,14 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
     current_home = home or _home()
     adapter_stats = sync_all_adapters(current_home)
     openclaw_sessions = _openclaw_session_candidates(current_home)
-    antigravity_candidates = sorted(
-        (current_home / ".gemini" / "antigravity" / "brain").glob("*/walkthrough.md"),
-        key=lambda p: p.stat().st_mtime if p.exists() else 0.0,
-        reverse=True,
-    )
+    try:
+        antigravity_candidates = sorted(
+            (current_home / ".gemini" / "antigravity" / "brain").glob("*/walkthrough.md"),
+            key=lambda p: _safe_mtime(p),
+            reverse=True,
+        )
+    except OSError:
+        antigravity_candidates = []
 
     sources: dict[str, Path | None] = {
         "codex_history": _resolve_existing([current_home / ".codex" / "history.jsonl"]),
@@ -935,7 +1010,7 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
 def source_inventory(home: Path | None = None) -> dict[str, object]:
     current_home = home or _home()
     adapter_stats = sync_all_adapters(current_home)
-    discovered = discover_index_sources(current_home)
+    discovered = discover_index_sources(current_home, _skip_sync=True)
     by_type: dict[str, list[str]] = defaultdict(list)
     for source_type, path in discovered:
         by_type[source_type].append(str(path))

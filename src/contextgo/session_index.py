@@ -319,24 +319,30 @@ CJK_STOPWORDS: frozenset[str] = frozenset(
 )
 
 SOURCE_WEIGHT: dict[str, int] = {
+    # Primary sessions (native JSONL)
     "codex_session": 40,
     "claude_session": 40,
+    # Adapter sessions (normalized JSONL)
     "opencode_session": 36,
     "kilo_session": 36,
     "openclaw_session": 36,
-    "codex_history": 8,
-    "claude_history": 8,
-    "opencode_history": 6,
-    "kilo_history": 6,
-    "shell_zsh": 2,
-    "shell_bash": 2,
     "cline_session": 36,
     "roo_session": 36,
     "continue_session": 34,
     "zed_session": 34,
-    "aider_session": 30,
     "cursor_session": 32,
     "windsurf_session": 32,
+    "aider_session": 30,
+    # Native backend fallback
+    "native_session": 35,
+    # History files
+    "codex_history": 8,
+    "claude_history": 8,
+    "opencode_history": 6,
+    "kilo_history": 6,
+    # Shell
+    "shell_zsh": 2,
+    "shell_bash": 2,
 }
 
 # In-process cache for source-file discovery results.
@@ -814,15 +820,15 @@ def _parse_generic_session_jsonl(
             seen.add(text)
             texts.append(text)
 
-        def walk(value: Any) -> None:
-            if value is None:
+        def walk(value: Any, depth: int = 0) -> None:
+            if depth > 20 or value is None:
                 return
             if isinstance(value, str):
                 add(value)
                 return
             if isinstance(value, list):
                 for item in value:
-                    walk(item)
+                    walk(item, depth + 1)
                 return
             if not isinstance(value, dict):
                 return
@@ -833,7 +839,7 @@ def _parse_generic_session_jsonl(
                 add(value.get(key))
             for key in ("content", "parts", "messages", "items", "payload", "data", "state", "response"):
                 if key in value:
-                    walk(value[key])
+                    walk(value[key], depth + 1)
 
         walk(node)
         return texts
@@ -912,7 +918,10 @@ def _parse_source(source_type: str, path: Path, file_stat: os.stat_result | None
         return _parse_codex_session(path, file_stat)
     if source_type == "claude_session":
         return _parse_claude_session(path, file_stat)
-    if source_type in {"opencode_session", "kilo_session", "openclaw_session", "cline_session", "roo_session", "continue_session", "zed_session", "aider_session", "cursor_session", "windsurf_session"} and path.suffix == ".jsonl":
+    if source_type in {"opencode_session", "kilo_session", "openclaw_session", "cline_session", "roo_session", "continue_session", "zed_session", "aider_session", "cursor_session", "windsurf_session"}:
+        if path.suffix != ".jsonl":
+            _logger.warning("_parse_source: expected .jsonl for %s, got %s — skipping %s", source_type, path.suffix, path)
+            return None
         return _parse_generic_session_jsonl(path, source_type, file_stat)
     if source_type.endswith("_history") and path.suffix == ".jsonl":
         return _parse_history_jsonl(path, source_type, file_stat)
@@ -1990,7 +1999,7 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
 # Public API
 
 
-_VALID_SEARCH_TYPES = frozenset({"all", "codex", "claude", "shell", "event", "session", "turn", "content"})
+_VALID_SEARCH_TYPES = frozenset({"all", "codex", "claude", "shell", "event", "session", "turn", "content", "opencode", "kilo", "openclaw", "cline", "roo", "continue", "zed", "aider", "cursor", "windsurf"})
 
 
 def lookup_session_by_id(
