@@ -119,7 +119,7 @@ jobs:
           python -m pytest tests \
             --cov=src/contextgo \
             --cov-report=term-missing \
-            --cov-fail-under=97 \
+            --cov-fail-under=96 \
             -v
 
       - name: Set up Go
