@@ -209,7 +209,11 @@ def collect_local_session_files(
 
 def fetch_existing_session_paths(cur: sqlite3.Cursor) -> set[str]:
     """Return the set of session file paths already recorded in the database."""
-    return {row[0] for row in cur.execute(_SQL_FETCH_EXISTING_PATHS)}
+    try:
+        return {row[0] for row in cur.execute(_SQL_FETCH_EXISTING_PATHS)}
+    except sqlite3.OperationalError:
+        # Table may not exist in session_documents-only databases.
+        return set()
 
 
 def print_snapshot(
@@ -219,21 +223,21 @@ def print_snapshot(
     missing_claude: int,
 ) -> None:
     """Print a concise snapshot of database and local-file counts to stdout."""
-    sessions: int = cur.execute("SELECT count(*) FROM sessions").fetchone()[0]
-    turns: int = cur.execute("SELECT count(*) FROM turns").fetchone()[0]
-    turn_content: int = cur.execute("SELECT count(*) FROM turn_content").fetchone()[0]
-    events: int = cur.execute("SELECT count(*) FROM events").fetchone()[0]
+    def _count(sql: str) -> int:
+        try:
+            return cur.execute(sql).fetchone()[0]
+        except sqlite3.OperationalError:
+            return 0
 
-    queued_sp: int = cur.execute(
-        "SELECT count(*) FROM jobs WHERE kind='session_process' AND status='queued'"
-    ).fetchone()[0]
-    processing_sp: int = cur.execute(
-        "SELECT count(*) FROM jobs WHERE kind='session_process' AND status='processing'"
-    ).fetchone()[0]
-    done_sp: int = cur.execute("SELECT count(*) FROM jobs WHERE kind='session_process' AND status='done'").fetchone()[0]
-    llm_err_sessions: int = cur.execute(
-        "SELECT count(*) FROM sessions WHERE session_title LIKE '\u26a0 LLM API Error%'"
-    ).fetchone()[0]
+    sessions: int = _count("SELECT count(*) FROM sessions")
+    turns: int = _count("SELECT count(*) FROM turns")
+    turn_content: int = _count("SELECT count(*) FROM turn_content")
+    events: int = _count("SELECT count(*) FROM events")
+
+    queued_sp: int = _count("SELECT count(*) FROM jobs WHERE kind='session_process' AND status='queued'")
+    processing_sp: int = _count("SELECT count(*) FROM jobs WHERE kind='session_process' AND status='processing'")
+    done_sp: int = _count("SELECT count(*) FROM jobs WHERE kind='session_process' AND status='done'")
+    llm_err_sessions: int = _count("SELECT count(*) FROM sessions WHERE session_title LIKE '\u26a0 LLM API Error%'")
 
     print("=== Snapshot ===")
     print(f"sessions={sessions} turns={turns} turn_content={turn_content} events={events}")
