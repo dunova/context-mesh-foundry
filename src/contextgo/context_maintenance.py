@@ -223,6 +223,7 @@ def print_snapshot(
     missing_claude: int,
 ) -> None:
     """Print a concise snapshot of database and local-file counts to stdout."""
+
     def _count(sql: str) -> int:
         try:
             return cur.execute(sql).fetchone()[0]
