@@ -918,9 +918,22 @@ def _parse_source(source_type: str, path: Path, file_stat: os.stat_result | None
         return _parse_codex_session(path, file_stat)
     if source_type == "claude_session":
         return _parse_claude_session(path, file_stat)
-    if source_type in {"opencode_session", "kilo_session", "openclaw_session", "cline_session", "roo_session", "continue_session", "zed_session", "aider_session", "cursor_session", "windsurf_session"}:
+    if source_type in {
+        "opencode_session",
+        "kilo_session",
+        "openclaw_session",
+        "cline_session",
+        "roo_session",
+        "continue_session",
+        "zed_session",
+        "aider_session",
+        "cursor_session",
+        "windsurf_session",
+    }:
         if path.suffix != ".jsonl":
-            _logger.warning("_parse_source: expected .jsonl for %s, got %s — skipping %s", source_type, path.suffix, path)
+            _logger.warning(
+                "_parse_source: expected .jsonl for %s, got %s — skipping %s", source_type, path.suffix, path
+            )
             return None
         return _parse_generic_session_jsonl(path, source_type, file_stat)
     if source_type.endswith("_history") and path.suffix == ".jsonl":
@@ -1999,7 +2012,28 @@ def _search_rows(query: str, limit: int = 10, literal: bool = False) -> list[dic
 # Public API
 
 
-_VALID_SEARCH_TYPES = frozenset({"all", "codex", "claude", "shell", "event", "session", "turn", "content", "opencode", "kilo", "openclaw", "cline", "roo", "continue", "zed", "aider", "cursor", "windsurf"})
+_VALID_SEARCH_TYPES = frozenset(
+    {
+        "all",
+        "codex",
+        "claude",
+        "shell",
+        "event",
+        "session",
+        "turn",
+        "content",
+        "opencode",
+        "kilo",
+        "openclaw",
+        "cline",
+        "roo",
+        "continue",
+        "zed",
+        "aider",
+        "cursor",
+        "windsurf",
+    }
+)
 
 
 def lookup_session_by_id(

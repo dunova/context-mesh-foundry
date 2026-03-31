@@ -235,10 +235,12 @@ def _openclaw_session_candidates(home: Path) -> list[Path]:
     return sorted(matches)
 
 
-_ALLOWED_EXTENSION_IDS = frozenset({
-    "saoudrizwan.claude-dev",
-    "rooveterinaryinc.roo-cline",
-})
+_ALLOWED_EXTENSION_IDS = frozenset(
+    {
+        "saoudrizwan.claude-dev",
+        "rooveterinaryinc.roo-cline",
+    }
+)
 
 
 def _cline_family_task_roots(home: Path, extension_id: str) -> list[Path]:
@@ -249,7 +251,9 @@ def _cline_family_task_roots(home: Path, extension_id: str) -> list[Path]:
     code_variants = ("Code", "Code - Insiders", "VSCodium", "Code - OSS")
     candidates: list[Path] = []
     for variant in code_variants:
-        candidates.append(home / "Library" / "Application Support" / variant / "User" / "globalStorage" / extension_id / "tasks")
+        candidates.append(
+            home / "Library" / "Application Support" / variant / "User" / "globalStorage" / extension_id / "tasks"
+        )
         candidates.append(home / ".config" / variant / "User" / "globalStorage" / extension_id / "tasks")
     candidates.append(home / ".vscode-server" / "data" / "User" / "globalStorage" / extension_id / "tasks")
     return [p for p in candidates if p.is_dir()]
@@ -579,7 +583,9 @@ def _sync_cline_family_sessions(home: Path, extension_id: str, source_type: str)
             mtime = max(1, int(_safe_mtime(history_file)))
             out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'task')}.jsonl"
             out_changed = _write_adapter_file(
-                out_path, texts, mtime,
+                out_path,
+                texts,
+                mtime,
                 meta={"session_id": sid, "title": title, "source_type": source_type},
             )
             if out_path.exists():
@@ -591,7 +597,12 @@ def _sync_cline_family_sessions(home: Path, extension_id: str, source_type: str)
     removed = _prune_stale(adapter_dir, keep)
     if changed or removed:
         _mark_dirty(home)
-    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(task_roots[0]) if task_roots else None}
+    return {
+        "detected": detected,
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(task_roots[0]) if task_roots else None,
+    }
 
 
 def _sync_cline_sessions(home: Path) -> dict[str, object]:
@@ -641,7 +652,9 @@ def _sync_continue_sessions(home: Path) -> dict[str, object]:
             mtime = max(1, int(_safe_mtime(session_file)))
             out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'session')}.jsonl"
             out_changed = _write_adapter_file(
-                out_path, texts, mtime,
+                out_path,
+                texts,
+                mtime,
                 meta={"session_id": sid, "title": title, "directory": directory, "source_type": "continue_session"},
             )
             if out_path.exists():
@@ -653,7 +666,12 @@ def _sync_continue_sessions(home: Path) -> dict[str, object]:
     removed = _prune_stale(adapter_dir, keep)
     if changed or removed:
         _mark_dirty(home)
-    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(session_roots[0]) if session_roots else None}
+    return {
+        "detected": detected,
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(session_roots[0]) if session_roots else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -694,7 +712,9 @@ def _sync_zed_sessions(home: Path) -> dict[str, object]:
             mtime = max(1, int(_safe_mtime(conv_file)))
             out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'conversation')}.jsonl"
             out_changed = _write_adapter_file(
-                out_path, texts, mtime,
+                out_path,
+                texts,
+                mtime,
                 meta={"session_id": sid, "title": title, "source_type": "zed_session"},
             )
             if out_path.exists():
@@ -706,7 +726,12 @@ def _sync_zed_sessions(home: Path) -> dict[str, object]:
     removed = _prune_stale(adapter_dir, keep)
     if changed or removed:
         _mark_dirty(home)
-    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(conv_roots[0]) if conv_roots else None}
+    return {
+        "detected": detected,
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(conv_roots[0]) if conv_roots else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -754,8 +779,15 @@ def _sync_aider_sessions(home: Path) -> dict[str, object]:
         mtime = max(1, int(_safe_mtime(hist_file)))
         out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'aider')}.jsonl"
         out_changed = _write_adapter_file(
-            out_path, texts, mtime,
-            meta={"session_id": sid, "title": f"aider: {title}", "directory": str(project_dir), "source_type": "aider_session"},
+            out_path,
+            texts,
+            mtime,
+            meta={
+                "session_id": sid,
+                "title": f"aider: {title}",
+                "directory": str(project_dir),
+                "source_type": "aider_session",
+            },
         )
         if out_path.exists():
             keep.add(out_path)
@@ -766,7 +798,12 @@ def _sync_aider_sessions(home: Path) -> dict[str, object]:
     removed = _prune_stale(adapter_dir, keep)
     if changed or removed:
         _mark_dirty(home)
-    return {"detected": bool(history_files), "sessions": sessions_written, "removed": removed, "path": str(history_files[0].parent) if history_files else None}
+    return {
+        "detected": bool(history_files),
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(history_files[0].parent) if history_files else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -805,12 +842,24 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
             try:
                 with contextlib.closing(sqlite3.connect(f"file:{vscdb}?mode=ro", uri=True, timeout=5)) as conn:
                     # Check if ItemTable exists
-                    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                    tables = {
+                        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                    }
                     if "ItemTable" not in tables:
                         continue
-                    chat_patterns = ("%chat%", "%conversation%", "%Cascade%", "%cascade%", "%aiChat%", "%aichat%", "%composer%")
+                    chat_patterns = (
+                        "%chat%",
+                        "%conversation%",
+                        "%Cascade%",
+                        "%cascade%",
+                        "%aiChat%",
+                        "%aichat%",
+                        "%composer%",
+                    )
                     where_clause = " OR ".join("key LIKE ?" for _ in chat_patterns)
-                    rows = conn.execute(f"SELECT key, value FROM ItemTable WHERE {where_clause} LIMIT 200", chat_patterns).fetchall()
+                    rows = conn.execute(
+                        f"SELECT key, value FROM ItemTable WHERE {where_clause} LIMIT 200", chat_patterns
+                    ).fetchall()
                     for _key, value in rows:
                         if not isinstance(value, str) or not (10 <= len(value) <= 10_000_000):
                             continue
@@ -827,7 +876,9 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
             mtime = max(1, int(_safe_mtime(vscdb)))
             out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(workspace_name, 'workspace')}.jsonl"
             out_changed = _write_adapter_file(
-                out_path, texts, mtime,
+                out_path,
+                texts,
+                mtime,
                 meta={"session_id": sid, "title": title, "source_type": source_type},
             )
             if out_path.exists():
@@ -839,7 +890,12 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
     removed = _prune_stale(adapter_dir, keep)
     if changed or removed:
         _mark_dirty(home)
-    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(ws_roots[0]) if ws_roots else None}
+    return {
+        "detected": detected,
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(ws_roots[0]) if ws_roots else None,
+    }
 
 
 def _sync_cursor_sessions(home: Path) -> dict[str, object]:
