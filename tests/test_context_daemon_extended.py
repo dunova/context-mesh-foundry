@@ -1993,16 +1993,17 @@ class TestMain(unittest.TestCase):
 
         call_count = [0]
 
-        def fake_sleep(secs: float) -> None:
+        def fake_wait(timeout: float = None) -> bool:
             call_count[0] += 1
             context_daemon._shutdown = True  # trigger loop exit after first cycle
+            return False
 
         try:
             context_daemon.LOCK_FILE = lock_file
             context_daemon._LOCK_FD = None
             context_daemon._shutdown = False
 
-            with patch("context_daemon.time.sleep", side_effect=fake_sleep):
+            with patch.object(context_daemon._stop_event, "wait", side_effect=fake_wait):
                 with patch("context_daemon.SessionTracker") as MockTracker:
                     mock_t = MagicMock()
                     mock_t.next_sleep_interval.return_value = 1
@@ -2038,18 +2039,19 @@ class TestMain(unittest.TestCase):
         original_lock = context_daemon.LOCK_FILE
         original_fd = context_daemon._LOCK_FD
 
-        sleep_count = [0]
+        wait_count = [0]
 
-        def fake_sleep(secs: float) -> None:
-            sleep_count[0] += 1
+        def fake_wait(timeout: float = None) -> bool:
+            wait_count[0] += 1
             context_daemon._shutdown = True
+            return False
 
         try:
             context_daemon.LOCK_FILE = lock_file
             context_daemon._LOCK_FD = None
             context_daemon._shutdown = False
 
-            with patch("context_daemon.time.sleep", side_effect=fake_sleep):
+            with patch.object(context_daemon._stop_event, "wait", side_effect=fake_wait):
                 with patch("context_daemon.SessionTracker") as MockTracker:
                     mock_t = MagicMock()
                     mock_t.next_sleep_interval.return_value = 1
@@ -2060,7 +2062,7 @@ class TestMain(unittest.TestCase):
                     MockTracker.return_value = mock_t
                     context_daemon.main()
 
-            self.assertEqual(sleep_count[0], 1)
+            self.assertEqual(wait_count[0], 1)
         finally:
             context_daemon._shutdown = False
             if context_daemon._LOCK_FD is not None:
@@ -2082,15 +2084,16 @@ class TestMain(unittest.TestCase):
 
         mock_http = MagicMock()
 
-        def fake_sleep(secs: float) -> None:
+        def fake_wait(timeout: float = None) -> bool:
             context_daemon._shutdown = True
+            return False
 
         try:
             context_daemon.LOCK_FILE = lock_file
             context_daemon._LOCK_FD = None
             context_daemon._shutdown = False
 
-            with patch("context_daemon.time.sleep", side_effect=fake_sleep):
+            with patch.object(context_daemon._stop_event, "wait", side_effect=fake_wait):
                 with patch("context_daemon.SessionTracker") as MockTracker:
                     mock_t = MagicMock()
                     mock_t.next_sleep_interval.return_value = 1
@@ -2120,11 +2123,12 @@ class TestMain(unittest.TestCase):
         original_fd = context_daemon._LOCK_FD
         original_jitter = context_daemon.LOOP_JITTER_SEC
 
-        sleep_args = []
+        wait_args = []
 
-        def fake_sleep(secs: float) -> None:
-            sleep_args.append(secs)
+        def fake_wait(timeout: float = None) -> bool:
+            wait_args.append(timeout)
             context_daemon._shutdown = True
+            return False
 
         try:
             context_daemon.LOCK_FILE = lock_file
@@ -2132,7 +2136,7 @@ class TestMain(unittest.TestCase):
             context_daemon._shutdown = False
             context_daemon.LOOP_JITTER_SEC = 2.0
 
-            with patch("context_daemon.time.sleep", side_effect=fake_sleep):
+            with patch.object(context_daemon._stop_event, "wait", side_effect=fake_wait):
                 with patch("context_daemon.SessionTracker") as MockTracker:
                     mock_t = MagicMock()
                     mock_t.next_sleep_interval.return_value = 1
@@ -2141,8 +2145,8 @@ class TestMain(unittest.TestCase):
                     MockTracker.return_value = mock_t
                     context_daemon.main()
 
-            # Sleep should be at least 1 (the base)
-            self.assertGreaterEqual(sleep_args[0], 1.0)
+            # Wait timeout should be at least 1 (the base)
+            self.assertGreaterEqual(wait_args[0], 1.0)
         finally:
             context_daemon._shutdown = False
             context_daemon.LOOP_JITTER_SEC = original_jitter
@@ -2165,17 +2169,18 @@ class TestMain(unittest.TestCase):
 
         cycle_count = [0]
 
-        def fake_sleep(secs: float) -> None:
+        def fake_wait(timeout: float = None) -> bool:
             cycle_count[0] += 1
             if cycle_count[0] >= 60:
                 context_daemon._shutdown = True
+            return False
 
         try:
             context_daemon.LOCK_FILE = lock_file
             context_daemon._LOCK_FD = None
             context_daemon._shutdown = False
 
-            with patch("context_daemon.time.sleep", side_effect=fake_sleep):
+            with patch.object(context_daemon._stop_event, "wait", side_effect=fake_wait):
                 with patch("context_daemon.SessionTracker") as MockTracker:
                     mock_t = MagicMock()
                     mock_t.next_sleep_interval.return_value = 0
