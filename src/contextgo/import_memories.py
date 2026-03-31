@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     ctx_argv = ["import", str(Path(args.input).expanduser())]
     if args.no_sync:
         ctx_argv.append("--no-sync")
-    return context_cli.main(ctx_argv)
+    return int(context_cli.main(ctx_argv))
 
 
 if __name__ == "__main__":  # pragma: no cover

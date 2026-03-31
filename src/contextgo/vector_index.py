@@ -33,7 +33,7 @@ from typing import Any
 try:
     from context_config import env_int, env_str
 except ImportError:  # pragma: no cover
-    from .context_config import env_int, env_str  # type: ignore[import-not-found]
+    from .context_config import env_int, env_str
 
 # ---------------------------------------------------------------------------
 # Module logger
@@ -88,7 +88,7 @@ _MODEL_LOCK = threading.Lock()
 # BM25 index cache (module-level, keyed by sdb path)
 # ---------------------------------------------------------------------------
 
-_BM25_CACHE: dict[str, tuple[int, Any]] = {}  # sdb_path -> (row_count, retriever)
+_BM25_CACHE: dict[str, tuple[tuple[int, int], Any]] = {}  # sdb_path -> (cache_key, retriever)
 _BM25_CACHE_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------

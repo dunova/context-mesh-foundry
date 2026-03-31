@@ -36,7 +36,7 @@ _logger = logging.getLogger(__name__)
 try:
     from context_config import env_float, env_int, env_str
 except ImportError:  # pragma: no cover
-    from .context_config import env_float, env_int, env_str  # type: ignore[import-not-found]
+    from .context_config import env_float, env_int, env_str
 
 try:
     from memory_index import (
@@ -47,7 +47,7 @@ try:
         timeline_index,
     )
 except ImportError:  # pragma: no cover
-    from .memory_index import (  # type: ignore[import-not-found]
+    from .memory_index import (
         get_observations_by_ids,
         index_stats,
         search_index,
@@ -112,7 +112,7 @@ def _maybe_sync_index() -> dict[str, Any]:
         payload = sync_index_from_storage()
         _sync_at = time.monotonic()
         _sync_payload = dict(payload)
-    return payload
+    return dict(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +311,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "ContextGOViewer/1.0"
 
     # Silence per-request access logging; errors surface as JSON responses.
-    def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
+    def log_message(self, fmt: str, *args: object) -> None:
         return
 
     def setup(self) -> None:

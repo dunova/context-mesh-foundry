@@ -41,8 +41,8 @@ try:
     from sqlite_retry import retry_sqlite as _retry_sqlite
     from sqlite_retry import retry_sqlite_many as _retry_sqlite_many
 except ImportError:  # pragma: no cover
-    from .secret_redaction import _SECRET_REPLACEMENTS as _SECRET_REPLACEMENTS_FULL  # type: ignore[import-not-found]
-    from .sqlite_retry import retry_commit as _retry_commit  # type: ignore[import-not-found]
+    from .secret_redaction import _SECRET_REPLACEMENTS as _SECRET_REPLACEMENTS_FULL
+    from .sqlite_retry import retry_commit as _retry_commit
     from .sqlite_retry import retry_sqlite as _retry_sqlite
     from .sqlite_retry import retry_sqlite_many as _retry_sqlite_many
 
@@ -53,7 +53,7 @@ except ImportError:  # pragma: no cover
 try:
     _SEARCH_CACHE_TTL: int = int(os.environ.get("MEMORY_INDEX_SEARCH_CACHE_TTL", "5") or "5")
 except (ValueError, TypeError):
-    _SEARCH_CACHE_TTL: int = 5
+    _SEARCH_CACHE_TTL = 5
 
 # Maximum number of entries in the in-process search cache.
 _SEARCH_CACHE_MAX_SIZE: int = 256
@@ -67,7 +67,7 @@ _SCHEMA_INITIALIZED: set[str] = set()
 try:
     from context_config import storage_root
 except ImportError:  # pragma: no cover
-    from .context_config import storage_root  # type: ignore[import-not-found]
+    from .context_config import storage_root
 
 
 # SQL constants
@@ -246,7 +246,7 @@ def get_index_db_path() -> Path:
     override = os.environ.get("MEMORY_INDEX_DB_PATH", "").strip()
     if override:
         return Path(override).expanduser()
-    return storage_root() / "index" / "memory_index.db"
+    return Path(storage_root()) / "index" / "memory_index.db"
 
 
 def _history_dirs() -> list[Path]:

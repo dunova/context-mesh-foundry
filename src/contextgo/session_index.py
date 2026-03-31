@@ -52,7 +52,7 @@ try:
     from sqlite_retry import retry_sqlite as _rs
     from sqlite_retry import retry_sqlite_many as _rsm
 except ImportError:  # pragma: no cover
-    from .context_config import env_int, storage_root  # type: ignore[import-not-found]
+    from .context_config import env_int, storage_root
     from .source_adapters import (  # type: ignore[import-not-found]
         adapter_dirty_epoch,
         discover_index_sources,

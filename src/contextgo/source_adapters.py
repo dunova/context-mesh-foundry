@@ -26,7 +26,7 @@ _logger = logging.getLogger(__name__)
 try:
     from context_config import storage_root
 except ImportError:  # pragma: no cover
-    from .context_config import storage_root  # type: ignore[import-not-found]
+    from .context_config import storage_root
 
 __all__ = [
     "discover_index_sources",
@@ -46,7 +46,7 @@ def _home() -> Path:
 def _adapter_root(home: Path | None = None) -> Path:
     current_home = home or _home()
     digest = hashlib.sha256(str(current_home).encode("utf-8")).hexdigest()[:12]
-    root = storage_root() / "raw" / "adapters" / digest
+    root = Path(storage_root()) / "raw" / "adapters" / digest
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     _ensure_adapter_schema(root)
     return root
@@ -324,7 +324,7 @@ def _sync_kilo_sessions(home: Path) -> dict[str, object]:
         meta = session_meta.get(sid, {})
         title = str(meta.get("title") or sid)
         directory = str(meta.get("directory") or "")
-        updated_sec = max(1, int(meta.get("updated") or 1))
+        updated_sec = max(1, int(str(meta.get("updated") or 1)))
         texts: list[str] = []
         if title.strip():
             texts.append(f"[title] {title.strip()}")
@@ -512,7 +512,7 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
     try:
         result["adapter_sessions"] = {
             "exists": any(
-                int(adapter_stats[name]["sessions"]) > 0
+                int(str(adapter_stats[name]["sessions"])) > 0
                 for name in ("opencode_session", "kilo_session", "openclaw_session")
             ),
             "path": str(_adapter_root(current_home)),

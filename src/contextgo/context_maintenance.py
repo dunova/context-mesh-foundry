@@ -269,7 +269,7 @@ def repair_queue(
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=stale_minutes)).strftime("%Y-%m-%d %H:%M:%S")
 
     if dry_run:
-        return cur.execute(_SQL_COUNT_STALE, (cutoff,)).fetchone()[0]
+        return int(cur.execute(_SQL_COUNT_STALE, (cutoff,)).fetchone()[0])
 
     cur.execute(_SQL_RELEASE_STALE, (cutoff,))
     return cur.rowcount

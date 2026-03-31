@@ -17,7 +17,7 @@ from typing import Any
 try:
     from context_config import env_int, env_str
 except ImportError:  # pragma: no cover
-    from .context_config import env_int, env_str  # type: ignore[import-not-found]
+    from .context_config import env_int, env_str
 
 
 # ---------------------------------------------------------------------------
