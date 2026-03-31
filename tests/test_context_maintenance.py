@@ -1111,5 +1111,28 @@ class TestConcurrentMaintenanceOperations(unittest.TestCase):
         self.assertEqual(count, 0)
 
 
+class TestMissingTablesGraceful(unittest.TestCase):
+    """Tests that maintain handles databases without expected tables."""
+
+    def test_fetch_existing_paths_no_sessions_table(self) -> None:
+        """fetch_existing_session_paths returns empty set when sessions table is missing."""
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        result = fetch_existing_session_paths(cur)
+        conn.close()
+        self.assertEqual(result, set())
+
+    def test_print_snapshot_no_tables(self) -> None:
+        """print_snapshot succeeds when none of the expected tables exist."""
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+            context_maintenance.print_snapshot(cur, 0, 0, 0)
+        output = mock_out.getvalue()
+        conn.close()
+        self.assertIn("Snapshot", output)
+        self.assertIn("sessions=0", output)
+
+
 if __name__ == "__main__":
     unittest.main()
