@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = REPO_ROOT / "src" / "contextgo"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 DEFAULT_QUERY = os.environ.get("CONTEXTGO_BENCH_QUERY", "benchmark")
 DEFAULT_ITERATIONS = max(1, int(os.environ.get("CONTEXTGO_BENCH_ITERATIONS", "3")))
@@ -28,7 +29,7 @@ DEFAULT_WARMUP = 1
 DEFAULT_FORMAT = "text"
 DEFAULT_SOURCE_CACHE_TTL = os.environ.get("CONTEXTGO_SOURCE_CACHE_TTL_SEC", "60")
 
-_SYNC_PREAMBLE = f"import sys;sys.path.insert(0, {str(SCRIPTS_DIR)!r});import session_index;"
+_SYNC_PREAMBLE = f"import sys;sys.path.insert(0, {str(SRC_DIR)!r});import session_index;"
 SYNC_ACTION_CODE = _SYNC_PREAMBLE + "session_index.sync_session_index(force=True)"
 SYNC_JSON_CODE = (
     _SYNC_PREAMBLE + "import json;print(json.dumps(session_index.sync_session_index(force=True), ensure_ascii=False))"
@@ -253,11 +254,11 @@ def _display_mode_label(mode: str) -> str:
 
 def _execute_mode(mode: str, args: argparse.Namespace) -> list[BenchmarkStats]:
     if mode == "python":
-        scripts_path = str(SCRIPTS_DIR)
-        if scripts_path not in sys.path:
-            sys.path.insert(0, scripts_path)
-        import scripts.context_cli as context_cli_module  # noqa: E402
-        import scripts.session_index as session_index_module  # noqa: E402
+        src_path = str(SRC_DIR)
+        if src_path not in sys.path:
+            sys.path.insert(0, src_path)
+        import context_cli as context_cli_module  # noqa: E402
+        import session_index as session_index_module  # noqa: E402
 
         importlib.reload(context_cli_module)
         importlib.reload(session_index_module)
@@ -274,7 +275,7 @@ def _execute_mode(mode: str, args: argparse.Namespace) -> list[BenchmarkStats]:
     else:
         subprocess_env = os.environ.copy()
         pythonpath = subprocess_env.get("PYTHONPATH", "")
-        subprocess_env["PYTHONPATH"] = f"{SCRIPTS_DIR}{os.pathsep}{pythonpath}" if pythonpath else str(SCRIPTS_DIR)
+        subprocess_env["PYTHONPATH"] = f"{SRC_DIR}{os.pathsep}{pythonpath}" if pythonpath else str(SRC_DIR)
         _run_native_command([sys.executable, "-c", SYNC_ACTION_CODE], subprocess_env)
         cases = _build_native_cases(subprocess_env, args.query, args.search_limit)
 
@@ -412,7 +413,7 @@ def _build_python_cases(
 
 
 def _build_native_cases(env: dict[str, str], query: str, search_limit: int) -> list[BenchmarkCase]:
-    context_cli_path = str(SCRIPTS_DIR / "context_cli.py")
+    context_cli_path = str(SRC_DIR / "context_cli.py")
     search_args = ["search", query, "--limit", str(search_limit), "--literal"]
 
     def health() -> str:
