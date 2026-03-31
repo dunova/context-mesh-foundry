@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60" role="img" aria-label="ContextGO icon">
+  <title>ContextGO</title>
+
+  <!-- Two interlocking rings with a forward arrow accent — dark mode variant -->
+  <!-- Outer ring -->
+  <circle cx="18" cy="30" r="13" fill="none" stroke="#60a5fa" stroke-width="3.5"/>
+  <!-- Inner ring -->
+  <circle cx="28" cy="30" r="13" fill="none" stroke="#93c5fd" stroke-width="3.5"/>
+  <!-- Arrow chevron -->
+  <polyline points="38,24 45,30 38,36" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

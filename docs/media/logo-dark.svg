@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60" role="img" aria-label="ContextGO">
+  <title>ContextGO</title>
+
+  <!-- Icon: two interlocking rings with a forward arrow accent -->
+  <!-- Outer ring (context/memory) -->
+  <circle cx="22" cy="30" r="13" fill="none" stroke="#60a5fa" stroke-width="3.5"/>
+  <!-- Inner ring (overlap, representing shared context) -->
+  <circle cx="32" cy="30" r="13" fill="none" stroke="#93c5fd" stroke-width="3.5"/>
+  <!-- Arrow chevron for "go" -->
+  <polyline points="42,24 49,30 42,36" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Wordmark — white text for dark backgrounds -->
+  <text x="58" y="37"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="22"
+        font-weight="700"
+        letter-spacing="-0.5"
+        fill="#ffffff">Context</text>
+  <text x="142" y="37"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="22"
+        font-weight="700"
+        letter-spacing="-0.5"
+        fill="#f59e0b">GO</text>
+</svg>

@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="ContextGO social preview">
+  <title>ContextGO — Local-first context &amp; memory engine for AI coding teams</title>
+
+  <defs>
+    <!-- Background gradient: deep navy -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <!-- Blue glow behind icon -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2563eb" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#2563eb" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Subtle grid pattern -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#334155" stroke-width="0.5" opacity="0.4"/>
+    </pattern>
+
+    <!-- Top accent gradient line -->
+    <linearGradient id="accent-line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563eb" stop-opacity="0"/>
+      <stop offset="30%" stop-color="#2563eb" stop-opacity="1"/>
+      <stop offset="70%" stop-color="#f59e0b" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background fill -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Subtle grid overlay -->
+  <rect width="1280" height="640" fill="url(#grid)"/>
+
+  <!-- Soft center glow -->
+  <ellipse cx="640" cy="300" rx="400" ry="280" fill="url(#glow)"/>
+
+  <!-- Top accent line -->
+  <rect x="0" y="0" width="1280" height="3" fill="url(#accent-line)"/>
+
+  <!-- ==================== ICON (centered, scaled ~5x) ==================== -->
+  <!-- Original icon fits in ~55x60 box; scale ~5x → place at cx=640, cy=220 -->
+  <!-- Outer ring: original cx=22,cy=30,r=13 scaled 5x → offset so center lands at 640,215 -->
+  <!-- Icon group: translate to center region, scale=5 -->
+  <g transform="translate(490, 130) scale(5)">
+    <!-- Outer ring -->
+    <circle cx="22" cy="18" r="13" fill="none" stroke="#60a5fa" stroke-width="2.5"/>
+    <!-- Inner ring -->
+    <circle cx="32" cy="18" r="13" fill="none" stroke="#93c5fd" stroke-width="2.5"/>
+    <!-- Arrow chevron -->
+    <polyline points="42,12 49,18 42,24" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ==================== WORDMARK ==================== -->
+  <!-- "Context" -->
+  <text x="640" y="400"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="88"
+        font-weight="800"
+        letter-spacing="-2"
+        fill="#ffffff"
+        text-anchor="middle"
+        dominant-baseline="auto">Context<tspan fill="#f59e0b">GO</tspan></text>
+
+  <!-- ==================== SUBTITLE ==================== -->
+  <text x="640" y="454"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="26"
+        font-weight="400"
+        letter-spacing="0.2"
+        fill="#94a3b8"
+        text-anchor="middle">Local-first context &amp; memory engine for AI coding teams</text>
+
+  <!-- ==================== FEATURE PILLS ==================== -->
+  <!-- Pill backgrounds -->
+  <rect x="216" y="496" width="170" height="36" rx="18" fill="#1e3a5f" opacity="0.8"/>
+  <rect x="402" y="496" width="160" height="36" rx="18" fill="#1e3a5f" opacity="0.8"/>
+  <rect x="578" y="496" width="178" height="36" rx="18" fill="#1e3a5f" opacity="0.8"/>
+  <rect x="772" y="496" width="152" height="36" rx="18" fill="#1e3a5f" opacity="0.8"/>
+
+  <!-- Pill text -->
+  <text x="301" y="519"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="15" font-weight="500" fill="#60a5fa" text-anchor="middle">Zero config</text>
+  <text x="482" y="519"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="15" font-weight="500" fill="#60a5fa" text-anchor="middle">Hybrid search</text>
+  <text x="667" y="519"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="15" font-weight="500" fill="#60a5fa" text-anchor="middle">Rust/Go native</text>
+  <text x="848" y="519"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="15" font-weight="500" fill="#60a5fa" text-anchor="middle">6+ AI tools</text>
+
+  <!-- Bottom accent line -->
+  <rect x="0" y="637" width="1280" height="3" fill="url(#accent-line)"/>
+</svg>
