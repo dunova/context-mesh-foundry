@@ -159,7 +159,7 @@ REMOTE_MEMORY_URL = env_str("CONTEXTGO_REMOTE_URL", default="http://127.0.0.1:80
 # ───────────────────────────────────────────────
 
 _THREAD_POOL_LOCK = threading.Lock()
-_THREAD_POOL: object | None = None  # type: concurrent.futures.ThreadPoolExecutor | None
+_THREAD_POOL: object | None = None
 
 
 def _get_thread_pool() -> object:
@@ -185,7 +185,7 @@ def _get_thread_pool() -> object:
 # Cached argument parser — built once, reused on every main() call
 # ───────────────────────────────────────────────
 
-_PARSER: object | None = None  # type: argparse.ArgumentParser | None
+_PARSER: object | None = None
 
 
 # ───────────────────────────────────────────────
