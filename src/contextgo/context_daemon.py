@@ -53,11 +53,13 @@ except ImportError:
 try:
     from context_config import env_bool, env_float, env_int, env_str, storage_root
     from memory_index import strip_private_blocks, sync_index_from_storage
-    from secret_redaction import _SECRET_REPLACEMENTS, sanitize_text as _sanitize_text_impl  # noqa: F401
+    from secret_redaction import _SECRET_REPLACEMENTS  # noqa: F401
+    from secret_redaction import sanitize_text as _sanitize_text_impl
 except ImportError:  # pragma: no cover - alternate import path
     from .context_config import env_bool, env_float, env_int, env_str, storage_root  # type: ignore[import-not-found]
     from .memory_index import strip_private_blocks, sync_index_from_storage  # type: ignore[import-not-found]
-    from .secret_redaction import _SECRET_REPLACEMENTS, sanitize_text as _sanitize_text_impl  # noqa: F401
+    from .secret_redaction import _SECRET_REPLACEMENTS  # noqa: F401
+    from .secret_redaction import sanitize_text as _sanitize_text_impl
 
 
 # Env-var helpers — all daemon settings are prefixed CONTEXTGO_
