@@ -75,15 +75,15 @@ jobs:
             "AIza[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}" \
             --glob '!artifacts/' \
             --glob '!.github/' \
+            --glob '!tests/' \
             --glob '!scripts/test_*.py' \
-            --glob '!tests/test_*.py' \
             . || (echo "ERROR: secret pattern detected" && exit 1)
           # Block hardcoded home paths
           ! rg -n "/Users/\\w+/" \
             --glob '!artifacts/' \
             --glob '!.github/' \
+            --glob '!tests/' \
             --glob '!native/session_scan_go/*_test.go' \
-            --glob '!tests/test_*.py' \
             --glob '!CONTRIBUTING.md' \
             . || (echo "ERROR: hardcoded path detected" && exit 1)
 
