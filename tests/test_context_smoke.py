@@ -735,7 +735,9 @@ class TestMain(unittest.TestCase):
         cli_path, qg_path = captured[0]
         self.assertEqual(cli_path.name, "context_cli.py")
         self.assertEqual(qg_path.name, "e2e_quality_gate.py")
-        self.assertEqual(cli_path.parent, qg_path.parent)
+        # cli is in src/contextgo/, quality gate is in scripts/
+        self.assertEqual(cli_path.parent.name, "contextgo")
+        self.assertEqual(qg_path.parent.name, "scripts")
 
 
 # ---------------------------------------------------------------------------
