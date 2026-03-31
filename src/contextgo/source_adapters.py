@@ -36,7 +36,7 @@ __all__ = [
     "adapter_dirty_epoch",
 ]
 
-ADAPTER_SCHEMA_VERSION = "2026-03-29-adapter-v1"
+ADAPTER_SCHEMA_VERSION = "2026-03-31-adapter-v2"
 
 
 def _home() -> Path:
@@ -199,6 +199,11 @@ def _extract_text_fragments(value: Any) -> list[str]:
     return texts
 
 
+# ---------------------------------------------------------------------------
+# Path candidate helpers
+# ---------------------------------------------------------------------------
+
+
 def _opencode_db_candidates(home: Path) -> list[Path]:
     return [
         home / ".local" / "share" / "opencode" / "opencode.db",
@@ -225,6 +230,78 @@ def _openclaw_session_candidates(home: Path) -> list[Path]:
             continue
         matches.extend(root.glob("*/sessions/*.jsonl"))
     return sorted(matches)
+
+
+def _cline_family_task_roots(home: Path, extension_id: str) -> list[Path]:
+    """Return existing task root directories for a Cline-family VS Code extension."""
+    candidates = [
+        home / "Library" / "Application Support" / "Code" / "User" / "globalStorage" / extension_id / "tasks",
+        home / ".config" / "Code" / "User" / "globalStorage" / extension_id / "tasks",
+        home / ".vscode-server" / "data" / "User" / "globalStorage" / extension_id / "tasks",
+    ]
+    return [p for p in candidates if p.is_dir()]
+
+
+def _continue_session_roots(home: Path) -> list[Path]:
+    """Return existing Continue.dev session directories."""
+    candidates = [
+        home / ".continue" / "sessions",
+        home / "Library" / "Application Support" / "Continue" / "sessions",
+    ]
+    return [p for p in candidates if p.is_dir()]
+
+
+def _zed_conversation_roots(home: Path) -> list[Path]:
+    """Return existing Zed conversation directories."""
+    candidates = [
+        home / "Library" / "Application Support" / "Zed" / "conversations",
+        home / ".config" / "zed" / "conversations",
+    ]
+    return [p for p in candidates if p.is_dir()]
+
+
+def _aider_history_candidates(home: Path) -> list[Path]:
+    """Find .aider.chat.history.md files in common project directories."""
+    matches: list[Path] = []
+    scan_roots = [home]
+    for name in ("Projects", "projects", "code", "Code", "dev", "src", "repos", "work"):
+        candidate = home / name
+        if candidate.is_dir():
+            scan_roots.append(candidate)
+    for root in scan_roots:
+        try:
+            if root == home:
+                for child in root.iterdir():
+                    if child.is_dir() and not child.name.startswith("."):
+                        hist = child / ".aider.chat.history.md"
+                        if hist.is_file():
+                            matches.append(hist)
+            else:
+                matches.extend(root.rglob(".aider.chat.history.md"))
+        except OSError:
+            continue
+    return sorted(matches, key=lambda p: _safe_mtime(p), reverse=True)[:50]
+
+
+def _vscdb_workspace_roots(home: Path, app_name: str) -> list[Path]:
+    """Return existing workspaceStorage directories for a VS Code fork (Cursor, Windsurf)."""
+    candidates = [
+        home / "Library" / "Application Support" / app_name / "User" / "workspaceStorage",
+        home / ".config" / app_name / "User" / "workspaceStorage",
+    ]
+    return [p for p in candidates if p.is_dir()]
+
+
+def _safe_mtime(path: Path) -> float:
+    """Return mtime or 0.0 on error."""
+    with contextlib.suppress(OSError):
+        return path.stat().st_mtime
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Existing adapters (OpenCode, Kilo, OpenClaw)
+# ---------------------------------------------------------------------------
 
 
 def _sync_opencode_sessions(home: Path) -> dict[str, object]:
@@ -393,12 +470,333 @@ def _sync_openclaw_sessions(home: Path) -> dict[str, object]:
     }
 
 
+# ---------------------------------------------------------------------------
+# New adapters: Cline / Roo Code (VS Code extensions, shared format)
+# ---------------------------------------------------------------------------
+
+
+def _sync_cline_family_sessions(home: Path, extension_id: str, source_type: str) -> dict[str, object]:
+    """Sync tasks from a Cline-family VS Code extension (Cline, Roo Code, etc.)."""
+    task_roots = _cline_family_task_roots(home, extension_id)
+    adapter_dir = _adapter_root(home) / source_type
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+    detected = False
+
+    for tasks_dir in task_roots:
+        detected = True
+        for task_dir in sorted(tasks_dir.iterdir()):
+            if not task_dir.is_dir():
+                continue
+            history_file = task_dir / "api_conversation_history.json"
+            if not history_file.is_file():
+                continue
+            sid = task_dir.name
+            texts: list[str] = []
+            title = sid
+            try:
+                data = json.loads(history_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, list):
+                continue
+            for msg in data:
+                if not isinstance(msg, dict):
+                    continue
+                content = msg.get("content")
+                if isinstance(content, str) and content.strip():
+                    texts.append(content.strip())
+                elif isinstance(content, list):
+                    texts.extend(_extract_text_fragments(content))
+            # Try to get title from metadata
+            meta_file = task_dir / "task_metadata.json"
+            with contextlib.suppress(OSError, json.JSONDecodeError):
+                meta_data = json.loads(meta_file.read_text(encoding="utf-8"))
+                if isinstance(meta_data, dict):
+                    raw_title = meta_data.get("task") or meta_data.get("title") or ""
+                    if isinstance(raw_title, str) and raw_title.strip():
+                        title = raw_title.strip()[:200]
+            if title.strip():
+                texts.insert(0, f"[title] {title.strip()}")
+            mtime = max(1, int(_safe_mtime(history_file)))
+            out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'task')}.jsonl"
+            out_changed = _write_adapter_file(
+                out_path, texts, mtime,
+                meta={"session_id": sid, "title": title, "source_type": source_type},
+            )
+            if out_path.exists():
+                keep.add(out_path)
+                sessions_written += 1
+            if out_changed:
+                changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(task_roots[0]) if task_roots else None}
+
+
+def _sync_cline_sessions(home: Path) -> dict[str, object]:
+    return _sync_cline_family_sessions(home, "saoudrizwan.claude-dev", "cline_session")
+
+
+def _sync_roo_sessions(home: Path) -> dict[str, object]:
+    return _sync_cline_family_sessions(home, "rooveterinaryinc.roo-cline", "roo_session")
+
+
+# ---------------------------------------------------------------------------
+# New adapter: Continue.dev
+# ---------------------------------------------------------------------------
+
+
+def _sync_continue_sessions(home: Path) -> dict[str, object]:
+    """Sync Continue.dev session JSON files."""
+    session_roots = _continue_session_roots(home)
+    adapter_dir = _adapter_root(home) / "continue_session"
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+    detected = False
+
+    for sessions_dir in session_roots:
+        detected = True
+        for session_file in sorted(sessions_dir.glob("*.json")):
+            try:
+                data = json.loads(session_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            sid = str(data.get("sessionId") or data.get("id") or session_file.stem).strip()
+            title = str(data.get("title") or sid)
+            directory = str(data.get("workspaceDirectory") or "")
+            texts: list[str] = []
+            if title.strip():
+                texts.append(f"[title] {title.strip()}")
+            if directory.strip():
+                texts.append(f"[directory] {directory.strip()}")
+            history = data.get("history") or data.get("messages") or []
+            if isinstance(history, list):
+                for msg in history:
+                    if isinstance(msg, dict):
+                        texts.extend(_extract_text_fragments(msg))
+            mtime = max(1, int(_safe_mtime(session_file)))
+            out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'session')}.jsonl"
+            out_changed = _write_adapter_file(
+                out_path, texts, mtime,
+                meta={"session_id": sid, "title": title, "directory": directory, "source_type": "continue_session"},
+            )
+            if out_path.exists():
+                keep.add(out_path)
+                sessions_written += 1
+            if out_changed:
+                changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(session_roots[0]) if session_roots else None}
+
+
+# ---------------------------------------------------------------------------
+# New adapter: Zed
+# ---------------------------------------------------------------------------
+
+
+def _sync_zed_sessions(home: Path) -> dict[str, object]:
+    """Sync Zed editor conversation JSON files."""
+    conv_roots = _zed_conversation_roots(home)
+    adapter_dir = _adapter_root(home) / "zed_session"
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+    detected = False
+
+    for conv_dir in conv_roots:
+        detected = True
+        for conv_file in sorted(conv_dir.glob("*.json")):
+            try:
+                data = json.loads(conv_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            sid = str(data.get("id") or conv_file.stem).strip()
+            title = str(data.get("title") or data.get("summary") or sid)
+            texts: list[str] = []
+            if title.strip():
+                texts.append(f"[title] {title.strip()}")
+            messages = data.get("messages") or data.get("message_metadata") or []
+            if isinstance(messages, list):
+                for msg in messages:
+                    if isinstance(msg, dict):
+                        texts.extend(_extract_text_fragments(msg))
+            elif isinstance(messages, dict):
+                texts.extend(_extract_text_fragments(messages))
+            mtime = max(1, int(_safe_mtime(conv_file)))
+            out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'conversation')}.jsonl"
+            out_changed = _write_adapter_file(
+                out_path, texts, mtime,
+                meta={"session_id": sid, "title": title, "source_type": "zed_session"},
+            )
+            if out_path.exists():
+                keep.add(out_path)
+                sessions_written += 1
+            if out_changed:
+                changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(conv_roots[0]) if conv_roots else None}
+
+
+# ---------------------------------------------------------------------------
+# New adapter: Aider
+# ---------------------------------------------------------------------------
+
+
+def _sync_aider_sessions(home: Path) -> dict[str, object]:
+    """Sync Aider chat history Markdown files from project directories."""
+    history_files = _aider_history_candidates(home)
+    adapter_dir = _adapter_root(home) / "aider_session"
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+
+    for hist_file in history_files:
+        try:
+            raw = hist_file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        # Split by markdown headers (#### or ---) to get conversation turns
+        chunks: list[str] = []
+        current: list[str] = []
+        for line in raw.splitlines():
+            if line.startswith("####") or (line.strip() == "---" and current):
+                if current:
+                    chunks.append("\n".join(current).strip())
+                    current = []
+            else:
+                current.append(line)
+        if current:
+            chunks.append("\n".join(current).strip())
+        texts = [c for c in chunks if c and len(c) > 10]
+        if not texts:
+            continue
+        project_dir = hist_file.parent
+        sid = hashlib.sha256(str(hist_file).encode()).hexdigest()[:16]
+        title = project_dir.name
+        texts.insert(0, f"[title] aider: {title}")
+        texts.insert(1, f"[directory] {project_dir}")
+        mtime = max(1, int(_safe_mtime(hist_file)))
+        out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'aider')}.jsonl"
+        out_changed = _write_adapter_file(
+            out_path, texts, mtime,
+            meta={"session_id": sid, "title": f"aider: {title}", "directory": str(project_dir), "source_type": "aider_session"},
+        )
+        if out_path.exists():
+            keep.add(out_path)
+            sessions_written += 1
+        if out_changed:
+            changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {"detected": bool(history_files), "sessions": sessions_written, "removed": removed, "path": str(history_files[0].parent) if history_files else None}
+
+
+# ---------------------------------------------------------------------------
+# New adapters: Cursor / Windsurf (VS Code forks with .vscdb)
+# ---------------------------------------------------------------------------
+
+
+def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[str, object]:
+    """Sync chat history from a VS Code fork's .vscdb workspaceStorage files."""
+    ws_roots = _vscdb_workspace_roots(home, app_name)
+    adapter_dir = _adapter_root(home) / source_type
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+    detected = False
+
+    _CHAT_KEY_PATTERNS = ("%chat%", "%conversation%", "%Cascade%", "%aiChat%")
+
+    for ws_root in ws_roots:
+        detected = True
+        for ws_dir in sorted(ws_root.iterdir()):
+            vscdb = ws_dir / "state.vscdb"
+            if not vscdb.is_file():
+                continue
+            texts: list[str] = []
+            workspace_name = ws_dir.name
+            try:
+                with contextlib.closing(sqlite3.connect(f"file:{vscdb}?mode=ro", uri=True, timeout=5)) as conn:
+                    # Check if ItemTable exists
+                    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                    if "ItemTable" not in tables:
+                        continue
+                    for pattern in _CHAT_KEY_PATTERNS:
+                        rows = conn.execute("SELECT key, value FROM ItemTable WHERE key LIKE ?", (pattern,)).fetchall()
+                        for _key, value in rows:
+                            if not isinstance(value, str) or len(value) < 10:
+                                continue
+                            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                                texts.extend(_extract_text_fragments(json.loads(value)))
+            except (sqlite3.Error, OSError) as exc:
+                _logger.debug("_sync_vscdb_sessions: %s/%s: %s", app_name, workspace_name, exc)
+                continue
+            if not texts:
+                continue
+            sid = workspace_name
+            title = f"{app_name}: {workspace_name}"
+            texts.insert(0, f"[title] {title}")
+            mtime = max(1, int(_safe_mtime(vscdb)))
+            out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(app_name, 'workspace')}.jsonl"
+            out_changed = _write_adapter_file(
+                out_path, texts, mtime,
+                meta={"session_id": sid, "title": title, "source_type": source_type},
+            )
+            if out_path.exists():
+                keep.add(out_path)
+                sessions_written += 1
+            if out_changed:
+                changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {"detected": detected, "sessions": sessions_written, "removed": removed, "path": str(ws_roots[0]) if ws_roots else None}
+
+
+def _sync_cursor_sessions(home: Path) -> dict[str, object]:
+    return _sync_vscdb_sessions(home, "Cursor", "cursor_session")
+
+
+def _sync_windsurf_sessions(home: Path) -> dict[str, object]:
+    return _sync_vscdb_sessions(home, "Windsurf", "windsurf_session")
+
+
+# ---------------------------------------------------------------------------
+# Adapter orchestration
+# ---------------------------------------------------------------------------
+
+
 def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
     current_home = home or _home()
     _adapters: dict[str, Any] = {
         "opencode_session": _sync_opencode_sessions,
         "kilo_session": _sync_kilo_sessions,
         "openclaw_session": _sync_openclaw_sessions,
+        "cline_session": _sync_cline_sessions,
+        "roo_session": _sync_roo_sessions,
+        "continue_session": _sync_continue_sessions,
+        "zed_session": _sync_zed_sessions,
+        "aider_session": _sync_aider_sessions,
+        "cursor_session": _sync_cursor_sessions,
+        "windsurf_session": _sync_windsurf_sessions,
     }
     result: dict[str, dict[str, object]] = {}
     for name, fn in _adapters.items():
@@ -408,6 +806,20 @@ def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
             _logger.warning("sync_all_adapters: adapter %r failed: %s", name, exc)
             result[name] = {"sessions": 0, "error": str(exc)}
     return result
+
+
+_ALL_ADAPTER_TYPES = (
+    "opencode_session",
+    "kilo_session",
+    "openclaw_session",
+    "cline_session",
+    "roo_session",
+    "continue_session",
+    "zed_session",
+    "aider_session",
+    "cursor_session",
+    "windsurf_session",
+)
 
 
 def discover_index_sources(home: Path | None = None) -> list[tuple[str, Path]]:
@@ -439,12 +851,9 @@ def discover_index_sources(home: Path | None = None) -> list[tuple[str, Path]]:
         if path.is_file():
             discovered.append((source_type, path))
 
-    adapter_roots = [
-        ("opencode_session", _adapter_root(current_home) / "opencode_session"),
-        ("kilo_session", _adapter_root(current_home) / "kilo_session"),
-        ("openclaw_session", _adapter_root(current_home) / "openclaw_session"),
-    ]
-    for source_type, root in adapter_roots:
+    adapter_root = _adapter_root(current_home)
+    for source_type in _ALL_ADAPTER_TYPES:
+        root = adapter_root / source_type
         if root.is_dir():
             for path in root.glob("*.jsonl"):
                 discovered.append((source_type, path))
@@ -510,16 +919,13 @@ def source_freshness_snapshot(home: Path | None = None) -> dict[str, dict[str, o
             _logger.warning("source_freshness_snapshot: source %r failed: %s", name, exc)
             result[name] = {"exists": False, "error": str(exc)}
     try:
-        result["adapter_sessions"] = {
-            "exists": any(
-                int(str(adapter_stats[name]["sessions"])) > 0
-                for name in ("opencode_session", "kilo_session", "openclaw_session")
-            ),
+        adapter_summary: dict[str, object] = {
+            "exists": any(int(str(adapter_stats[name]["sessions"])) > 0 for name in _ALL_ADAPTER_TYPES),
             "path": str(_adapter_root(current_home)),
-            "opencode_session_count": adapter_stats["opencode_session"]["sessions"],
-            "kilo_session_count": adapter_stats["kilo_session"]["sessions"],
-            "openclaw_session_count": adapter_stats["openclaw_session"]["sessions"],
         }
+        for name in _ALL_ADAPTER_TYPES:
+            adapter_summary[f"{name}_count"] = adapter_stats[name]["sessions"]
+        result["adapter_sessions"] = adapter_summary
     except (KeyError, TypeError, ValueError) as exc:
         _logger.warning("source_freshness_snapshot: adapter_sessions summary failed: %s", exc)
         result["adapter_sessions"] = {"exists": False, "error": str(exc)}
@@ -552,21 +958,70 @@ def source_inventory(home: Path | None = None) -> dict[str, object]:
             "detected": bool(by_type.get("opencode_session") or by_type.get("opencode_history")),
             "session_files": len(by_type.get("opencode_session", [])),
             "history_files": len(by_type.get("opencode_history", [])),
-            "adapter": adapter_stats["opencode_session"],
+            "adapter": adapter_stats.get("opencode_session", {}),
         },
         {
             "platform": "kilo",
             "detected": bool(by_type.get("kilo_session") or by_type.get("kilo_history")),
             "session_files": len(by_type.get("kilo_session", [])),
             "history_files": len(by_type.get("kilo_history", [])),
-            "adapter": adapter_stats["kilo_session"],
+            "adapter": adapter_stats.get("kilo_session", {}),
         },
         {
             "platform": "openclaw",
             "detected": bool(by_type.get("openclaw_session")),
             "session_files": len(by_type.get("openclaw_session", [])),
             "history_files": 0,
-            "adapter": adapter_stats["openclaw_session"],
+            "adapter": adapter_stats.get("openclaw_session", {}),
+        },
+        {
+            "platform": "cline",
+            "detected": bool(by_type.get("cline_session")),
+            "session_files": len(by_type.get("cline_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("cline_session", {}),
+        },
+        {
+            "platform": "roo_code",
+            "detected": bool(by_type.get("roo_session")),
+            "session_files": len(by_type.get("roo_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("roo_session", {}),
+        },
+        {
+            "platform": "continue",
+            "detected": bool(by_type.get("continue_session")),
+            "session_files": len(by_type.get("continue_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("continue_session", {}),
+        },
+        {
+            "platform": "zed",
+            "detected": bool(by_type.get("zed_session")),
+            "session_files": len(by_type.get("zed_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("zed_session", {}),
+        },
+        {
+            "platform": "aider",
+            "detected": bool(by_type.get("aider_session")),
+            "session_files": len(by_type.get("aider_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("aider_session", {}),
+        },
+        {
+            "platform": "cursor",
+            "detected": bool(by_type.get("cursor_session")),
+            "session_files": len(by_type.get("cursor_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("cursor_session", {}),
+        },
+        {
+            "platform": "windsurf",
+            "detected": bool(by_type.get("windsurf_session")),
+            "session_files": len(by_type.get("windsurf_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("windsurf_session", {}),
         },
         {
             "platform": "shell",

@@ -330,6 +330,13 @@ SOURCE_WEIGHT: dict[str, int] = {
     "kilo_history": 6,
     "shell_zsh": 2,
     "shell_bash": 2,
+    "cline_session": 36,
+    "roo_session": 36,
+    "continue_session": 34,
+    "zed_session": 34,
+    "aider_session": 30,
+    "cursor_session": 32,
+    "windsurf_session": 32,
 }
 
 # In-process cache for source-file discovery results.
@@ -905,7 +912,7 @@ def _parse_source(source_type: str, path: Path, file_stat: os.stat_result | None
         return _parse_codex_session(path, file_stat)
     if source_type == "claude_session":
         return _parse_claude_session(path, file_stat)
-    if source_type in {"opencode_session", "kilo_session", "openclaw_session"} and path.suffix == ".jsonl":
+    if source_type in {"opencode_session", "kilo_session", "openclaw_session", "cline_session", "roo_session", "continue_session", "zed_session", "aider_session", "cursor_session", "windsurf_session"} and path.suffix == ".jsonl":
         return _parse_generic_session_jsonl(path, source_type, file_stat)
     if source_type.endswith("_history") and path.suffix == ".jsonl":
         return _parse_history_jsonl(path, source_type, file_stat)
