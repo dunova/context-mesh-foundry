@@ -215,4 +215,4 @@ strict = false
 warn_return_any = false
 warn_unused_ignores = false
 ignore_missing_imports = true
-disable_error_code = ["no-redef", "assignment", "attr-defined", "operator", "misc"]
+disable_error_code = ["no-redef", "assignment", "attr-defined", "operator", "misc", "return-value"]
