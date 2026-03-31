@@ -81,16 +81,16 @@ _SECRET_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"((?:postgres|mysql|mongodb|redis)(?:ql)?://[^:]+:)[^\s@]+(@)", re.IGNORECASE), r"\1***@"),
     # ===== GENERIC KEY=VALUE PATTERNS (run last) =====
     # These catch remaining secrets not matched by specific patterns above.
-    # The negative lookahead (?![\w-]*\*\*\*) prevents re-redacting values
+    # The negative lookahead (?!\S*\*\*\*) prevents re-redacting values
     # that were already replaced by a specific pattern above (e.g. sk-ant-***).
-    (re.compile(r"(api[_-]?key\s*[=:]\s*)(?![\w-]*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
-    (re.compile(r"(token\s*[=:]\s*)(?![\w-]*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
-    (re.compile(r"(password\s*[=:]\s*)(?![\w-]*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
-    (re.compile(r"(secret\s*[=:]\s*)(?![\w-]*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
-    (re.compile(r"(--api-key\s+)(?![\w-]*\*\*\*)([^\s]+)", re.IGNORECASE), r"\1***"),
-    (re.compile(r"(--token\s+)(?![\w-]*\*\*\*)([^\s]+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(api[_-]?key\s*[=:]\s*)(?!\S*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(token\s*[=:]\s*)(?!\S*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(password\s*[=:]\s*)(?!\S*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(secret\s*[=:]\s*)(?!\S*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(--api-key\s+)(?!\S*\*\*\*)([^\s]+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(--token\s+)(?!\S*\*\*\*)([^\s]+)", re.IGNORECASE), r"\1***"),
     # --- Authorization headers ---
-    (re.compile(r"(Authorization\s*:\s*Bearer\s+)(?![\w-]*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
+    (re.compile(r"(Authorization\s*:\s*Bearer\s+)(?!\S*\*\*\*)([^\s\"']+)", re.IGNORECASE), r"\1***"),
 ]
 
 
