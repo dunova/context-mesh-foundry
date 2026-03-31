@@ -203,7 +203,7 @@ exclude_also = [
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B101"]  # assert used in tests and retry helpers
+skips = ["B101", "B311", "B608"]  # B101: assert; B311: random (non-crypto); B608: SQL string (uses parameterized ?)
 
 # ---------------------------------------------------------------------------
 # Mypy
