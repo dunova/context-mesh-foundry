@@ -961,7 +961,7 @@ class TestMainFunction(unittest.TestCase):
         """main() logs debug when file watcher is disabled."""
         with (
             patch.object(context_daemon, "ENABLE_FILE_WATCHER", False),
-            patch.object(context_daemon.logger, "debug") as mock_debug,
+            patch.object(context_daemon._logger, "debug") as mock_debug,
         ):
             self._run_main_one_cycle()
             calls_str = str(mock_debug.call_args_list)
