@@ -64,6 +64,24 @@ class TestExtractKeywords(unittest.TestCase):
         # Longest first.
         self.assertEqual(kws[0], "klmnop")
 
+    def test_cjk_bigrams(self) -> None:
+        """CJK character-level bigram extraction."""
+        kws = pw.extract_keywords("数据库")
+        # Should produce bigrams: 数据, 据库, and full run: 数据库
+        found = set(kws)
+        self.assertTrue({"数据库", "数据", "据库"} & found, f"Expected CJK bigrams, got {kws}")
+
+    def test_cjk_two_chars(self) -> None:
+        """Two CJK chars should produce the full run."""
+        kws = pw.extract_keywords("优化")
+        self.assertIn("优化", kws)
+
+    def test_cjk_single_char_filtered(self) -> None:
+        """Single CJK char should be filtered by min length."""
+        kws = pw.extract_keywords("车")
+        # Single char → len 1 < _MIN_KW_LEN=2
+        self.assertEqual(kws, [])
+
 
 class TestExtractMessageFromHook(unittest.TestCase):
     """Parsing Claude Code hook payloads."""
@@ -85,7 +103,8 @@ class TestExtractMessageFromHook(unittest.TestCase):
         self.assertEqual(pw._extract_message_from_hook(payload), "msg fallback")
 
     def test_invalid_json(self) -> None:
-        self.assertEqual(pw._extract_message_from_hook("not json"), "not json")
+        # Invalid JSON should return empty string (not echo raw input).
+        self.assertEqual(pw._extract_message_from_hook("not json"), "")
 
     def test_empty(self) -> None:
         self.assertEqual(pw._extract_message_from_hook(""), "")
@@ -159,6 +178,13 @@ class TestPrewarmFromStdin(unittest.TestCase):
         mock_stdin.read.return_value = json.dumps({"prompt": {"content": "deploy pipeline fix"}})  # type: ignore[union-attr]
         self.assertEqual(pw.prewarm_from_stdin(), 0)
 
+    @patch("sys.stdin")
+    def test_stdin_read_size_limit(self, mock_stdin: object) -> None:
+        """Verify stdin.read is called with size limit."""
+        mock_stdin.read.return_value = ""  # type: ignore[union-attr]
+        pw.prewarm_from_stdin()
+        mock_stdin.read.assert_called_with(pw._MAX_STDIN_BYTES)  # type: ignore[union-attr]
+
 
 class TestSetupClaudeCode(unittest.TestCase):
     """Hook installation into settings.json."""
@@ -200,6 +226,58 @@ class TestSetupClaudeCode(unittest.TestCase):
             self.assertEqual(settings["model"], "test")
 
 
+class TestTeardownClaudeCode(unittest.TestCase):
+    """Hook removal from settings.json."""
+
+    def test_removes_hook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_claude = Path(tmp) / ".claude"
+            fake_claude.mkdir()
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                pw.setup_claude_code()
+                result = pw.teardown_claude_code()
+            self.assertTrue(result)
+            settings = json.loads((fake_claude / "settings.json").read_text())
+            hooks = settings["hooks"]["UserPromptSubmit"]
+            self.assertFalse(any("contextgo prewarm" in h.get("command", "") for h in hooks))
+
+    def test_teardown_preserves_other_hooks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_claude = Path(tmp) / ".claude"
+            fake_claude.mkdir()
+            settings = {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {"matcher": "", "command": "contextgo prewarm"},
+                        {"matcher": "", "command": "other-tool run"},
+                    ]
+                },
+                "env": {"KEEP": "me"},
+            }
+            (fake_claude / "settings.json").write_text(json.dumps(settings))
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                pw.teardown_claude_code()
+            result = json.loads((fake_claude / "settings.json").read_text())
+            self.assertEqual(len(result["hooks"]["UserPromptSubmit"]), 1)
+            self.assertEqual(result["hooks"]["UserPromptSubmit"][0]["command"], "other-tool run")
+            self.assertEqual(result["env"]["KEEP"], "me")
+
+    def test_teardown_no_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                result = pw.teardown_claude_code()
+            self.assertTrue(result)
+
+    def test_teardown_already_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_claude = Path(tmp) / ".claude"
+            fake_claude.mkdir()
+            (fake_claude / "settings.json").write_text(json.dumps({"hooks": {"UserPromptSubmit": []}}))
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                result = pw.teardown_claude_code()
+            self.assertTrue(result)
+
+
 class TestInjectScfPolicy(unittest.TestCase):
     """SCF policy injection into Markdown files."""
 
@@ -226,6 +304,31 @@ class TestInjectScfPolicy(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestRemoveScfPolicy(unittest.TestCase):
+    """SCF policy removal from Markdown files."""
+
+    def test_remove_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "AGENTS.md"
+            target.write_text("# Header\n")
+            pw._inject_scf_policy(target)
+            self.assertIn("SCF:CONTEXT-FIRST:START", target.read_text())
+            result = pw._remove_scf_policy(target)
+            self.assertTrue(result)
+            self.assertNotIn("SCF:CONTEXT-FIRST:START", target.read_text())
+
+    def test_remove_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "AGENTS.md"
+            target.write_text("# Header\n")
+            result = pw._remove_scf_policy(target)
+            self.assertTrue(result)
+
+    def test_remove_no_file(self) -> None:
+        result = pw._remove_scf_policy(Path("/nonexistent/file.md"))
+        self.assertTrue(result)
+
+
 class TestSetupAll(unittest.TestCase):
     """Full setup across all platforms."""
 
@@ -245,6 +348,27 @@ class TestSetupAll(unittest.TestCase):
                 results = pw.setup_all()
             self.assertTrue(results["Claude Code (hook)"])
             self.assertTrue(results["Codex CLI"])
+
+
+class TestTeardownAll(unittest.TestCase):
+    """Full teardown across all platforms."""
+
+    def test_setup_then_teardown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                (Path(tmp) / ".claude").mkdir()
+                (Path(tmp) / ".codex").mkdir()
+                (Path(tmp) / ".codex" / "AGENTS.md").write_text("# Codex\n")
+                pw.setup_all()
+                results = pw.teardown_all()
+            self.assertTrue(all(results.values()))
+
+    def test_teardown_returns_dict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                results = pw.teardown_all()
+            self.assertIsInstance(results, dict)
+            self.assertIn("Claude Code (hook)", results)
 
 
 class TestSetupCodex(unittest.TestCase):
@@ -327,6 +451,40 @@ class TestSetupClaudeCodeCorruptJson(unittest.TestCase):
             self.assertTrue(result)
             settings = json.loads((claude / "settings.json").read_text())
             self.assertIn("UserPromptSubmit", settings["hooks"])
+
+
+class TestAtomicWrite(unittest.TestCase):
+    """Atomic write helper."""
+
+    def test_basic_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "test.json"
+            pw._atomic_write(target, '{"key": "value"}\n')
+            self.assertEqual(target.read_text(), '{"key": "value"}\n')
+
+    def test_overwrites_existing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "test.json"
+            target.write_text("old content")
+            pw._atomic_write(target, "new content")
+            self.assertEqual(target.read_text(), "new content")
+
+    def test_resolves_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            real_file = Path(tmp) / "real.json"
+            real_file.write_text("original")
+            link = Path(tmp) / "link.json"
+            link.symlink_to(real_file)
+            pw._atomic_write(link, "updated via symlink")
+            self.assertEqual(real_file.read_text(), "updated via symlink")
+
+    def test_no_temp_leftover_on_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "test.json"
+            pw._atomic_write(target, "content")
+            files = list(Path(tmp).iterdir())
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].name, "test.json")
 
 
 if __name__ == "__main__":

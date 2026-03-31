@@ -8,6 +8,7 @@ Architecture:
 - ``prewarm()``  — core: extract keywords from user message, search memory, return
   branded summary suitable for injection as hook output.
 - ``setup()``    — one-command configuration of all detected AI coding tools.
+- ``unsetup()``  — remove all hooks and SCF policy blocks.
 - Brand output   — all prewarm activity prefixed with ``[ContextGO]``.
 
 Hook integration (Claude Code):
@@ -22,6 +23,7 @@ import json
 import logging
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -37,6 +39,8 @@ __all__ = [
     "prewarm_from_stdin",
     "setup_all",
     "setup_claude_code",
+    "teardown_all",
+    "teardown_claude_code",
 ]
 
 # ───────────────────────────────────────────────
@@ -49,146 +53,32 @@ _PREWARM_DONE = f"[{BRAND}] 上下文预热完成"
 _PREWARM_EMPTY = f"[{BRAND}] 上下文预热完成 — 记忆库暂无相关记录"
 _SETUP_BANNER = f"[{BRAND}] 自动预热配置"
 
+# Max stdin read size (1 MB) to prevent resource exhaustion.
+_MAX_STDIN_BYTES = 1_048_576
+
 # Chinese + common programming stop words to skip when extracting keywords.
-_STOP_WORDS: frozenset[str] = frozenset(
-    [
-        # Chinese
-        "的",
-        "了",
-        "在",
-        "是",
-        "我",
-        "有",
-        "和",
-        "就",
-        "不",
-        "人",
-        "都",
-        "一",
-        "一个",
-        "上",
-        "也",
-        "很",
-        "到",
-        "说",
-        "要",
-        "去",
-        "你",
-        "会",
-        "着",
-        "没有",
-        "看",
-        "好",
-        "自己",
-        "这",
-        "他",
-        "她",
-        "它",
-        "们",
-        "么",
-        "那",
-        "被",
-        "它们",
-        "些",
-        "呢",
-        "吗",
-        "啊",
-        "嗯",
-        "哦",
-        "吧",
-        "哈",
-        "嘛",
-        "帮",
-        "帮我",
-        "请",
-        "请帮",
-        "一下",
-        "现在",
-        "然后",
-        "还有",
-        "看看",
-        "可以",
-        "能不能",
-        "怎么",
-        "如何",
-        "什么",
-        # English
-        "the",
-        "a",
-        "an",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "being",
-        "have",
-        "has",
-        "had",
-        "do",
-        "does",
-        "did",
-        "will",
-        "would",
-        "shall",
-        "should",
-        "may",
-        "might",
-        "must",
-        "can",
-        "could",
-        "need",
-        "dare",
-        "i",
-        "me",
-        "my",
-        "we",
-        "our",
-        "you",
-        "your",
-        "he",
-        "him",
-        "his",
-        "she",
-        "her",
-        "it",
-        "its",
-        "they",
-        "them",
-        "their",
-        "this",
-        "that",
-        "these",
-        "those",
-        "what",
-        "which",
-        "who",
-        "whom",
-        "how",
-        "when",
-        "where",
-        "why",
-        "and",
-        "or",
-        "but",
-        "not",
-        "so",
-        "if",
-        "then",
-        "else",
-        "for",
-        "at",
-        "by",
-        "from",
-        "in",
-        "on",
-        "to",
-        "with",
-        "as",
-        "of",
-    ]
-)
+_STOP_WORDS: frozenset[str] = frozenset([
+    # Chinese
+    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个",
+    "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好",
+    "自己", "这", "他", "她", "它", "们", "么", "那", "被", "它们", "些",
+    "呢", "吗", "啊", "嗯", "哦", "吧", "哈", "嘛",
+    "帮", "帮我", "请", "请帮", "一下", "现在", "然后", "还有", "看看",
+    "可以", "能不能", "怎么", "如何", "什么",
+    # English
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did",
+    "will", "would", "shall", "should", "may", "might", "must", "can", "could",
+    "need", "dare", "i", "me", "my", "we", "our", "you", "your",
+    "he", "him", "his", "she", "her", "it", "its", "they", "them", "their",
+    "this", "that", "these", "those", "what", "which", "who", "whom",
+    "how", "when", "where", "why",
+    "and", "or", "but", "not", "so", "if", "then", "else",
+    "for", "at", "by", "from", "in", "on", "to", "with", "as", "of",
+])
+
+# CJK Unicode ranges for character-level splitting.
+_CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")
 
 # Minimum keyword length after stripping.
 _MIN_KW_LEN = 2
@@ -202,11 +92,35 @@ _MIN_KW_LEN = 2
 def extract_keywords(text: str, *, max_keywords: int = 6) -> list[str]:
     """Extract meaningful search keywords from a user message.
 
-    Strategy: split on whitespace and punctuation, remove stop words, keep
-    the longest (most specific) tokens.  Simple and fast — no NLP needed.
+    Strategy: split on whitespace and punctuation, with CJK characters split
+    into bigrams for better Chinese keyword extraction.  Remove stop words,
+    keep the longest (most specific) tokens.  Simple and fast — no NLP needed.
     """
-    # Split on anything that is not a word character or CJK.
-    tokens = re.findall(r"[\w\u4e00-\u9fff\u3400-\u4dbf]+", text.lower())
+    # Split into raw tokens: word chars + CJK.
+    raw_tokens = re.findall(r"[\w\u4e00-\u9fff\u3400-\u4dbf]+", text.lower())
+
+    # Expand CJK-only tokens into bigrams for better recall.
+    tokens: list[str] = []
+    for t in raw_tokens:
+        if _CJK_RE.fullmatch(t):
+            # Single CJK character — keep as-is (will be filtered by length).
+            tokens.append(t)
+        elif _CJK_RE.search(t) and len(t) > 1:
+            # Mixed or pure CJK multi-char: extract CJK bigrams + non-CJK parts.
+            cjk_chars = _CJK_RE.findall(t)
+            non_cjk = _CJK_RE.sub("", t)
+            # CJK bigrams.
+            for i in range(len(cjk_chars) - 1):
+                tokens.append(cjk_chars[i] + cjk_chars[i + 1])
+            # Keep full CJK run if ≥ 2 chars.
+            cjk_run = "".join(cjk_chars)
+            if len(cjk_run) >= _MIN_KW_LEN:
+                tokens.append(cjk_run)
+            # Non-CJK part.
+            if non_cjk and len(non_cjk) >= _MIN_KW_LEN:
+                tokens.append(non_cjk)
+        else:
+            tokens.append(t)
 
     seen: set[str] = set()
     keywords: list[str] = []
@@ -251,8 +165,9 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
     results: list[dict[str, Any]] = []
     session_text: str = ""
 
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="cg-prewarm") as pool:
-        futures = {}
+    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cg-prewarm")
+    try:
+        futures: dict[str, Any] = {}
 
         # Path 1: local memory files (preferred).
         try:
@@ -296,16 +211,21 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
             _logger.debug("Session index path unavailable", exc_info=True)
 
         remaining = max(0.1, timeout - (time.monotonic() - t0))
-        for f in as_completed(futures.values(), timeout=remaining):
-            key = next(k for k, v in futures.items() if v is f)
-            try:
-                val = f.result(timeout=0.1)
-                if key == "memory" and isinstance(val, list):
-                    results = val
-                elif key == "session" and isinstance(val, str):
-                    session_text = val
-            except Exception:
-                pass
+        try:
+            for f in as_completed(futures.values(), timeout=remaining):
+                key = next(k for k, v in futures.items() if v is f)
+                try:
+                    val = f.result(timeout=0.1)
+                    if key == "memory" and isinstance(val, list):
+                        results = val
+                    elif key == "session" and isinstance(val, str):
+                        session_text = val
+                except Exception:
+                    pass
+        except TimeoutError:
+            _logger.debug("Prewarm search timed out after %.1fs", remaining)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     elapsed = time.monotonic() - t0
 
@@ -368,7 +288,7 @@ def prewarm_from_stdin() -> int:
     Returns 0 always (prewarm is advisory, never blocks the user message).
     """
     try:
-        raw = sys.stdin.read()
+        raw = sys.stdin.read(_MAX_STDIN_BYTES)
     except Exception:
         return 0
 
@@ -391,7 +311,8 @@ def _extract_message_from_hook(raw: str) -> str:
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return raw.strip()
+        # Invalid JSON — return empty (don't echo raw input back).
+        return ""
 
     # Claude Code format: {"prompt": {"content": "..."}}
     if isinstance(data, dict):
@@ -403,6 +324,38 @@ def _extract_message_from_hook(raw: str) -> str:
         # Fallback: top-level "content" or "message".
         return data.get("content", data.get("message", ""))
     return ""
+
+
+# ───────────────────────────────────────────────
+# Atomic file write helper
+# ───────────────────────────────────────────────
+
+
+def _atomic_write(filepath: Path, content: str) -> None:
+    """Write *content* to *filepath* atomically via tmp + rename.
+
+    Prevents TOCTOU race conditions and partial-write corruption.
+    Raises OSError on failure.
+    """
+    # Resolve symlinks to write to the real target.
+    real_path = filepath.resolve()
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(real_path.parent),
+        prefix=".contextgo_",
+        suffix=".tmp",
+    )
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+        Path(tmp_path).replace(real_path)
+    except BaseException:
+        # Clean up temp file on any failure.
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 # ───────────────────────────────────────────────
@@ -444,16 +397,22 @@ def setup_claude_code() -> bool:
     """Configure Claude Code's ``~/.claude/settings.json`` with the prewarm hook.
 
     Merges the hook into existing settings without overwriting other config.
+    Uses atomic write to prevent corruption.
     Returns True if the hook was installed or already present.
     """
     settings_path = Path.home() / ".claude" / "settings.json"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     existing: dict[str, Any] = {}
     if settings_path.exists():
         try:
-            existing = json.loads(settings_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            raw = settings_path.read_text(encoding="utf-8")
+            existing = json.loads(raw)
+            if not isinstance(existing, dict):
+                _logger.warning("settings.json is not a dict, resetting")
+                existing = {}
+        except (json.JSONDecodeError, OSError) as exc:
+            _logger.warning("Corrupt settings.json (%s), resetting to empty", exc)
             existing = {}
 
     hooks = existing.setdefault("hooks", {})
@@ -465,9 +424,45 @@ def setup_claude_code() -> bool:
             return True  # Already installed.
 
     upsub.append({"matcher": "", "command": "contextgo prewarm"})
-    settings_path.write_text(
+    _atomic_write(
+        settings_path,
         json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    )
+    return True
+
+
+def teardown_claude_code() -> bool:
+    """Remove the ContextGO prewarm hook from Claude Code settings.
+
+    Returns True if the hook was removed or was already absent.
+    """
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.exists():
+        return True
+
+    try:
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    if not isinstance(existing, dict):
+        return True
+
+    hooks = existing.get("hooks", {})
+    upsub = hooks.get("UserPromptSubmit", [])
+
+    original_len = len(upsub)
+    upsub = [
+        e for e in upsub
+        if not (isinstance(e, dict) and "contextgo prewarm" in e.get("command", ""))
+    ]
+    if len(upsub) == original_len:
+        return True  # Was already absent.
+
+    hooks["UserPromptSubmit"] = upsub
+    _atomic_write(
+        settings_path,
+        json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
     )
     return True
 
@@ -476,15 +471,17 @@ def _inject_scf_policy(filepath: Path) -> bool:
     """Inject the SCF context-first policy block into a Markdown file.
 
     Idempotent: skips injection if the marker is already present.
+    Uses atomic write to prevent corruption.
     Returns True if the file was modified or already has the policy.
     """
-    if not filepath.parent.exists():
+    real_path = filepath.resolve()
+    if not real_path.parent.exists():
         return False
 
     content = ""
-    if filepath.exists():
+    if real_path.exists():
         try:
-            content = filepath.read_text(encoding="utf-8")
+            content = real_path.read_text(encoding="utf-8")
         except OSError:
             return False
 
@@ -494,7 +491,42 @@ def _inject_scf_policy(filepath: Path) -> bool:
     # Append policy block.
     updated = content.rstrip() + "\n\n" + _SCF_POLICY_BLOCK + "\n"
     try:
-        filepath.write_text(updated, encoding="utf-8")
+        _atomic_write(filepath, updated)
+    except OSError:
+        return False
+    return True
+
+
+def _remove_scf_policy(filepath: Path) -> bool:
+    """Remove the SCF context-first policy block from a Markdown file.
+
+    Returns True if the policy was removed or was already absent.
+    """
+    real_path = filepath.resolve()
+    if not real_path.exists():
+        return True
+
+    try:
+        content = real_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    if _SCF_MARKER_START not in content:
+        return True  # Already absent.
+
+    # Remove the block (marker start → marker end, plus surrounding blank lines).
+    start_idx = content.index(_SCF_MARKER_START)
+    end_idx = content.index(_SCF_MARKER_END) + len(_SCF_MARKER_END)
+    # Also consume trailing newline.
+    if end_idx < len(content) and content[end_idx] == "\n":
+        end_idx += 1
+    # Consume one preceding blank line.
+    if start_idx >= 2 and content[start_idx - 2 : start_idx] == "\n\n":
+        start_idx -= 1
+
+    updated = content[:start_idx] + content[end_idx:]
+    try:
+        _atomic_write(filepath, updated)
     except OSError:
         return False
     return True
@@ -515,6 +547,21 @@ def setup_claude_md() -> bool:
     return _inject_scf_policy(Path.home() / ".claude" / "CLAUDE.md")
 
 
+def teardown_codex() -> bool:
+    """Remove SCF policy from ``~/.codex/AGENTS.md``."""
+    return _remove_scf_policy(Path.home() / ".codex" / "AGENTS.md")
+
+
+def teardown_openclaw() -> bool:
+    """Remove SCF policy from ``~/.openclaw/workspace/AGENTS.md``."""
+    return _remove_scf_policy(Path.home() / ".openclaw" / "workspace" / "AGENTS.md")
+
+
+def teardown_claude_md() -> bool:
+    """Remove SCF policy from ``~/.claude/CLAUDE.md``."""
+    return _remove_scf_policy(Path.home() / ".claude" / "CLAUDE.md")
+
+
 def setup_all() -> dict[str, bool]:
     """Detect and configure all supported AI coding tools.
 
@@ -533,5 +580,20 @@ def setup_all() -> dict[str, bool]:
 
     # OpenClaw.
     results["OpenClaw"] = setup_openclaw()
+
+    return results
+
+
+def teardown_all() -> dict[str, bool]:
+    """Remove all ContextGO hooks and SCF policy blocks.
+
+    Returns a dict mapping tool name → success boolean.
+    """
+    results: dict[str, bool] = {}
+
+    results["Claude Code (hook)"] = teardown_claude_code()
+    results["Claude Code (policy)"] = teardown_claude_md()
+    results["Codex CLI"] = teardown_codex()
+    results["OpenClaw"] = teardown_openclaw()
 
     return results

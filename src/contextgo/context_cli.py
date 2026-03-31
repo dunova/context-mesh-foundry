@@ -29,6 +29,7 @@ __all__ = [
     "cmd_semantic",
     "cmd_serve",
     "cmd_setup",
+    "cmd_unsetup",
     "cmd_shell_init",
     "cmd_smoke",
     "cmd_vector_status",
@@ -1203,10 +1204,35 @@ def cmd_setup(args: argparse.Namespace) -> int:
             "配置完成！新对话将自动执行上下文预热。\n"
             "Setup complete! New conversations will auto-prewarm context.\n"
             "\n"
-            '测试预热: echo \'{"prompt":{"content":"test query"}}\' | contextgo prewarm'
+            "测试预热: echo '{\"prompt\":{\"content\":\"test query\"}}' | contextgo prewarm"
         )
     else:
-        print("部分工具未检测到，已跳过。\nSome tools were not detected and skipped.")
+        print(
+            "部分工具未检测到，已跳过。\n"
+            "Some tools were not detected and skipped."
+        )
+    return 0
+
+
+def cmd_unsetup(args: argparse.Namespace) -> int:
+    """Remove all ContextGO hooks and SCF policy blocks from AI tools."""
+    pw = _get_context_prewarm()
+
+    print(f"{pw.BRAND} — 移除自动上下文预热配置")
+    print("=" * 48)
+    print()
+
+    results = pw.teardown_all()
+
+    for tool, ok in results.items():
+        status = "OK (removed)" if ok else "FAIL"
+        print(f"  {tool}: {status}")
+
+    print()
+    print(
+        "所有 ContextGO 钩子和策略已移除。\n"
+        "All ContextGO hooks and policies have been removed."
+    )
     return 0
 
 
@@ -1233,6 +1259,7 @@ COMMANDS: dict[str, object] = {
     "completion": cmd_completion,
     "prewarm": cmd_prewarm,
     "setup": cmd_setup,
+    "unsetup": cmd_unsetup,
 }
 
 
@@ -1525,7 +1552,7 @@ def _add_vector_subcommands(sub: object) -> None:
 
 
 def _add_prewarm_setup_subcommands(sub: object) -> None:
-    """Register the ``prewarm`` and ``setup`` subcommands."""
+    """Register the ``prewarm``, ``setup``, and ``unsetup`` subcommands."""
     import argparse as _ap  # noqa: PLC0415
 
     sub.add_parser(  # type: ignore[union-attr]
@@ -1558,6 +1585,23 @@ def _add_prewarm_setup_subcommands(sub: object) -> None:
             "Examples:\n"
             "  contextgo setup                # configure all detected tools\n"
             "  pipx install contextgo && contextgo setup   # install + configure\n\n"
+            "Exit codes: 0 = success."
+        ),
+        formatter_class=_ap.RawDescriptionHelpFormatter,
+    )
+
+    sub.add_parser(  # type: ignore[union-attr]
+        "unsetup",
+        help="Remove all ContextGO hooks and SCF policy blocks from AI tools",
+        description=(
+            "Remove all ContextGO auto-prewarm hooks and context-first policy blocks\n"
+            "from all detected AI coding tools.\n\n"
+            "What this removes:\n"
+            "  - Claude Code: UserPromptSubmit hook from ~/.claude/settings.json\n"
+            "  - Claude Code: SCF policy block from ~/.claude/CLAUDE.md\n"
+            "  - Codex CLI:   SCF policy block from ~/.codex/AGENTS.md\n"
+            "  - OpenClaw:    SCF policy block from workspace AGENTS.md\n\n"
+            "Safe to run even if ContextGO was never set up.\n\n"
             "Exit codes: 0 = success."
         ),
         formatter_class=_ap.RawDescriptionHelpFormatter,
