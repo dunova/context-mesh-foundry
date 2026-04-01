@@ -63,10 +63,10 @@ make smoke
 ### Configuration
 
 The storage root defaults to `~/.contextgo`. Override with `CONTEXTGO_STORAGE_ROOT`.
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for all options.
+See [docs/CONFIGURATION.md](../docs/CONFIGURATION.md) for all options.
 
 存储根目录默认为 `~/.contextgo`，可通过 `CONTEXTGO_STORAGE_ROOT` 覆盖。
-完整配置项见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
+完整配置项见 [docs/CONFIGURATION.md](../docs/CONFIGURATION.md)。
 
 ### Optional: native hot paths
 

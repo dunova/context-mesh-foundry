@@ -48,7 +48,7 @@ def _native_eval(backend: str, query: str) -> dict:
     rc, out, err = run_cmd(
         [
             sys.executable,
-            str(REPO_ROOT / "scripts" / "context_cli.py"),
+            str(REPO_ROOT / "src" / "contextgo" / "context_cli.py"),
             "native-scan",
             "--backend",
             backend,
@@ -77,7 +77,7 @@ def _native_text_eval(backend: str, query: str) -> dict:
     rc, out, err = run_cmd(
         [
             sys.executable,
-            str(REPO_ROOT / "scripts" / "context_cli.py"),
+            str(REPO_ROOT / "src" / "contextgo" / "context_cli.py"),
             "native-scan",
             "--backend",
             backend,
@@ -100,7 +100,7 @@ def _native_text_eval(backend: str, query: str) -> dict:
 
 def _smoke_eval() -> tuple[int, dict, int]:
     for _ in range(2):
-        rc, out, err = run_cmd([sys.executable, str(REPO_ROOT / "scripts" / "context_cli.py"), "smoke"])
+        rc, out, err = run_cmd([sys.executable, str(REPO_ROOT / "src" / "contextgo" / "context_cli.py"), "smoke"])
         payload = _json_from_text(out or err)
         summary = payload.get("summary") or {}
         if rc == 0 and summary.get("status") == "pass":
@@ -111,13 +111,13 @@ def _smoke_eval() -> tuple[int, dict, int]:
 def evaluate(query: str) -> dict:
     """Run all evaluation probes and return a scored metrics payload."""
     health_rc, health_out, health_err = run_cmd(
-        [sys.executable, str(REPO_ROOT / "scripts" / "context_cli.py"), "health"]
+        [sys.executable, str(REPO_ROOT / "src" / "contextgo" / "context_cli.py"), "health"]
     )
     smoke_rc, smoke_payload, smoke_bytes = _smoke_eval()
     search_rc, search_out, search_err = run_cmd(
         [
             sys.executable,
-            str(REPO_ROOT / "scripts" / "context_cli.py"),
+            str(REPO_ROOT / "src" / "contextgo" / "context_cli.py"),
             "search",
             query,
             "--type",

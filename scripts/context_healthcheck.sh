@@ -121,19 +121,25 @@ check_launchd_runtime() {
 }
 
 check_cli_runtime() {
-    local cli_script out sessions db_path summary status
-    cli_script="${CONTEXT_CLI_SCRIPT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/context_cli.py}"
+    local cli_script out sessions db_path summary status _script_dir
+    _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cli_script="${CONTEXT_CLI_SCRIPT:-$(command -v contextgo 2>/dev/null || echo "$_script_dir/../src/contextgo/context_cli.py")}"
     summary="unknown"
     status="fail"
 
-    if [ ! -f "$cli_script" ]; then
-        report_fail "context_cli script missing: $cli_script -- reinstall ContextGO or set CONTEXT_CLI_SCRIPT"
+    # Determine how to invoke: installed binary vs python script
+    if command -v contextgo >/dev/null 2>&1 && [ "${CONTEXT_CLI_SCRIPT:-}" = "" ]; then
+        _invoke_cli() { contextgo "$@"; }
+    elif [ -f "$cli_script" ]; then
+        _invoke_cli() { python3 "$cli_script" "$@"; }
+    else
+        report_fail "context_cli not found: neither 'contextgo' command nor script at $cli_script -- reinstall ContextGO or set CONTEXT_CLI_SCRIPT"
         summary="context_cli missing: $cli_script"
         record_check_result "core.cli_runtime" "$status" "$summary"
         return 0
     fi
 
-    out="$(python3 "$cli_script" health 2>&1)" || true
+    out="$(_invoke_cli health 2>&1)" || true
     if printf '%s\n' "$out" | python3 -c \
         'import json,sys; print("1" if json.loads(sys.stdin.read()).get("all_ok") else "0")' \
         2>/dev/null | grep -q '^1$'; then
@@ -153,7 +159,7 @@ check_cli_runtime() {
     else
         local _first_line
         _first_line="$(printf '%s\n' "$out" | head -1)"
-        report_fail "context_cli health check failed -- run 'python3 $cli_script health' for details (first line: ${_first_line:0:120})"
+        report_fail "context_cli health check failed -- run 'contextgo health' for details (first line: ${_first_line:0:120})"
         summary="health failed; first_line=${_first_line:0:80}"
     fi
 

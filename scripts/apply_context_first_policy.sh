@@ -46,9 +46,9 @@ run a context prewarm BEFORE any directory scan.
 
 Execution order (hard constraint):
 1. Run the built-in exact-match search at least once:
-   python3 /path/to/ContextGO/scripts/context_cli.py search "<query>" --limit 20 --literal
+   contextgo search "<query>" --limit 20 --literal
 2. If no hits, optionally follow up with semantic search:
-   python3 /path/to/ContextGO/scripts/context_cli.py semantic "<query>" --limit 5
+   contextgo semantic "<query>" --limit 5
 3. Narrow scope based on results BEFORE running ls / rg on large directories.
 4. Prohibited pattern: exhaustive scan of ~/, /Volumes/*, or other large trees
    without a prior context prewarm.

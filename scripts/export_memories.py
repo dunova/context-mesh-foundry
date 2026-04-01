@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 
-import context_cli
+from contextgo import context_cli
 
 
 def main() -> int:

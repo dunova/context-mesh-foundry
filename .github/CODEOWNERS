@@ -4,6 +4,7 @@
 # Critical paths require explicit review
 .github/ @dunova
 pyproject.toml @dunova
-scripts/context_daemon.py @dunova
-scripts/session_index.py @dunova
-scripts/memory_index.py @dunova
+src/contextgo/context_daemon.py @dunova
+src/contextgo/session_index.py @dunova
+src/contextgo/memory_index.py @dunova
+src/contextgo/context_prewarm.py @dunova

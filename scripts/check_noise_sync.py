@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-CONFIG_PATH = REPO_ROOT / "config" / "noise_markers.json"
+CONFIG_PATH = REPO_ROOT / "src" / "contextgo" / "data" / "noise_markers.json"
 RUST_PATH = REPO_ROOT / "native" / "session_scan" / "src" / "main.rs"
 GO_PATH = REPO_ROOT / "native" / "session_scan_go" / "scanner.go"
 

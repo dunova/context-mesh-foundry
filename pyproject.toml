@@ -87,8 +87,8 @@ Homepage = "https://github.com/dunova/ContextGO"
 Documentation = "https://github.com/dunova/ContextGO/tree/main/docs"
 Repository = "https://github.com/dunova/ContextGO"
 "Bug Tracker" = "https://github.com/dunova/ContextGO/issues"
-Changelog = "https://github.com/dunova/ContextGO/blob/main/CHANGELOG.md"
-Security = "https://github.com/dunova/ContextGO/blob/main/SECURITY.md"
+Changelog = "https://github.com/dunova/ContextGO/blob/main/.github/CHANGELOG.md"
+Security = "https://github.com/dunova/ContextGO/blob/main/.github/SECURITY.md"
 
 # ---------------------------------------------------------------------------
 # Hatch — version and build
@@ -101,12 +101,9 @@ pattern = "(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+.*)"
 [tool.hatch.build.targets.wheel]
 packages = ["src/contextgo"]
 exclude = [
-    "coverage.xml",
     "**/__pycache__",
     "**/*.pyc",
     "**/import_memories.py",
-    "**/context_smoke.py",
-    "**/memory_viewer.py",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
@@ -118,16 +115,15 @@ include = [
     "/src",
     "/tests",
     "/scripts",
-    "/config",
     "/native",
     "/docs",
-    "/templates",
-    "/benchmarks",
+    "/docs/benchmarks",
+    "/docs/templates",
     "/VERSION",
     "/README.md",
-    "/CHANGELOG.md",
-    "/CONTRIBUTING.md",
-    "/SECURITY.md",
+    "/.github/CHANGELOG.md",
+    "/.github/CONTRIBUTING.md",
+    "/.github/SECURITY.md",
     "/LICENSE",
 ]
 
@@ -185,6 +181,7 @@ branch = true
 show_missing = true
 skip_covered = false
 precision = 1
+fail_under = 97
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

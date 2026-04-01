@@ -127,7 +127,7 @@ jobs:
             --cov=src/contextgo \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=96 \
+            --cov-fail-under=97 \
             -v
 
       - name: Upload coverage to Codecov
@@ -140,7 +140,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Benchmark smoke (sanity)
-        run: python -m benchmarks --iterations 1 --warmup 0 --query benchmark
+        run: PYTHONPATH=docs python -m benchmarks --iterations 1 --warmup 0 --query benchmark
 
   # -------------------------------------------------------------------------
   # 3. Go tests
@@ -230,7 +230,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install -e .
 
       - name: End-to-end quality gate
         run: python scripts/e2e_quality_gate.py

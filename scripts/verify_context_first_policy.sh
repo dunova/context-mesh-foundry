@@ -46,11 +46,11 @@ require_text() {
     fi
 }
 
-# Locate context_cli.py relative to this script, with a fallback to the
-# installed path (avoids hard-coding /Volumes/AI).
+# Locate context_cli.py relative to this script (src/contextgo/), with a
+# fallback to the installed `contextgo` command (avoids hard-coding paths).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
-CLI_SCRIPT="$SCRIPT_DIR/context_cli.py"
+CLI_SCRIPT="$SCRIPT_DIR/../src/contextgo/context_cli.py"
 readonly CLI_SCRIPT
 
 # Policy injection checks
@@ -62,11 +62,13 @@ require_text "$HOME/.openclaw/workspace/AGENTS.md" "SCF:CONTEXT-FIRST:START" "op
 require_text "$HOME/.codex/skills/gsd-v1/SKILL.md"  "GSD fallback rules" "codex gsd skill has fallback rules"
 require_text "$HOME/.claude/skills/gsd-v1/SKILL.md" "GSD fallback rules" "claude gsd skill has fallback rules"
 
-# CLI availability
-if [ -f "$CLI_SCRIPT" ]; then
+# CLI availability: prefer installed command, fall back to source tree path
+if command -v contextgo >/dev/null 2>&1; then
+    ok "context_cli entrypoint available: $(command -v contextgo)"
+elif [ -f "$CLI_SCRIPT" ]; then
     ok "context_cli entrypoint available: $CLI_SCRIPT"
 else
-    fail "context_cli entrypoint not found: $CLI_SCRIPT"
+    fail "context_cli entrypoint not found: neither 'contextgo' command nor $CLI_SCRIPT"
 fi
 
 ok "context-first policy regression checks passed"

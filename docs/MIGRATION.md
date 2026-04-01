@@ -1,6 +1,6 @@
 # Migration Guide / 版本迁移指南
 
-> [index.md](index.md) · [CHANGELOG.md](../CHANGELOG.md) · [CONFIGURATION.md](CONFIGURATION.md)
+> [index.md](index.md) · [CHANGELOG.md](../.github/CHANGELOG.md) · [CONFIGURATION.md](CONFIGURATION.md)
 
 ---
 

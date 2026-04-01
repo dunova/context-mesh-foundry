@@ -8,7 +8,7 @@ PYTEST     := $(PYTHON) -m pytest
 RUFF       := ruff
 SCRIPTS    := scripts
 TESTS      := tests
-BENCHMARKS := benchmarks
+BENCHMARKS := docs/benchmarks
 
 .PHONY: help install install-remote dev-check \
         lint format type-check \
@@ -77,20 +77,20 @@ test-cov: test ## Run tests and open HTML coverage report
 # ---------------------------------------------------------------------------
 
 smoke: ## Run smoke suite in sandboxed mode
-	$(PYTHON) $(SCRIPTS)/context_cli.py smoke --sandbox
+	$(PYTHON) src/contextgo/context_cli.py smoke --sandbox
 
 smoke-installed: ## Run installed runtime and installed CLI wrapper smoke
 	$(PYTHON) $(SCRIPTS)/smoke_installed_runtime.py
 	$(PYTHON) $(SCRIPTS)/smoke_installed_cli.py
 
 health: ## Run health check via CLI
-	$(PYTHON) $(SCRIPTS)/context_cli.py health
+	$(PYTHON) src/contextgo/context_cli.py health
 
 e2e: ## Run end-to-end quality gate
 	$(PYTHON) $(SCRIPTS)/e2e_quality_gate.py
 
 bench: ## Run benchmark harness (Python vs native-wrapper)
-	$(PYTHON) -m $(BENCHMARKS) --mode both --iterations 1 --warmup 0 --query benchmark --format text
+	PYTHONPATH=docs $(PYTHON) -m benchmarks --mode both --iterations 1 --warmup 0 --query benchmark --format text
 
 # ---------------------------------------------------------------------------
 # Build and distribution
@@ -123,7 +123,7 @@ clean: ## Remove Python bytecode and cache directories
 	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf src/artifacts/ 2>/dev/null || true
+	rm -rf artifacts/ 2>/dev/null || true
 
 clean-dist: ## Remove build artifacts
 	rm -rf dist/ build/ *.egg-info src/*.egg-info

@@ -43,17 +43,27 @@ log() { printf '[scf-prewarm] %s\n' "$*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
-CLI_SCRIPT="$SCRIPT_DIR/context_cli.py"
-readonly CLI_SCRIPT
 HC_SCRIPT="$SCRIPT_DIR/context_healthcheck.sh"
 readonly HC_SCRIPT
 
-if [ ! -f "$CLI_SCRIPT" ]; then
-    log "WARNING: context_cli.py not found at $CLI_SCRIPT; skipping exact search"
+# Resolve CLI: prefer installed `contextgo` command, fall back to source tree.
+if command -v contextgo >/dev/null 2>&1; then
+    _run_cli() { contextgo "$@"; }
+    CLI_DISPLAY="contextgo"
+elif [ -f "$SCRIPT_DIR/../src/contextgo/context_cli.py" ]; then
+    _CLI_PY="$(cd "$SCRIPT_DIR/.." && pwd)/src/contextgo/context_cli.py"
+    _run_cli() { python3 "$_CLI_PY" "$@"; }
+    CLI_DISPLAY="python3 $SCRIPT_DIR/../src/contextgo/context_cli.py"
 else
+    log "WARNING: contextgo command not found and context_cli.py not found; skipping exact search"
+    _run_cli() { return 1; }
+    CLI_DISPLAY="contextgo (not found)"
+fi
+
+if [ "$CLI_DISPLAY" != "contextgo (not found)" ]; then
     log "running exact history search"
     set +e
-    python3 "$CLI_SCRIPT" search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
+    _run_cli search "$QUERY" --type "$MODE" --limit "$LIMIT" --literal
     RC=$?
     set -e
     if [ "$RC" -ne 0 ]; then
@@ -69,10 +79,10 @@ fi
 
 printf '\n'
 printf '[scf-prewarm] Recommended follow-up steps:\n'
-printf '  1. python3 "%s/context_cli.py" search "%s" --type "%s" --limit "%s" --literal\n' \
-    "$SCRIPT_DIR" "$QUERY" "$MODE" "$LIMIT"
-printf '  2. python3 "%s/context_cli.py" semantic "%s" --limit 5\n' \
-    "$SCRIPT_DIR" "$QUERY"
+printf '  1. contextgo search "%s" --type "%s" --limit "%s" --literal\n' \
+    "$QUERY" "$MODE" "$LIMIT"
+printf '  2. contextgo semantic "%s" --limit 5\n' \
+    "$QUERY"
 printf '  3. Record useful conclusions in the GSD phase document (CONTEXT/PLAN).\n'
 printf '\n'
 printf '[scf-prewarm] Query used: "%s"\n' "$QUERY"

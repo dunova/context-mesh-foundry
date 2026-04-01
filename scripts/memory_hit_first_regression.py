@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-CLI_PATH = Path(__file__).resolve().parent / "context_cli.py"
+CLI_PATH = Path(__file__).resolve().parents[1] / "src" / "contextgo" / "context_cli.py"
 
 
 @dataclass

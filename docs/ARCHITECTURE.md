@@ -1,6 +1,6 @@
 # Architecture / 架构
 
-> [CONFIGURATION.md](CONFIGURATION.md) · [API.md](API.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [../CONTRIBUTING.md](../CONTRIBUTING.md)
+> [CONFIGURATION.md](CONFIGURATION.md) · [API.md](API.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [../CONTRIBUTING.md](../.github/CONTRIBUTING.md)
 
 ## Overview / 概览
 
@@ -84,12 +84,12 @@ ContextGO/
 ├── native/
 │   ├── session_scan/          # Rust hot-path binary
 │   └── session_scan_go/       # Go hot-path binary
-├── benchmarks/                # Python vs. native performance harness
-├── config/                    # Runtime config files (noise_markers.json)
-├── templates/                 # launchd / systemd-user service templates
-├── examples/                  # Configuration templates
-├── docs/                      # Documentation + current release notes
-└── integrations/gsd/          # GSD / gstack workflow integration
+├── src/contextgo/data/        # Runtime config files (noise_markers.json)
+├── docs/
+│   ├── templates/             # launchd / systemd-user service templates
+│   ├── examples/              # Configuration templates
+│   ├── benchmarks/            # Python vs. native performance harness
+│   └── integrations/gsd/      # GSD / gstack workflow integration
 ```
 
 ---

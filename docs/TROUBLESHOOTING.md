@@ -191,7 +191,7 @@ bash scripts/context_healthcheck.sh
 
 4. For persistent background operation, install via the provided service template:
    ```bash
-   ls templates/
+   ls docs/templates/
    # launchd template for macOS, systemd-user template for Linux
    bash scripts/unified_context_deploy.sh
    ```

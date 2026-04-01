@@ -341,8 +341,8 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
                         results = val
                     elif key == "session" and isinstance(val, str):
                         session_text = val
-                except Exception:
-                    pass
+                except Exception:  # noqa: BLE001
+                    _logger.debug("Prewarm future %s failed", key, exc_info=True)
         except TimeoutError:
             _logger.debug("Prewarm search timed out after %.1fs", remaining)
     finally:

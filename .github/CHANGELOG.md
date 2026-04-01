@@ -9,6 +9,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.1] — 2026-03-31
+
+### Security / 安全
+- **Atomic file writes**: `_atomic_write()` using `tempfile.mkstemp()` + `Path.replace()` to prevent TOCTOU / 原子写入防止竞态条件
+- **Stdin size limit**: `_MAX_STDIN_BYTES = 1_048_576` cap on prewarm hook input / 预热钩子输入大小限制
+- **Thread pool safety**: `ThreadPoolExecutor` uses `try/finally` + `shutdown(wait=False, cancel_futures=True)` / 线程池安全关闭
+- **Bandit B110 fix**: Replace bare `try/except/pass` with `contextlib.suppress` or logging / 消除裸异常吞没
+
+### Features / 功能
+- **Context prewarm engine**: Zero-config auto-recall via `contextgo setup` — hooks into Claude Code, Codex, OpenClaw / 上下文预热引擎
+- **CJK bigram extraction**: Chinese keywords split into overlapping bigrams for better search recall / 中文关键词双字切分
+- **Unsetup command**: `contextgo unsetup` cleanly removes all hooks and SCF policy blocks / 一键卸载所有钩子
+
+### Repository / 仓库
+- **Root cleanup**: 29 items → 13 visible (moved community files to `.github/`, archives to `docs/`) / 根目录极简化
+- **Brand assets**: Dark mode logo, social preview SVG, icon variants / 品牌资产生成
+- **README split**: English `README.md` + Chinese `README.zh.md` / 中英文分离
+- **Path migration audit**: Fixed 20+ stale path references across scripts, Makefile, CI, docs / 路径迁移全面修复
+
+### Testing / 测试
+- **Prewarm test suite**: 74 tests covering atomic writes, CJK bigrams, teardown, CLI integration / 预热引擎完整测试
+- **Ruff format + lint**: All files pass `ruff check` + `ruff format --check` / 全量格式化
+
+---
+
 ## [0.12.0] — 2026-03-31
 
 ### Security / 安全

@@ -7,10 +7,10 @@ This checklist must be completed in order for every release. Each step has a def
 ## Phase 1: Pre-release — Code and Configuration Audit
 
 - [ ] **Version file updated.** `VERSION` contains exactly the new version string (e.g. `0.11.0`) with no trailing whitespace or extra lines.
-- [ ] **VERSION references updated in README.** `README.md` version badge and the **Key numbers** line reference the new version. The CHANGELOG link table at the bottom of `CHANGELOG.md` includes a comparison link for the new version.
-- [ ] **CHANGELOG entry added.** `CHANGELOG.md` contains a new section at the top for the new version with date, Story, Added, Changed, Fixed, and Removed subsections as applicable.
+- [ ] **VERSION references updated in README.** `README.md` version badge and the **Key numbers** line reference the new version. The CHANGELOG link table at the bottom of `.github/CHANGELOG.md` includes a comparison link for the new version.
+- [ ] **CHANGELOG entry added.** `.github/CHANGELOG.md` contains a new section at the top for the new version with date, Story, Added, Changed, Fixed, and Removed subsections as applicable.
 - [ ] **Release notes file created.** `docs/RELEASE_NOTES_<version>.md` exists and contains Highlights, Breaking Changes, New Features, Improvements, Bug Fixes, Performance, Documentation, Contributors, Verification, and Upgrade Path sections.
-- [ ] **No secrets or personal paths in code.** Run `grep -r "REDACTED\|password\|secret\|token\|/Users/\|/home/[a-z]\+" scripts/ native/ benchmarks/` and confirm zero matches on sensitive patterns. Confirm no hardcoded absolute local paths remain.
+- [ ] **No secrets or personal paths in code.** Run `grep -r "REDACTED\|password\|secret\|token\|/Users/\|/home/[a-z]\+" scripts/ native/ docs/benchmarks/` and confirm zero matches on sensitive patterns. Confirm no hardcoded absolute local paths remain.
 - [ ] **Storage root configuration verified.** `src/contextgo/context_config.py` `storage_root()` defaults to `~/.contextgo` (or the value of `CONTEXTGO_STORAGE_ROOT`). Confirm the path is readable and writable under the deploying user on the target machine.
 - [ ] **Environment variable inventory reviewed.** All `CONTEXTGO_*` environment variables referenced in code are documented in `docs/ARCHITECTURE.md` or `CONTRIBUTING.md`.
 
@@ -26,7 +26,7 @@ This checklist must be completed in order for every release. Each step has a def
 
 - [ ] **Python compile check passes.**
   ```bash
-  python3 -m py_compile src/contextgo/*.py benchmarks/*.py
+  python3 -m py_compile src/contextgo/*.py docs/benchmarks/*.py
   ```
   Expected: no output, exit code 0.
 
@@ -94,7 +94,7 @@ This checklist must be completed in order for every release. Each step has a def
   ```bash
   python3 scripts/smoke_installed_runtime.py
   ```
-  Expected: `INSTALL_ROOT` (`~/.local/share/contextgo` by default) contains `src/contextgo/context_cli.py`, `scripts/e2e_quality_gate.py`, `scripts/context_healthcheck.sh`, and `benchmarks/run.py`; all smoke cases pass; exit code 0.
+  Expected: `INSTALL_ROOT` (`~/.local/share/contextgo` by default) contains `src/contextgo/context_cli.py`, `scripts/e2e_quality_gate.py`, `scripts/context_healthcheck.sh`, and `docs/benchmarks/run.py`; all smoke cases pass; exit code 0.
 
 - [ ] **Native scan produces non-empty results.**
   ```bash

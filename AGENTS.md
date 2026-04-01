@@ -166,7 +166,7 @@ contextgo health
 ## Skills (Claude Code only) / 技能（仅 Claude Code）
 
 ```bash
-bash skills/install.sh
+bash docs/skills/install.sh
 ```
 
 | Skill | Purpose / 用途 |

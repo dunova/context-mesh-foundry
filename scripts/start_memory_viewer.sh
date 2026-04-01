@@ -43,12 +43,15 @@ readonly PORT
 TOKEN="${CONTEXTGO_VIEWER_TOKEN:-}"
 readonly TOKEN
 
-if [ ! -f "$SCRIPT_DIR/context_cli.py" ]; then
-    printf 'ERROR: context_cli.py not found in %s\n' "$SCRIPT_DIR" >&2
+if command -v contextgo >/dev/null 2>&1; then
+    CMD=(contextgo serve --host "$HOST" --port "$PORT")
+elif [ -f "$SCRIPT_DIR/../src/contextgo/context_cli.py" ]; then
+    CMD=(python3 "$SCRIPT_DIR/../src/contextgo/context_cli.py" serve --host "$HOST" --port "$PORT")
+else
+    printf 'ERROR: contextgo command not found and context_cli.py not found at %s/../src/contextgo/context_cli.py\n' "$SCRIPT_DIR" >&2
     exit 1
 fi
 
-CMD=(python3 "$SCRIPT_DIR/context_cli.py" serve --host "$HOST" --port "$PORT")
 if [ -n "$TOKEN" ]; then
     CMD+=("--token" "$TOKEN")
 fi

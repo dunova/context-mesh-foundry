@@ -47,17 +47,25 @@ log_line() {
     printf '[%s] %s %s\n' "$ts" "$SERVICE_LABEL" "$1"
 }
 
-if [ ! -f "$SCRIPT_DIR/context_cli.py" ]; then
-    printf 'ERROR: context_cli.py not found in %s\n' "$SCRIPT_DIR" >&2
+if ! command -v contextgo >/dev/null 2>&1 && [ ! -f "$SCRIPT_DIR/../src/contextgo/context_cli.py" ]; then
+    printf 'ERROR: contextgo command not found and context_cli.py not found at %s/../src/contextgo/context_cli.py\n' "$SCRIPT_DIR" >&2
     exit 1
 fi
 
 mkdir -p "$LOG_DIR"
 chmod 700 "$LOG_DIR" 2>/dev/null || true
 
+_RUN_CLI() {
+    if command -v contextgo >/dev/null 2>&1; then
+        contextgo "$@"
+    else
+        python3 "$SCRIPT_DIR/../src/contextgo/context_cli.py" "$@"
+    fi
+}
+
 {
     log_line "start"
-    python3 "$SCRIPT_DIR/context_cli.py" maintain \
+    _RUN_CLI maintain \
         --repair-queue \
         --enqueue-missing \
         --max-enqueue 500

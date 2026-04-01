@@ -143,7 +143,7 @@ maybe_create_contextgo_shim() {
     cat >"$shim_path" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-exec "$python_bin" "$INSTALL_ROOT/scripts/context_cli.py" "\$@"
+exec "$python_bin" "$INSTALL_ROOT/src/contextgo/context_cli.py" "\$@"
 EOF
     chmod 755 "$shim_path"
     log "installed contextgo shim at: $shim_path"
