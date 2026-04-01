@@ -216,9 +216,7 @@ class TestSetupClaudeCode(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fake_claude = Path(tmp) / ".claude"
             fake_claude.mkdir()
-            (fake_claude / "settings.json").write_text(
-                json.dumps({"env": {"FOO": "bar"}, "model": "test"})
-            )
+            (fake_claude / "settings.json").write_text(json.dumps({"env": {"FOO": "bar"}, "model": "test"}))
             with patch.object(Path, "home", return_value=Path(tmp)):
                 pw.setup_claude_code()
             settings = json.loads((fake_claude / "settings.json").read_text())
@@ -492,18 +490,21 @@ class TestCLIIntegration(unittest.TestCase):
 
     def test_commands_dict_contains_prewarm_setup_unsetup(self) -> None:
         from contextgo import context_cli
+
         self.assertIn("prewarm", context_cli.COMMANDS)
         self.assertIn("setup", context_cli.COMMANDS)
         self.assertIn("unsetup", context_cli.COMMANDS)
 
     def test_commands_point_to_correct_functions(self) -> None:
         from contextgo import context_cli
+
         self.assertIs(context_cli.COMMANDS["prewarm"], context_cli.cmd_prewarm)
         self.assertIs(context_cli.COMMANDS["setup"], context_cli.cmd_setup)
         self.assertIs(context_cli.COMMANDS["unsetup"], context_cli.cmd_unsetup)
 
     def test_build_parser_has_prewarm_setup_unsetup(self) -> None:
         from contextgo import context_cli
+
         parser = context_cli.build_parser()
         subs_actions = [a for a in parser._actions if hasattr(a, "_name_parser_map")]
         self.assertTrue(len(subs_actions) > 0)
@@ -517,6 +518,7 @@ class TestCLIIntegration(unittest.TestCase):
         import argparse
 
         from contextgo import context_cli
+
         args = argparse.Namespace(command="prewarm")
         rc = context_cli.cmd_prewarm(args)
         self.assertEqual(rc, 0)
@@ -526,7 +528,13 @@ class TestCLIIntegration(unittest.TestCase):
         import argparse
 
         from contextgo import context_cli
-        mock_sa.return_value = {"Claude Code (hook)": True, "Codex CLI": False, "OpenClaw": False, "Claude Code (policy)": True}  # type: ignore[union-attr]
+
+        mock_sa.return_value = {
+            "Claude Code (hook)": True,
+            "Codex CLI": False,
+            "OpenClaw": False,
+            "Claude Code (policy)": True,
+        }  # type: ignore[union-attr]
         args = argparse.Namespace(command="setup")
         rc = context_cli.cmd_setup(args)
         self.assertEqual(rc, 0)
@@ -536,7 +544,13 @@ class TestCLIIntegration(unittest.TestCase):
         import argparse
 
         from contextgo import context_cli
-        mock_ta.return_value = {"Claude Code (hook)": True, "Codex CLI": True, "OpenClaw": True, "Claude Code (policy)": True}  # type: ignore[union-attr]
+
+        mock_ta.return_value = {
+            "Claude Code (hook)": True,
+            "Codex CLI": True,
+            "OpenClaw": True,
+            "Claude Code (policy)": True,
+        }  # type: ignore[union-attr]
         args = argparse.Namespace(command="unsetup")
         rc = context_cli.cmd_unsetup(args)
         self.assertEqual(rc, 0)
@@ -617,6 +631,7 @@ class TestPrewarmTimeout(unittest.TestCase):
     def test_prewarm_respects_timeout(self) -> None:
         """Prewarm should not block beyond timeout even with slow modules."""
         import time as _t
+
         t0 = _t.monotonic()
         # With unavailable modules, should return quickly.
         result = pw.prewarm("some obscure query xyz999", timeout=0.5)

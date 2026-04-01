@@ -1204,13 +1204,10 @@ def cmd_setup(args: argparse.Namespace) -> int:
             "配置完成！新对话将自动执行上下文预热。\n"
             "Setup complete! New conversations will auto-prewarm context.\n"
             "\n"
-            "测试预热: echo '{\"prompt\":{\"content\":\"test query\"}}' | contextgo prewarm"
+            '测试预热: echo \'{"prompt":{"content":"test query"}}\' | contextgo prewarm'
         )
     else:
-        print(
-            "部分工具未检测到，已跳过。\n"
-            "Some tools were not detected and skipped."
-        )
+        print("部分工具未检测到，已跳过。\nSome tools were not detected and skipped.")
     return 0
 
 
@@ -1229,10 +1226,7 @@ def cmd_unsetup(args: argparse.Namespace) -> int:
         print(f"  {tool}: {status}")
 
     print()
-    print(
-        "所有 ContextGO 钩子和策略已移除。\n"
-        "All ContextGO hooks and policies have been removed."
-    )
+    print("所有 ContextGO 钩子和策略已移除。\nAll ContextGO hooks and policies have been removed.")
     return 0
 
 
