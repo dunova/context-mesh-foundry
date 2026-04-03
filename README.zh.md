@@ -56,7 +56,7 @@ contextgo search "authentication" --limit 5
 > 安装 pipx：`brew install pipx`（macOS）或 `apt install pipx`（Debian/Ubuntu）。
 
 ContextGO 无需任何配置，自动发现所有受支持的本地来源：
-`Codex` · `Claude Code` · `OpenCode` · `Kilo` · `OpenClaw` · `Antigravity（Gemini）` · `zsh/bash 终端历史`
+`Codex` · `Claude Code` · `Accio Work` · `Gemini/Antigravity` · `OpenCode` · `Kilo` · `OpenClaw` · `zsh/bash 终端历史`
 
 **已有历史会话后，启用混合搜索：**
 

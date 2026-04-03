@@ -332,6 +332,7 @@ SOURCE_WEIGHT: dict[str, int] = {
     "zed_session": 34,
     "cursor_session": 32,
     "windsurf_session": 32,
+    "accio_session": 32,
     "aider_session": 30,
     # Native backend fallback
     "native_session": 35,
@@ -929,6 +930,7 @@ def _parse_source(source_type: str, path: Path, file_stat: os.stat_result | None
         "aider_session",
         "cursor_session",
         "windsurf_session",
+        "accio_session",
     }:
         if path.suffix != ".jsonl":
             _logger.warning(
@@ -1624,7 +1626,8 @@ def _enrich_native_rows(
 ) -> list[dict[str, Any]]:
     """Augment native-backend rows with metadata from the local SQLite index."""
     max_results = max(1, min(limit, 100))
-    docs = _fetch_session_docs_by_paths(conn, (row.get("file_path") for row in rows if row.get("file_path")))
+    file_path_list: list[str] = [fp for fp in (row.get("file_path") for row in rows) if fp]
+    docs = _fetch_session_docs_by_paths(conn, file_path_list)
     enriched: list[dict[str, Any]] = []
 
     for row in rows:

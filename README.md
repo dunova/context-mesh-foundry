@@ -57,7 +57,7 @@ contextgo search "authentication" --limit 5
 > Install pipx: `brew install pipx` (macOS) or `apt install pipx` (Debian/Ubuntu).
 
 ContextGO auto-discovers all supported local sources with no configuration:
-`Codex` · `Claude Code` · `OpenCode` · `Kilo` · `OpenClaw` · `Antigravity (Gemini)` · `zsh/bash shell history`
+`Codex` · `Claude Code` · `Accio Work` · `Gemini/Antigravity` · `OpenCode` · `Kilo` · `OpenClaw` · `zsh/bash shell history`
 
 **Enable hybrid search after you have existing history:**
 
@@ -91,6 +91,7 @@ contextgo health
 | Docker-free | **Yes** | Yes | Partial | No |
 | Multi-agent session index | **Yes** | No | No | Partial |
 | Cross-tool history (Codex + Claude + shell) | **Yes** | No | No | No |
+| Cross-tool history (Codex + Claude + Accio + Gemini) | **Yes** | No | No | No |
 | Hybrid semantic search | **Yes** | No | No | Partial |
 | Native Rust/Go scan | **Yes** | No | No | No |
 | MCP-free by default | **Yes** | Yes | No | No |
@@ -98,7 +99,7 @@ contextgo health
 | CJK / Unicode full support | **Yes** | Partial | No | No |
 | One-line install, zero config | **Yes** | No | No | No |
 
-**Key numbers:** 2,183 tests &nbsp;|&nbsp; 97.1% coverage &nbsp;|&nbsp; Python 3.10+ &nbsp;|&nbsp; Hybrid search &lt; 5 ms (warm) &nbsp;|&nbsp; 6 AI tool sources
+**Key numbers:** 2,183 tests &nbsp;|&nbsp; 97.1% coverage &nbsp;|&nbsp; Python 3.10+ &nbsp;|&nbsp; Hybrid search &lt; 5 ms (warm) &nbsp;|&nbsp; 8 AI tool sources
 
 ---
 
@@ -135,10 +136,12 @@ flowchart LR
     subgraph Sources
         A1[Codex]
         A2[Claude]
-        A3[Shell]
-        A4[OpenCode]
-        A5[Kilo]
-        A6[OpenClaw]
+        A3[Accio]
+        A4[Gemini]
+        A5[OpenCode]
+        A6[Kilo]
+        A7[OpenClaw]
+        A8[Shell]
     end
 
     subgraph Core

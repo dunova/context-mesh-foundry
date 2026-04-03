@@ -678,6 +678,67 @@ def teardown_claude_md() -> bool:
     return _remove_scf_policy(Path.home() / ".claude" / "CLAUDE.md")
 
 
+def _find_all_agents_md(home: Path, base: Path) -> list[Path]:
+    """Find all AGENTS.md files under a base directory."""
+    results: list[Path] = []
+    if not base.is_dir():
+        return results
+    for p in base.rglob("AGENTS.md"):
+        if p.is_file():
+            results.append(p)
+    return results
+
+
+def _setup_scf_all_agents(home: Path, base: Path, tool_name: str) -> bool:
+    """Inject SCF policy into all AGENTS.md files under base. Returns True if any modified or all already had it."""
+    agents_files = _find_all_agents_md(home, base)
+    if not agents_files:
+        return False
+    all_ok = True
+    for af in agents_files:
+        try:
+            ok = _inject_scf_policy(af)
+            if not ok:
+                all_ok = False
+        except OSError:
+            all_ok = False
+    return all_ok
+
+
+def _teardown_scf_all_agents(home: Path, base: Path) -> bool:
+    """Remove SCF policy from all AGENTS.md files under base."""
+    agents_files = _find_all_agents_md(home, base)
+    all_ok = True
+    for af in agents_files:
+        try:
+            _remove_scf_policy(af)
+        except OSError:
+            all_ok = False
+    return all_ok
+
+
+def setup_accio() -> bool:
+    """Inject SCF policy into all Accio agent AGENTS.md files."""
+    accio_base = Path.home() / ".accio" / "accounts"
+    return _setup_scf_all_agents(Path.home(), accio_base, "Accio")
+
+
+def teardown_accio() -> bool:
+    """Remove SCF policy from all Accio agent AGENTS.md files."""
+    accio_base = Path.home() / ".accio" / "accounts"
+    return _teardown_scf_all_agents(Path.home(), accio_base)
+
+
+def setup_antigravity() -> bool:
+    """Inject SCF policy into Antigravity GEMINI.md."""
+    return _inject_scf_policy(Path.home() / ".gemini" / "GEMINI.md")
+
+
+def teardown_antigravity() -> bool:
+    """Remove SCF policy from Antigravity GEMINI.md."""
+    return _remove_scf_policy(Path.home() / ".gemini" / "GEMINI.md")
+
+
 def setup_all() -> dict[str, bool]:
     """Detect and configure all supported AI coding tools.
 
@@ -697,6 +758,12 @@ def setup_all() -> dict[str, bool]:
     # OpenClaw.
     results["OpenClaw"] = setup_openclaw()
 
+    # Accio Work — SCF policy into all agent AGENTS.md files.
+    results["Accio"] = setup_accio()
+
+    # Antigravity (Gemini) — SCF policy into GEMINI.md.
+    results["Antigravity"] = setup_antigravity()
+
     return results
 
 
@@ -711,5 +778,7 @@ def teardown_all() -> dict[str, bool]:
     results["Claude Code (policy)"] = teardown_claude_md()
     results["Codex CLI"] = teardown_codex()
     results["OpenClaw"] = teardown_openclaw()
+    results["Accio"] = teardown_accio()
+    results["Antigravity"] = teardown_antigravity()
 
     return results

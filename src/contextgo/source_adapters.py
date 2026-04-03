@@ -907,6 +907,125 @@ def _sync_windsurf_sessions(home: Path) -> dict[str, object]:
 
 
 # ---------------------------------------------------------------------------
+# New adapter: Accio Work
+# ---------------------------------------------------------------------------
+
+
+def _find_accio_accounts(home: Path) -> list[Path]:
+    """Return existing Accio Work account directories."""
+    candidates = [
+        home / ".accio" / "accounts",
+    ]
+    roots: list[Path] = []
+    for acc_dir in candidates:
+        if acc_dir.is_dir():
+            for child in acc_dir.iterdir():
+                if child.is_dir() and child.name != "guest":
+                    roots.append(child)
+    return roots
+
+
+def _sync_accio_sessions(home: Path) -> dict[str, object]:
+    """Sync Accio Work session JSONL files."""
+    accounts = _find_accio_accounts(home)
+    adapter_dir = _adapter_root(home) / "accio_session"
+    adapter_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+    detected = False
+
+    for account_dir in accounts:
+        detected = True
+        # Walk agents/*/sessions/*.messages.jsonl
+        agents_dir = account_dir / "agents"
+        if not agents_dir.is_dir():
+            continue
+        for agent_dir in agents_dir.iterdir():
+            if not agent_dir.is_dir():
+                continue
+            sessions_dir = agent_dir / "sessions"
+            if not sessions_dir.is_dir():
+                continue
+            for msg_file in sessions_dir.glob("*.messages.jsonl"):
+                sid = msg_file.stem
+                texts: list[str] = []
+                try:
+                    for line in msg_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                        raw = line.strip()
+                        if not raw:
+                            continue
+                        try:
+                            entry = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(entry, dict):
+                            continue
+                        content = entry.get("content", "")
+                        if isinstance(content, str) and content.strip():
+                            texts.append(content.strip())
+                        elif isinstance(content, list):
+                            texts.extend(_extract_text_fragments(content))
+                except OSError:
+                    continue
+
+                if not texts:
+                    continue
+
+                # Try to get metadata from .meta.jsonc sibling
+                title = sid
+                agent_id = ""
+                updated_at = ""
+                meta_file = msg_file.with_suffix(".meta.jsonc")
+                if meta_file.is_file():
+                    try:
+                        raw_meta = meta_file.read_text(encoding="utf-8")
+                        # Strip JSONC comments (simple: remove // and /* */ lines)
+                        cleaned = re.sub(r"//.*$", "", raw_meta, flags=re.MULTILINE)
+                        cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)
+                        meta_data = json.loads(cleaned)
+                        if isinstance(meta_data, dict):
+                            title = meta_data.get("title") or sid
+                            agent_id = meta_data.get("agentId", "")
+                            updated_at = meta_data.get("updatedAt", "")
+                    except (OSError, json.JSONDecodeError):
+                        pass
+
+                out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'accio')}.jsonl"
+                try:
+                    mtime = max(1, int(msg_file.stat().st_mtime))
+                except OSError:
+                    continue
+                out_changed = _write_adapter_file(
+                    out_path,
+                    texts,
+                    mtime,
+                    meta={
+                        "session_id": sid,
+                        "title": str(title),
+                        "agent_id": str(agent_id),
+                        "updated_at": str(updated_at),
+                        "source_type": "accio_session",
+                    },
+                )
+                if out_path.exists():
+                    keep.add(out_path)
+                    sessions_written += 1
+                if out_changed:
+                    changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {
+        "detected": detected,
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(adapter_dir),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Adapter orchestration
 # ---------------------------------------------------------------------------
 
@@ -924,6 +1043,7 @@ def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
         "aider_session": _sync_aider_sessions,
         "cursor_session": _sync_cursor_sessions,
         "windsurf_session": _sync_windsurf_sessions,
+        "accio_session": _sync_accio_sessions,
     }
     result: dict[str, dict[str, object]] = {}
     for name, fn in _adapters.items():
@@ -946,6 +1066,7 @@ _ALL_ADAPTER_TYPES = (
     "aider_session",
     "cursor_session",
     "windsurf_session",
+    "accio_session",
 )
 
 
@@ -1153,6 +1274,13 @@ def source_inventory(home: Path | None = None) -> dict[str, object]:
             "session_files": len(by_type.get("windsurf_session", [])),
             "history_files": 0,
             "adapter": adapter_stats.get("windsurf_session", {}),
+        },
+        {
+            "platform": "accio",
+            "detected": bool(by_type.get("accio_session")),
+            "session_files": len(by_type.get("accio_session", [])),
+            "history_files": 0,
+            "adapter": adapter_stats.get("accio_session", {}),
         },
         {
             "platform": "shell",

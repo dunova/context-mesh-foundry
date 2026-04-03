@@ -38,9 +38,9 @@ contextgo smoke --sandbox
 
 ## What is ContextGO? / 项目简介
 
-ContextGO is a local-first context and memory runtime. It unifies Codex, Claude, and shell session histories into one searchable SQLite index, giving AI agents persistent cross-session memory and semantic search over past decisions — all via a single CLI.
+ContextGO is a local-first context and memory runtime. It unifies Codex, Claude, Accio, Gemini/Antigravity, OpenCode, OpenClaw, and shell session histories into one searchable SQLite index, giving AI agents persistent cross-session memory and semantic search over past decisions — all via a single CLI.
 
-ContextGO 是本地优先的上下文与记忆运行时，将 Codex、Claude 及 shell 历史统一索引到 SQLite，为 AI 智能体提供跨会话持久记忆和语义检索，无需任何外部基础设施。
+ContextGO 是本地优先的上下文与记忆运行时，将 Codex、Claude、Accio、Gemini/Antigravity、OpenCode、OpenClaw 及 shell 历史统一索引到 SQLite，为 AI 智能体提供跨会话持久记忆和语义检索，无需任何外部基础设施。
 
 Storage root: `~/.contextgo` (override: `CONTEXTGO_STORAGE_ROOT`)
 存储根目录：`~/.contextgo`（可通过 `CONTEXTGO_STORAGE_ROOT` 覆盖）
@@ -123,6 +123,8 @@ Save only **durable knowledge** (decisions, root causes, warnings). The daemon a
 | `src/contextgo/context_config.py` | Storage root, env resolution / 存储配置 |
 | `src/contextgo/session_index.py` | SQLite session index / 会话索引 |
 | `src/contextgo/memory_index.py` | Memory index, export/import / 记忆索引 |
+| `src/contextgo/source_adapters.py` | Multi-platform adapter (Codex/Claude/Accio/Gemini/OpenCode/OpenClaw/shell) / 多平台适配器 |
+| `src/contextgo/context_prewarm.py` | GSD workflow prewarm hooks / GSD工作流预热钩子 |
 | `src/contextgo/context_daemon.py` | Session capture daemon / 会话捕获守护进程 |
 | `src/contextgo/context_server.py` | Local viewer API / 本地查看器 |
 | `src/contextgo/context_core.py` | Shared helpers / 共享工具函数 |
