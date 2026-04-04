@@ -511,12 +511,16 @@ _SCF_POLICY_BLOCK = f"""{_SCF_MARKER_START}
 - Any task involving long-running projects (QuantX, ContextGO, etc.)
 
 ### Mandatory execution order (BEFORE any file operations):
-1. Run ``contextgo semantic "<topic>" --limit 3`` (memory files first)
-2. If no hits: ``contextgo search "<keywords>" --limit 5``
-3. Narrow scope from results before any ``ls`` / ``rg`` scan
-4. **Forbidden**: blind scanning of ``~/``, ``/Volumes/*``, etc. without prewarm
+1. **Output this exact line in your thinking:** `🔄 [ContextGO] 正在执行上下文预热...`
+2. Run ``contextgo semantic "<topic>" --limit 3`` (memory files first)
+3. **Output this line:** `📋 [ContextGO] 语义搜索完成，正在执行关键词搜索...`
+4. If no hits: ``contextgo search "<keywords>" --limit 5``
+5. **Output this line:** `✅ [ContextGO] 上下文预热完成，共找到 N 条相关记忆。`
+6. Narrow scope from results before any ``ls`` / ``rg`` scan
+7. **Forbidden**: blind scanning of ``~/``, ``/Volumes/*``, etc. without prewarm
 
 ### Save important findings:
+**Output this line:** `💾 [ContextGO] 正在保存持久记忆...`
 ``contextgo save --title "..." --content "..." --tags "..."``
 {_SCF_MARKER_END}"""
 
