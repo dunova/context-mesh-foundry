@@ -564,14 +564,30 @@ class TestSetupAllKeys(unittest.TestCase):
             with patch.object(Path, "home", return_value=Path(tmp)):
                 (Path(tmp) / ".claude").mkdir()
                 results = pw.setup_all()
-        expected_keys = {"Claude Code (hook)", "Claude Code (policy)", "Codex CLI", "OpenClaw", "Antigravity", "Accio"}
+        expected_keys = {
+            "Claude Code (hook)",
+            "Claude Code (policy)",
+            "Codex CLI",
+            "OpenClaw",
+            "Antigravity",
+            "Accio",
+            "GitHub Copilot",
+        }
         self.assertEqual(set(results.keys()), expected_keys)
 
     def test_teardown_all_returns_all_expected_keys(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(Path, "home", return_value=Path(tmp)):
                 results = pw.teardown_all()
-        expected_keys = {"Claude Code (hook)", "Claude Code (policy)", "Codex CLI", "OpenClaw", "Antigravity", "Accio"}
+        expected_keys = {
+            "Claude Code (hook)",
+            "Claude Code (policy)",
+            "Codex CLI",
+            "OpenClaw",
+            "Antigravity",
+            "Accio",
+            "GitHub Copilot",
+        }
         self.assertEqual(set(results.keys()), expected_keys)
 
 
