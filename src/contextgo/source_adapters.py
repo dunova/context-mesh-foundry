@@ -1030,6 +1030,120 @@ def _sync_accio_sessions(home: Path) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
+def _sync_copilot_sessions(home: Path) -> dict[str, object]:
+    """Sync GitHub Copilot agent session events.jsonl files."""
+    copilot_base = home / ".copilot" / "session-state"
+    adapter_dir = _adapter_root(home) / "copilot_session"
+    adapter_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    keep: set[Path] = set()
+    sessions_written = 0
+    changed = False
+    detected = copilot_base.is_dir()
+
+    if not detected:
+        return {"detected": False, "sessions": 0, "removed": 0, "path": None}
+
+    for session_dir in copilot_base.iterdir():
+        if not session_dir.is_dir():
+            continue
+        events_file = session_dir / "events.jsonl"
+        if not events_file.is_file():
+            continue
+
+        sid = session_dir.name
+        texts: list[str] = []
+        workspace = ""
+        model = ""
+        start_time = ""
+
+        try:
+            for line in events_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                etype = entry.get("type", "")
+                data = entry.get("data", {})
+                if not isinstance(data, dict):
+                    continue
+
+                if etype == "session.start":
+                    ctx = data.get("context", {})
+                    if isinstance(ctx, dict):
+                        workspace = ctx.get("cwd", "")
+                    start_time = data.get("startTime", "")
+                elif etype == "session.model_change":
+                    model = data.get("newModel", "")
+                elif etype == "user.message":
+                    content = data.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        texts.append(f"[user] {content.strip()}")
+                elif etype == "assistant.message":
+                    content = data.get("content", "")
+                    tool_reqs = data.get("toolRequests", [])
+                    if isinstance(content, str) and content.strip():
+                        texts.append(f"[assistant] {content.strip()}")
+                    elif tool_reqs and isinstance(tool_reqs, list):
+                        tool_names = [t.get("name", "?") for t in tool_reqs if isinstance(t, dict)]
+                        if tool_names:
+                            texts.append(f"[assistant] Called tools: {', '.join(tool_names)}")
+                elif etype == "tool.execution_complete":
+                    tool_name = data.get("toolName", data.get("tool", ""))
+                    output = data.get("output", "")
+                    if isinstance(output, str) and output.strip():
+                        # Truncate long outputs
+                        short = output.strip()[:500]
+                        texts.append(f"[tool:{tool_name}] {short}")
+        except OSError:
+            continue
+
+        if not texts:
+            continue
+
+        title = workspace.split("/")[-1] if workspace else sid
+        if model:
+            title = f"{title} ({model})"
+
+        out_path = adapter_dir / f"{_safe_name(sid)}__{_safe_name(title, 'copilot')}.jsonl"
+        try:
+            mtime = max(1, int(events_file.stat().st_mtime))
+        except OSError:
+            continue
+        out_changed = _write_adapter_file(
+            out_path,
+            texts,
+            mtime,
+            meta={
+                "session_id": sid,
+                "title": str(title),
+                "workspace": str(workspace),
+                "model": str(model),
+                "start_time": str(start_time),
+                "source_type": "copilot_session",
+            },
+        )
+        if out_path.exists():
+            keep.add(out_path)
+            sessions_written += 1
+        if out_changed:
+            changed = True
+
+    removed = _prune_stale(adapter_dir, keep)
+    if changed or removed:
+        _mark_dirty(home)
+    return {
+        "detected": detected,
+        "sessions": sessions_written,
+        "removed": removed,
+        "path": str(adapter_dir),
+    }
+
+
 def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
     current_home = home or _home()
     _adapters: dict[str, Any] = {
@@ -1044,6 +1158,7 @@ def sync_all_adapters(home: Path | None = None) -> dict[str, dict[str, object]]:
         "cursor_session": _sync_cursor_sessions,
         "windsurf_session": _sync_windsurf_sessions,
         "accio_session": _sync_accio_sessions,
+        "copilot_session": _sync_copilot_sessions,
     }
     result: dict[str, dict[str, object]] = {}
     for name, fn in _adapters.items():
@@ -1067,6 +1182,7 @@ _ALL_ADAPTER_TYPES = (
     "cursor_session",
     "windsurf_session",
     "accio_session",
+    "copilot_session",
 )
 
 

@@ -769,6 +769,34 @@ def teardown_antigravity() -> bool:
     return _remove_scf_policy(Path.home() / ".gemini" / "GEMINI.md")
 
 
+def setup_copilot() -> bool:
+    """Inject SCF policy into GitHub Copilot project-level instructions.
+
+    Copilot reads .github/copilot-instructions.md from the project root.
+    We inject into the most common project roots the user works with.
+    """
+    injected = False
+    # Inject into common project roots
+    for project_root in [Path.home() / "ContextGO", Path.home() / "QuantX", Path.home() / "happycapy" / "QuantX"]:
+        instructions_file = project_root / ".github" / "copilot-instructions.md"
+        if project_root.exists():
+            instructions_file.parent.mkdir(parents=True, exist_ok=True)
+            if _inject_scf_policy(instructions_file):
+                injected = True
+    return injected
+
+
+def teardown_copilot() -> bool:
+    """Remove SCF policy from GitHub Copilot project-level instructions."""
+    removed = True
+    for project_root in [Path.home() / "ContextGO", Path.home() / "QuantX", Path.home() / "happycapy" / "QuantX"]:
+        instructions_file = project_root / ".github" / "copilot-instructions.md"
+        if instructions_file.exists():
+            if not _remove_scf_policy(instructions_file):
+                removed = False
+    return removed
+
+
 def setup_all() -> dict[str, bool]:
     """Detect and configure all supported AI coding tools.
 
@@ -794,6 +822,9 @@ def setup_all() -> dict[str, bool]:
     # Antigravity (Gemini) — SCF policy into GEMINI.md.
     results["Antigravity"] = setup_antigravity()
 
+    # GitHub Copilot — SCF policy into project-level .github/copilot-instructions.md.
+    results["GitHub Copilot"] = setup_copilot()
+
     return results
 
 
@@ -810,5 +841,6 @@ def teardown_all() -> dict[str, bool]:
     results["OpenClaw"] = teardown_openclaw()
     results["Accio"] = teardown_accio()
     results["Antigravity"] = teardown_antigravity()
+    results["GitHub Copilot"] = teardown_copilot()
 
     return results
