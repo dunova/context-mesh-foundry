@@ -599,7 +599,9 @@ def teardown_claude_code() -> bool:
 def _inject_scf_policy(filepath: Path) -> bool:
     """Inject the SCF context-first policy block into a Markdown file.
 
-    Idempotent: skips injection if the marker is already present.
+    Idempotent: skips injection if the marker is already present with the
+    absolute path. If an old version (bare 'contextgo' command) exists,
+    it is replaced with the new absolute-path version.
     Uses atomic write to prevent corruption.
     Returns True if the file was modified or already has the policy.
     """
@@ -615,7 +617,22 @@ def _inject_scf_policy(filepath: Path) -> bool:
             return False
 
     if _SCF_MARKER_START in content:
-        return True  # Already present.
+        # Check if it's the old version (bare 'contextgo' without absolute path).
+        # If so, replace it with the new version.
+        start_idx = content.index(_SCF_MARKER_START)
+        end_marker = content.index(_SCF_MARKER_END, start_idx)
+        if end_marker > start_idx:
+            end_idx = end_marker + len(_SCF_MARKER_END)
+            old_block = content[start_idx:end_idx]
+            # If the old block doesn't use absolute path, replace it.
+            if "~/.local/bin/contextgo" not in old_block:
+                updated = content[:start_idx] + _SCF_POLICY_BLOCK + content[end_idx:]
+                try:
+                    _atomic_write(filepath, updated)
+                except OSError:
+                    return False
+                return True
+        return True  # Already present with absolute path.
 
     # Prepend policy block at file top for maximum priority.
     updated = _SCF_POLICY_BLOCK + "\n\n" + content.lstrip()
