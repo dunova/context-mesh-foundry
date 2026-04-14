@@ -9,6 +9,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.2] — 2026-04-15
+
+### Features / 功能
+- **Smart recall policy**: `contextgo prewarm` now triggers on cold starts, continuations, topic shifts, and structural questions while staying silent for same-topic follow-ups and short acknowledgements. / 智能召回策略：仅在冷启动、续做、主题切换、结构化问题时触发
+- **Graph-first guidance**: Structural prompts now explicitly prefer code graph tools for architecture, call chain, and impact-radius questions before historical recall. / 结构类问题优先 graph，再补历史记忆
+- **Cross-tool instruction sync**: `setup` help and injected policy blocks now describe smart recall consistently across Claude Code, Codex, Cursor, Accio, Antigravity, Copilot, and OpenClaw. / 跨工具说明统一为智能召回口径
+
+### Search Quality / 召回质量
+- **Anchor-term recall planning**: Prewarm no longer sends a long all-keyword query; it now builds short anchor queries plus single-term fallbacks to avoid zero-hit recalls on over-specified prompts. / 锚点词召回规划：避免长关键词串导致零命中
+- **Candidate aggregation**: Memory and session recall now merge results from multiple short queries with de-duplication instead of relying on one strict query string. / 多候选查询聚合去重
+- **Lower-token output**: Recall output is capped to a compact summary plus up to 3 hits, reducing hook token cost. / 输出压缩为摘要加最多 3 条命中
+
+### Platform Coverage / 平台覆盖
+- **Cursor session extraction**: Adapter parsing now recognizes `composer`, `generation`, `textDescription`, and related Cursor fields to improve recall from newer workspace storage formats. / Cursor 新版会话字段提取增强
+
+### Documentation / 文档
+- **README and CLI copy**: Updated AI-agent behavior docs to explain that recall is selective rather than “every prompt triggers search.” / README 与 CLI 文案更新为选择性召回
+- **Release metadata**: Added release notes and refreshed docs index for 0.12.2. / 补齐 0.12.2 发布元数据
+
+### Testing / 测试
+- **Prewarm behavior coverage**: Added tests for same-topic suppression, new-topic triggering, graph hints, short-query planning, and legacy policy block replacement. / 预热行为测试覆盖新增
+- **Adapter regression coverage**: Cursor/OpenCode adapter tests continue to pass with the new extraction patterns. / 适配器回归测试通过
+
+---
+
 ## [0.12.1] — 2026-03-31
 
 ### Security / 安全
@@ -813,7 +838,10 @@ Foundational release of the local-first `contextgo` runtime. All context capture
 
 ---
 
-[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.11.4...HEAD
+[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/dunova/ContextGO/compare/v0.12.1...v0.12.2
+[0.12.1]: https://github.com/dunova/ContextGO/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/dunova/ContextGO/compare/v0.11.11...v0.12.0
 [0.11.4]: https://github.com/dunova/ContextGO/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/dunova/ContextGO/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/dunova/ContextGO/compare/v0.11.1...v0.11.2

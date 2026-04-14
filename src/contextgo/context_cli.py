@@ -1556,8 +1556,9 @@ def _add_prewarm_setup_subcommands(sub: object) -> None:
         help="Auto context prewarm (reads user message from stdin, outputs recall results)",
         description=(
             "Automatic context prewarm engine. Reads a JSON payload from stdin,\n"
-            "extracts keywords from the user message, searches memory and session\n"
-            "index, and prints branded recall results to stdout.\n\n"
+            "detects whether the prompt is a cold start, continuation, new topic,\n"
+            "or structural question, and only then searches memory/session history.\n"
+            "Same-topic follow-ups stay silent to reduce token use.\n\n"
             "Designed to be called as a Claude Code UserPromptSubmit hook.\n"
             "Run 'contextgo setup' to configure the hook automatically.\n\n"
             "Manual test:\n"
@@ -1571,12 +1572,15 @@ def _add_prewarm_setup_subcommands(sub: object) -> None:
         "setup",
         help="One-command setup: configure all AI tools for automatic context prewarm",
         description=(
-            "Detect installed AI coding tools (Claude Code, Codex, OpenClaw) and\n"
-            "configure each one for automatic context prewarm on new conversations.\n\n"
+            "Detect installed AI coding tools and configure each one for smart\n"
+            "context recall on cold starts, continuations, and new topics.\n\n"
             "What this does:\n"
             "  - Claude Code: writes UserPromptSubmit hook to ~/.claude/settings.json\n"
+            "  - Claude Code: writes smart-recall policy into ~/.claude/CLAUDE.md\n"
             "  - Codex CLI:   injects context-first policy into ~/.codex/AGENTS.md\n"
             "  - OpenClaw:    injects context-first policy into workspace AGENTS.md\n\n"
+            "  - Accio / Antigravity / Copilot / Cursor: inject policy into their\n"
+            "    instruction entrypoints when present\n\n"
             "Run once after installing ContextGO. Idempotent (safe to re-run).\n\n"
             "Examples:\n"
             "  contextgo setup                # configure all detected tools\n"

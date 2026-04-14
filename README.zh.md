@@ -56,7 +56,7 @@ contextgo search "authentication" --limit 5
 > 安装 pipx：`brew install pipx`（macOS）或 `apt install pipx`（Debian/Ubuntu）。
 
 ContextGO 无需任何配置，自动发现所有受支持的本地来源：
-`Codex` · `Claude Code` · `Accio Work` · `Gemini/Antigravity` · `OpenCode` · `Kilo` · `OpenClaw` · `zsh/bash 终端历史`
+`Codex` · `Claude Code` · `Cursor` · `Accio Work` · `Gemini/Antigravity` · `OpenCode` · `Kilo` · `OpenClaw` · `zsh/bash 终端历史`
 
 **已有历史会话后，启用混合搜索：**
 
@@ -97,7 +97,7 @@ contextgo health
 | CJK / Unicode 全面支持 | **是** | 部分 | 否 | 否 |
 | 一行安装，零配置 | **是** | 否 | 否 | 否 |
 
-**关键数据：** 2,183 项测试 &nbsp;|&nbsp; 97.1% 覆盖率 &nbsp;|&nbsp; Python 3.10+ &nbsp;|&nbsp; 混合搜索 &lt; 5ms（热状态）&nbsp;|&nbsp; 6 个 AI 工具来源
+**关键数据：** 2,183 项测试 &nbsp;|&nbsp; 97.1% 覆盖率 &nbsp;|&nbsp; Python 3.10+ &nbsp;|&nbsp; 混合搜索 &lt; 5ms（热状态）&nbsp;|&nbsp; 8 个 AI 工具 + shell
 
 ---
 
@@ -258,11 +258,12 @@ contextgo vector-status
 
 配置完成后，以下行为自动激活：
 
-- **不了解项目历史** → 回答前先执行 `contextgo search "topic" --limit 5`
-- **用户说"继续"或"我在做什么"** → `contextgo semantic "topic" --limit 3` 并总结
+- **冷启动 / 新窗口** → 只在起始阶段召回一次；同主题内默认保持静默
+- **用户说“继续”或“我在做什么”** → `contextgo semantic "topic" --limit 3` 并总结
 - **用户询问过往决策** → 检索并用 2–3 句话总结
+- **结构化问题（架构、调用链、影响半径）** → 先看 code graph，再用 ContextGO 补历史决策
+- **同主题追问** → 默认跳过召回，降低 token 成本
 - **解决了复杂问题** → 建议执行 `contextgo save` 持久化结论
-- **会话结束** → 保存交接备注供下一个会话使用
 
 完整行为规范：[AGENTS.md](AGENTS.md)
 

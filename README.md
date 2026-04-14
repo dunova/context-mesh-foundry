@@ -57,7 +57,7 @@ contextgo search "authentication" --limit 5
 > Install pipx: `brew install pipx` (macOS) or `apt install pipx` (Debian/Ubuntu).
 
 ContextGO auto-discovers all supported local sources with no configuration:
-`Codex` · `Claude Code` · `Accio Work` · `Gemini/Antigravity` · `OpenCode` · `Kilo` · `OpenClaw` · `zsh/bash shell history`
+`Codex` · `Claude Code` · `Cursor` · `Accio Work` · `Gemini/Antigravity` · `OpenCode` · `Kilo` · `OpenClaw` · `zsh/bash shell history`
 
 **Enable hybrid search after you have existing history:**
 
@@ -99,7 +99,7 @@ contextgo health
 | CJK / Unicode full support | **Yes** | Partial | No | No |
 | One-line install, zero config | **Yes** | No | No | No |
 
-**Key numbers:** 2,183 tests &nbsp;|&nbsp; 97.1% coverage &nbsp;|&nbsp; Python 3.10+ &nbsp;|&nbsp; Hybrid search &lt; 5 ms (warm) &nbsp;|&nbsp; 8 AI tool sources
+**Key numbers:** 2,183 tests &nbsp;|&nbsp; 97.1% coverage &nbsp;|&nbsp; Python 3.10+ &nbsp;|&nbsp; Hybrid search &lt; 5 ms (warm) &nbsp;|&nbsp; 8 AI tools + shell
 
 ---
 
@@ -262,11 +262,12 @@ Copy the contents of [`AGENTS.md`](AGENTS.md) into your tool's persistent instru
 
 After setup, these behaviors activate automatically:
 
-- **Unknown project history** → `contextgo search "topic" --limit 5` before answering
+- **Cold start / new window** → recall only once, then stay quiet unless the topic changes
 - **User says "continue" or "what was I doing"** → `contextgo semantic "topic" --limit 3` and summarize
 - **User asks about past decisions** → search and summarize in 2–3 sentences
+- **Structural question (architecture, call graph, blast radius)** → prefer code graph first, then ContextGO for historical decisions
+- **Same-topic follow-up** → skip recall to reduce token cost
 - **Hard problem solved** → suggest `contextgo save` to persist the conclusion
-- **Session ends** → save handoff notes for the next session
 
 Full behavioral spec: [AGENTS.md](AGENTS.md)
 

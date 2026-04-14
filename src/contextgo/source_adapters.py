@@ -190,9 +190,24 @@ def _extract_text_fragments(value: Any, *, _max_depth: int = 20) -> list[str]:
             return
 
         node_type = str(node.get("type") or "").strip().lower()
-        if node_type in {"text", "input_text", "output_text", "reasoning"}:
+        if node_type in {"text", "input_text", "output_text", "reasoning", "composer", "generation"}:
             add(_normalize_text_value(node.get("text")))
-        for key in ("text", "input", "prompt", "display", "message", "body", "summary", "title"):
+        # Cursor 3.0+ aiService.generations format: extract textDescription directly
+        text_desc = node.get("textDescription") or node.get("description")
+        if text_desc:
+            add(_normalize_text_value(text_desc))
+        for key in (
+            "text",
+            "input",
+            "prompt",
+            "display",
+            "message",
+            "body",
+            "summary",
+            "title",
+            "textDescription",
+            "description",
+        ):
             add(_normalize_text_value(node.get(key)))
         for key in ("content", "parts", "messages", "items", "payload", "data", "state", "response"):
             if key in node:
@@ -855,6 +870,7 @@ def _sync_vscdb_sessions(home: Path, app_name: str, source_type: str) -> dict[st
                         "%aiChat%",
                         "%aichat%",
                         "%composer%",
+                        "%generation%",
                     )
                     where_clause = " OR ".join("key LIKE ?" for _ in chat_patterns)
                     rows = conn.execute(

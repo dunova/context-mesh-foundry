@@ -20,6 +20,7 @@ Hook integration (Claude Code):
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import re
@@ -40,8 +41,10 @@ __all__ = [
     "prewarm_from_stdin",
     "setup_all",
     "setup_claude_code",
+    "setup_cursor",
     "teardown_all",
     "teardown_claude_code",
+    "teardown_cursor",
 ]
 
 # ───────────────────────────────────────────────
@@ -56,6 +59,26 @@ _SETUP_BANNER = f"[{BRAND}] 自动预热配置"
 
 # Max stdin read size (1 MB) to prevent resource exhaustion.
 _MAX_STDIN_BYTES = 1_048_576
+_PREWARM_STATE_TTL_SEC = 20 * 60
+_SAME_TOPIC_OVERLAP = 0.4
+_NEW_TOPIC_OVERLAP = 0.25
+
+_ACK_ONLY_RE = re.compile(
+    r"^(ok|okay|kk|yes|yep|nope|好的|收到|明白|知道了|行|好|嗯|哦|谢谢|thanks|thank you)[!,. ]*$",
+    re.IGNORECASE,
+)
+_CONTINUATION_RE = re.compile(
+    r"(continue|resume|pick up|follow up|handoff|what was i doing|current status|"
+    r"继续|接着|续上|上次|之前|刚才|交接|当前状态|我们做到哪了)",
+    re.IGNORECASE,
+)
+_STRUCTURAL_RE = re.compile(
+    r"(architecture|flow|dependency|blast radius|impact|call graph|caller|callee|refactor|"
+    r"where is|which file|module|function|class|graph|架构|流程|依赖|影响|调用链|重构|"
+    r"模块|函数|类|在哪个文件|哪个文件|哪个模块)",
+    re.IGNORECASE,
+)
+_IDENTIFIER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]{2,}|[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)")
 
 # Chinese + common programming stop words to skip when extracting keywords.
 _STOP_WORDS: frozenset[str] = frozenset(
@@ -260,12 +283,308 @@ def extract_keywords(text: str, *, max_keywords: int = 6) -> list[str]:
     return keywords[:max_keywords]
 
 
+def _safe_cwd() -> Path:
+    with contextlib.suppress(OSError):
+        return Path.cwd().resolve()
+    return Path.home()
+
+
+def _storage_root_path() -> Path | None:
+    try:
+        try:
+            from context_config import storage_root as _sr  # type: ignore[import-not-found]
+        except ImportError:
+            from contextgo.context_config import storage_root as _sr  # type: ignore[import-not-found]
+
+        return Path(_sr())
+    except Exception:
+        _logger.debug("Prewarm state path unavailable", exc_info=True)
+        return None
+
+
+def _prewarm_state_path(cwd: Path | None = None) -> Path | None:
+    root = _storage_root_path()
+    if root is None:
+        return None
+    workspace = str((cwd or _safe_cwd()).resolve())
+    digest = hashlib.sha256(workspace.encode("utf-8")).hexdigest()[:12]
+    state_dir = root / "state" / "prewarm"
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return state_dir / f"{digest}.json"
+
+
+def _load_prewarm_state(cwd: Path | None = None) -> dict[str, Any]:
+    state_path = _prewarm_state_path(cwd)
+    if state_path is None or not state_path.exists():
+        return {}
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_prewarm_state(message: str, keywords: list[str], reason: str, cwd: Path | None = None) -> None:
+    state_path = _prewarm_state_path(cwd)
+    if state_path is None:
+        return
+    payload = {
+        "message": message[:500],
+        "keywords": keywords[:8],
+        "reason": reason,
+        "timestamp": int(time.time()),
+        "cwd": str((cwd or _safe_cwd()).resolve()),
+    }
+    try:
+        _atomic_write(state_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    except OSError:
+        _logger.debug("Failed to persist prewarm state", exc_info=True)
+
+
+def _keyword_overlap(current: list[str], previous: list[str]) -> float:
+    current_set = {item for item in current if item}
+    previous_set = {item for item in previous if item}
+    if not current_set or not previous_set:
+        return 0.0
+    union = current_set | previous_set
+    if not union:
+        return 0.0
+    return len(current_set & previous_set) / len(union)
+
+
+def _should_skip_trivial_message(message: str, keywords: list[str]) -> bool:
+    normalized = re.sub(r"\s+", " ", message.strip().lower())
+    if not normalized:
+        return True
+    if len(normalized) <= 24 and _ACK_ONLY_RE.fullmatch(normalized):
+        return True
+    return len(keywords) < 2 and len(normalized) < 12 and not _CONTINUATION_RE.search(normalized)
+
+
+def _classify_prewarm(
+    message: str,
+    keywords: list[str],
+    *,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    normalized = re.sub(r"\s+", " ", message.strip().lower())
+    if _should_skip_trivial_message(message, keywords):
+        return {"trigger": False, "reason": "trivial", "graph_hint": False, "limit": 0}
+
+    state = _load_prewarm_state(cwd)
+    previous_keywords = state.get("keywords", [])
+    if not isinstance(previous_keywords, list):
+        previous_keywords = []
+    previous_ts = int(state.get("timestamp", 0) or 0)
+    is_recent = (int(time.time()) - previous_ts) < _PREWARM_STATE_TTL_SEC
+    overlap = _keyword_overlap(keywords, [str(item) for item in previous_keywords])
+    continuation = bool(_CONTINUATION_RE.search(normalized))
+    structural = bool(_STRUCTURAL_RE.search(normalized))
+    identifier_heavy = bool(_IDENTIFIER_RE.search(message))
+
+    if continuation:
+        return {"trigger": True, "reason": "continuation", "graph_hint": structural, "limit": 3}
+
+    if structural:
+        if is_recent and overlap >= _SAME_TOPIC_OVERLAP:
+            _save_prewarm_state(message, keywords, "same-topic-structural", cwd)
+            return {"trigger": False, "reason": "same-topic", "graph_hint": True, "limit": 0}
+        return {"trigger": True, "reason": "structural", "graph_hint": True, "limit": 2}
+
+    if not state:
+        return {"trigger": True, "reason": "cold-start", "graph_hint": False, "limit": 3}
+
+    if is_recent and overlap >= _SAME_TOPIC_OVERLAP:
+        _save_prewarm_state(message, keywords, "same-topic", cwd)
+        return {"trigger": False, "reason": "same-topic", "graph_hint": False, "limit": 0}
+
+    if identifier_heavy or overlap <= _NEW_TOPIC_OVERLAP:
+        return {"trigger": True, "reason": "new-topic", "graph_hint": False, "limit": 3}
+
+    if not is_recent:
+        return {"trigger": True, "reason": "stale-context", "graph_hint": False, "limit": 3}
+
+    _save_prewarm_state(message, keywords, "same-topic", cwd)
+    return {"trigger": False, "reason": "same-topic", "graph_hint": False, "limit": 0}
+
+
+def _reason_label(reason: str) -> str:
+    return {
+        "continuation": "续做/历史任务",
+        "structural": "结构化问题",
+        "cold-start": "新窗口/冷启动",
+        "new-topic": "检测到新主题",
+        "stale-context": "上下文已过期",
+    }.get(reason, "相关任务")
+
+
+def _trim_session_results(session_text: str, *, max_items: int = 3) -> list[str]:
+    lines = session_text.splitlines()
+    kept: list[str] = []
+    current_block: list[str] = []
+    blocks: list[list[str]] = []
+    for line in lines:
+        if re.match(r"^\[\d+\]\s", line):
+            if current_block:
+                blocks.append(current_block)
+            current_block = [line]
+            continue
+        if not current_block:
+            continue
+        if line.lstrip().startswith("File:"):
+            continue
+        if line.lstrip().startswith(">") or line.startswith("    >"):
+            current_block.append(line.strip())
+    if current_block:
+        blocks.append(current_block)
+    for block in blocks[:max_items]:
+        kept.extend(block)
+    return kept
+
+
+def _session_query_terms(message: str) -> list[str]:
+    try:
+        try:
+            import session_index as _si  # type: ignore[import-not-found]
+        except ImportError:
+            from contextgo import session_index as _si  # type: ignore[import-not-found]
+        return _si.build_query_terms(message)
+    except Exception:
+        _logger.debug("Session query term extraction unavailable", exc_info=True)
+        return []
+
+
+def _term_priority(term: str) -> tuple[int, int]:
+    identifier_like = bool(_IDENTIFIER_RE.fullmatch(term) or "/" in term or "_" in term or "." in term)
+    cjk = bool(_CJK_RE.search(term))
+    signal = 3 if identifier_like else 2 if cjk else 1
+    return (signal, len(term))
+
+
+def _build_recall_queries(message: str, keywords: list[str], *, max_queries: int = 4) -> list[str]:
+    pool = _session_query_terms(message)
+    for kw in keywords:
+        if kw not in pool:
+            pool.append(kw)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in sorted(pool, key=_term_priority, reverse=True):
+        clean = term.strip()
+        lower = clean.lower()
+        if len(clean) < 2 or lower in seen:
+            continue
+        seen.add(lower)
+        deduped.append(clean)
+
+    if not deduped:
+        return []
+
+    queries: list[str] = []
+
+    def add(query: str) -> None:
+        q = query.strip()
+        if not q or q in queries:
+            return
+        queries.append(q)
+
+    if len(deduped) >= 2:
+        add(f"{deduped[0]} {deduped[1]}")
+    add(deduped[0])
+    if len(deduped) >= 2:
+        add(deduped[1])
+    if len(deduped) >= 3:
+        add(deduped[2])
+    return queries[:max_queries]
+
+
+def _search_memory_candidates(query_candidates: list[str], *, limit: int, shared_root: Path) -> list[dict[str, Any]]:
+    try:
+        try:
+            import context_core as _core  # type: ignore[import-not-found]
+        except ImportError:
+            from contextgo import context_core as _core  # type: ignore[import-not-found]
+    except Exception:
+        _logger.debug("Memory search path unavailable", exc_info=True)
+        return []
+
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for query in query_candidates:
+        try:
+            matches = _core.local_memory_matches(
+                query,
+                shared_root=shared_root,
+                limit=max(limit * 2, 3),
+                max_files=200,
+                read_bytes=8192,
+                uri_prefix="local://",
+            )
+        except Exception:
+            _logger.debug("Memory candidate search failed: %s", query, exc_info=True)
+            continue
+        for item in matches:
+            key = str(item.get("file_path") or item.get("uri_hint") or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            results.append(item)
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def _search_session_candidates(query_candidates: list[str], *, limit: int) -> list[dict[str, Any]]:
+    try:
+        try:
+            import session_index as _si  # type: ignore[import-not-found]
+        except ImportError:
+            from contextgo import session_index as _si  # type: ignore[import-not-found]
+    except Exception:
+        _logger.debug("Session index path unavailable", exc_info=True)
+        return []
+
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for query in query_candidates:
+        try:
+            rows = _si._search_rows(query, limit=max(limit * 3, 6), literal=True)  # type: ignore[attr-defined]
+        except Exception:
+            _logger.debug("Session candidate search failed: %s", query, exc_info=True)
+            continue
+        for row in rows:
+            key = (
+                str(row.get("source_type", "")),
+                str(row.get("session_id", "")),
+                str(row.get("file_path", "")),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(row)
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def _format_session_rows(session_results: list[dict[str, Any]]) -> str:
+    if not session_results:
+        return ""
+    lines = [f"Found {len(session_results)} sessions (local index):"]
+    for idx, row in enumerate(session_results, 1):
+        lines.append(f"[{idx}] {str(row.get('created_at', ''))[:10]} | {row.get('session_id', '')} | {row.get('source_type', '')}")
+        lines.append(f"    {row.get('title', '')}")
+        lines.append(f"    File: {row.get('file_path', '')}")
+        lines.append(f"    > {row.get('snippet', '')}")
+    return "\n".join(lines)
+
+
 # ───────────────────────────────────────────────
 # Core prewarm
 # ───────────────────────────────────────────────
 
 
-def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
+def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0, cwd: Path | None = None) -> str:
     """Run context prewarm for a user message.  Returns branded output.
 
     Searches memory files first (fast path), then falls back to session index.
@@ -273,18 +592,27 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
 
     Returns empty string if nothing relevant is found (silent to user).
     """
+    cwd = cwd or _safe_cwd()
     keywords = extract_keywords(message)
     if not keywords:
         return ""
 
-    query = " ".join(keywords)
+    decision = _classify_prewarm(message, keywords, cwd=cwd)
+    if not decision["trigger"]:
+        return ""
+
+    limit = min(limit, int(decision["limit"]) or limit)
+
+    query_candidates = _build_recall_queries(message, keywords)
+    if not query_candidates:
+        return ""
     t0 = time.monotonic()
 
     # ── Search paths (parallel, bounded by timeout) ──────────────
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     results: list[dict[str, Any]] = []
-    session_text: str = ""
+    session_results: list[dict[str, Any]] = []
 
     pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cg-prewarm")
     try:
@@ -293,40 +621,26 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
         # Path 1: local memory files (preferred).
         try:
             try:
-                import context_core as _core  # type: ignore[import-not-found]
-            except ImportError:
-                from contextgo import context_core as _core  # type: ignore[import-not-found]
-            try:
                 from context_config import storage_root as _sr  # type: ignore[import-not-found]
             except ImportError:
                 from contextgo.context_config import storage_root as _sr  # type: ignore[import-not-found]
 
             shared_root = _sr() / "resources" / "shared"
             futures["memory"] = pool.submit(
-                _core.local_memory_matches,
-                query,
-                shared_root=shared_root,
+                _search_memory_candidates,
+                query_candidates,
                 limit=limit,
-                max_files=200,
-                read_bytes=8192,
-                uri_prefix="local://",
+                shared_root=shared_root,
             )
         except Exception:
             _logger.debug("Memory search path unavailable", exc_info=True)
 
         # Path 2: session index FTS.
         try:
-            try:
-                import session_index as _si  # type: ignore[import-not-found]
-            except ImportError:
-                from contextgo import session_index as _si  # type: ignore[import-not-found]
-
             futures["session"] = pool.submit(
-                _si.format_search_results,
-                query,
-                search_type="all",
+                _search_session_candidates,
+                query_candidates,
                 limit=min(limit, 10),
-                literal=True,
             )
         except Exception:
             _logger.debug("Session index path unavailable", exc_info=True)
@@ -339,8 +653,8 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
                     val = f.result(timeout=0.1)
                     if key == "memory" and isinstance(val, list):
                         results = val
-                    elif key == "session" and isinstance(val, str):
-                        session_text = val
+                    elif key == "session" and isinstance(val, list):
+                        session_results = val
                 except Exception:  # noqa: BLE001
                     _logger.debug("Prewarm future %s failed", key, exc_info=True)
         except TimeoutError:
@@ -351,7 +665,17 @@ def prewarm(message: str, *, limit: int = 5, timeout: float = 2.0) -> str:
     elapsed = time.monotonic() - t0
 
     # ── Format output ────────────────────────────────────────────
-    return _format_prewarm_output(results, session_text, elapsed, keywords)
+    output = _format_prewarm_output(
+        results,
+        _format_session_rows(session_results),
+        elapsed,
+        keywords,
+        reason=str(decision["reason"]),
+        graph_hint=bool(decision["graph_hint"]),
+    )
+    if output:
+        _save_prewarm_state(message, keywords, str(decision["reason"]), cwd)
+    return output
 
 
 def _format_prewarm_output(
@@ -359,19 +683,25 @@ def _format_prewarm_output(
     session_text: str,
     elapsed: float,
     keywords: list[str],
+    *,
+    reason: str = "related-task",
+    graph_hint: bool = False,
 ) -> str:
     """Format branded prewarm output."""
     lines: list[str] = []
+    label = _reason_label(reason)
 
     if memory_results:
-        lines.append(f"{_PREWARM_DONE} ({elapsed:.1f}s) — 找到 {len(memory_results)} 条相关记忆")
-        lines.append(f"搜索关键词: {', '.join(keywords)}")
-        lines.append("")
-        for item in memory_results:
+        trimmed = memory_results[:3]
+        lines.append(f"{_PREWARM_DONE} ({elapsed:.1f}s) — {label}")
+        lines.append(f"关键词: {', '.join(keywords[:4])}")
+        if graph_hint:
+            lines.append("建议: 这是结构类问题；若当前环境有 graph，先用 graph 看架构/影响半径，再用 ContextGO 查历史决策。")
+        for item in trimmed:
             title = item.get("title", "Untitled")
             tags = item.get("tags", "")
             date = item.get("date", "")
-            snippet = item.get("snippet", item.get("content", ""))[:120]
+            snippet = str(item.get("snippet", item.get("content", "")))[:90]
             line = f"- {date} | {title}"
             if tags:
                 line += f" (tags: {tags})"
@@ -381,14 +711,13 @@ def _format_prewarm_output(
         return "\n".join(lines)
 
     if session_text and not session_text.startswith("No matches found"):
-        # Count results from session text.
-        count = session_text.count("\n[")
-        if count == 0:
-            count = 1
-        lines.append(f"{_PREWARM_DONE} ({elapsed:.1f}s) — 找到 {count} 条历史会话记录")
-        lines.append(f"搜索关键词: {', '.join(keywords)}")
-        lines.append("")
-        lines.append(session_text)
+        trimmed_lines = _trim_session_results(session_text, max_items=3)
+        count = max(1, len([line for line in trimmed_lines if re.match(r"^\[\d+\]\s", line)]))
+        lines.append(f"{_PREWARM_DONE} ({elapsed:.1f}s) — {label}，命中 {count} 条历史会话")
+        lines.append(f"关键词: {', '.join(keywords[:4])}")
+        if graph_hint:
+            lines.append("建议: 若当前环境提供 graph，先用 graph 查调用链/影响半径，再回看下面的历史会话。")
+        lines.extend(trimmed_lines)
         return "\n".join(lines)
 
     # Nothing found — stay silent (return empty string).
@@ -421,7 +750,7 @@ def prewarm_from_stdin() -> int:
     if not message or len(message.strip()) < 4:
         return 0
 
-    output = prewarm(message)
+    output = prewarm(message, cwd=_safe_cwd())
     if output:
         print(output)
     return 0
@@ -497,31 +826,44 @@ _CLAUDE_CODE_HOOK = {
 _SCF_MARKER_START = "<!-- SCF:CONTEXT-FIRST:START -->"
 _SCF_MARKER_END = "<!-- SCF:CONTEXT-FIRST:END -->"
 _SCF_POLICY_BLOCK = f"""{_SCF_MARKER_START}
-## ⚠️ ContextGO Context-First Policy (HIGHEST PRIORITY)
+## ⚠️ ContextGO Smart Recall Policy (HIGHEST PRIORITY)
 
-**THIS SECTION OVERRIDES ALL OTHER CONTEXT DISCOVERY INSTRUCTIONS.**
-**Before ANY file scanning, reading, or code analysis — you MUST run ContextGO first.**
+目标：只在真正需要时调用 ContextGO；默认保持静默，避免每轮对话都灌上下文和浪费 token。
 
-### When to activate (ANY of these):
-- Continuing previous work / "continue" / "接着做"
-- User mentions past work, prior decisions, or project history
-- Optimizing/debugging/refactoring existing code
-- Cross-session handoff (another AI worked on this)
-- User asks "what was done before" or "current status"
-- Any task involving long-running projects (QuantX, ContextGO, etc.)
+### 应当调用
+- 新窗口 / 冷启动：第一次进入一个仓库或新任务
+- 续做任务：`continue` / `接着做` / `上次做到哪` / `当前状态`
+- 交接与历史：用户提到之前的决定、根因、方案、另一个 agent 的工作
+- 主题切换：和当前主题重叠很低，明显进入新问题
+- 结构问题：架构、依赖、调用链、影响半径、重构落点、`哪个文件/模块/函数`
 
-### Mandatory execution order (BEFORE any file operations):
-1. **Output this exact line in your thinking:** `🔄 [ContextGO] 正在执行上下文预热...`
-2. Run ``~/.local/bin/contextgo semantic "<topic>" --limit 3`` (memory files first)
-3. **Output this line:** `📋 [ContextGO] 语义搜索完成，正在执行关键词搜索...`
-4. If no hits: ``~/.local/bin/contextgo search "<keywords>" --limit 5``
-5. **Output this line:** `✅ [ContextGO] 上下文预热完成，共找到 N 条相关记忆。`
-6. Narrow scope from results before any ``ls`` / ``rg`` scan
-7. **Forbidden**: blind scanning of ``~/``, ``/Volumes/*``, etc. without prewarm
+### 不应调用
+- 同一主题里的连续追问、澄清、微调
+- 简短确认：`好的`、`收到`、`ok`、`谢谢`
+- 纯闲聊、翻译、润色、礼貌回复
+- 已经在当前窗口刚做过召回，且问题仍是同一主题
 
-### Save important findings:
-**Output this line:** `💾 [ContextGO] 正在保存持久记忆...`
-``~/.local/bin/contextgo save --title "..." --content "..." --tags "..."``
+### 调用顺序
+1. 若问题包含明确标识符、文件名、报错串、函数/类名：先 `contextgo search "<query>" --limit 5 --literal`
+2. 若问题是续做、历史、主题级问题：用 `contextgo semantic "<topic>" --limit 3`
+3. 若当前环境有 code graph，且问题是架构/调用链/影响半径/重构定位：
+   先用 graph，看结构；再用 ContextGO 补历史决策与过往根因
+4. 结果必须压缩成 2-3 句；禁止粘贴原始长输出
+5. 在没有命中时静默继续，不要为了“显得勤奋”重复检索
+
+### 强约束
+- 禁止每次聊天都跑 ContextGO
+- 禁止在没有历史需求时先扫全仓再说“我去查一下”
+- 禁止盲扫 `~/`、`/Volumes/*` 等大目录
+
+### 持久记忆
+仅在以下情况保存：
+- 已确认的根因
+- 已拍板的架构决策
+- 下一窗口高概率会复用的交接信息
+
+保存命令：
+`~/.local/bin/contextgo save --title "..." --content "..." --tags "..."`
 {_SCF_MARKER_END}"""
 
 
@@ -617,22 +959,19 @@ def _inject_scf_policy(filepath: Path) -> bool:
             return False
 
     if _SCF_MARKER_START in content:
-        # Check if it's the old version (bare 'contextgo' without absolute path).
-        # If so, replace it with the new version.
         start_idx = content.index(_SCF_MARKER_START)
         end_marker = content.index(_SCF_MARKER_END, start_idx)
         if end_marker > start_idx:
             end_idx = end_marker + len(_SCF_MARKER_END)
             old_block = content[start_idx:end_idx]
-            # If the old block doesn't use absolute path, replace it.
-            if "~/.local/bin/contextgo" not in old_block:
+            if old_block != _SCF_POLICY_BLOCK:
                 updated = content[:start_idx] + _SCF_POLICY_BLOCK + content[end_idx:]
                 try:
                     _atomic_write(filepath, updated)
                 except OSError:
                     return False
                 return True
-        return True  # Already present with absolute path.
+        return True
 
     # Prepend policy block at file top for maximum priority.
     updated = _SCF_POLICY_BLOCK + "\n\n" + content.lstrip()
@@ -797,6 +1136,64 @@ def teardown_copilot() -> bool:
     return removed
 
 
+def setup_cursor() -> bool:
+    """Inject SCF policy into Cursor project-level .cursorrules files.
+
+    Scans common project roots for .cursorrules files and injects the
+    ContextGO context-first policy block.
+    """
+    injected = False
+    # Common project roots - inject into each project's .cursorrules
+    project_roots = [
+        Path.home() / "ContextGO",
+        Path.home() / "QuantX",
+    ]
+    # Add any other projects under ~/ that have .cursorrules
+    try:
+        for p in Path.home().iterdir():
+            if p.is_dir() and not p.name.startswith("."):
+                cursor_rules = p / ".cursorrules"
+                if cursor_rules.exists() or p.name in ["happycapy", "workspace"]:
+                    project_roots.append(p)
+    except OSError:
+        pass
+
+    for project_root in project_roots:
+        if not project_root.exists():
+            continue
+        rules_file = project_root / ".cursorrules"
+        rules_file.parent.mkdir(parents=True, exist_ok=True)
+        if _inject_scf_policy(rules_file):
+            injected = True
+
+    return injected
+
+
+def teardown_cursor() -> bool:
+    """Remove SCF policy from Cursor .cursorrules files."""
+    removed = True
+    project_roots = [
+        Path.home() / "ContextGO",
+        Path.home() / "QuantX",
+    ]
+    try:
+        for p in Path.home().iterdir():
+            if p.is_dir() and not p.name.startswith("."):
+                project_roots.append(p)
+    except OSError:
+        pass
+
+    for project_root in project_roots:
+        if not project_root.exists():
+            continue
+        rules_file = project_root / ".cursorrules"
+        if rules_file.exists():
+            if not _remove_scf_policy(rules_file):
+                removed = False
+
+    return removed
+
+
 def setup_all() -> dict[str, bool]:
     """Detect and configure all supported AI coding tools.
 
@@ -825,6 +1222,9 @@ def setup_all() -> dict[str, bool]:
     # GitHub Copilot — SCF policy into project-level .github/copilot-instructions.md.
     results["GitHub Copilot"] = setup_copilot()
 
+    # Cursor IDE — SCF policy into project-level .cursorrules.
+    results["Cursor"] = setup_cursor()
+
     return results
 
 
@@ -842,5 +1242,7 @@ def teardown_all() -> dict[str, bool]:
     results["Accio"] = teardown_accio()
     results["Antigravity"] = teardown_antigravity()
     results["GitHub Copilot"] = teardown_copilot()
+
+    results["Cursor"] = teardown_cursor()
 
     return results

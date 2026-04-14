@@ -120,7 +120,7 @@ class TestFormatPrewarmOutput(unittest.TestCase):
         results = [
             {"title": "Auth fix", "date": "2025-01-01", "tags": "auth,jwt", "snippet": "Fixed JWT expiry"},
         ]
-        out = pw._format_prewarm_output(results, "", 0.3, ["auth"])
+        out = pw._format_prewarm_output(results, "", 0.3, ["auth"], reason="continuation")
         self.assertIn("[ContextGO]", out)
         self.assertIn("0.3s", out)
         self.assertIn("Auth fix", out)
@@ -128,17 +128,22 @@ class TestFormatPrewarmOutput(unittest.TestCase):
 
     def test_session_fallback(self) -> None:
         session = "Found 2 sessions (local index):\n[1] 2025-01-01 | abc | claude\n[2] 2025-01-02 | def | codex"
-        out = pw._format_prewarm_output([], session, 0.5, ["test"])
+        out = pw._format_prewarm_output([], session, 0.5, ["test"], reason="new-topic")
         self.assertIn("[ContextGO]", out)
-        self.assertIn("2 条历史会话记录", out)
+        self.assertIn("历史会话", out)
 
     def test_empty_results(self) -> None:
-        out = pw._format_prewarm_output([], "", 0.1, ["test"])
+        out = pw._format_prewarm_output([], "", 0.1, ["test"], reason="new-topic")
         self.assertEqual(out, "")
 
     def test_no_matches_session(self) -> None:
-        out = pw._format_prewarm_output([], "No matches found for: test", 0.1, ["test"])
+        out = pw._format_prewarm_output([], "No matches found for: test", 0.1, ["test"], reason="new-topic")
         self.assertEqual(out, "")
+
+    def test_graph_hint(self) -> None:
+        results = [{"title": "Arch", "date": "2025-01-01", "snippet": "Architecture decision"}]
+        out = pw._format_prewarm_output(results, "", 0.2, ["architecture"], reason="structural", graph_hint=True)
+        self.assertIn("graph", out.lower())
 
 
 class TestPrewarm(unittest.TestCase):
@@ -157,6 +162,63 @@ class TestPrewarm(unittest.TestCase):
         result = pw.prewarm("some obscure query that matches nothing xyz123")
         # May return empty or results — just ensure no exception.
         self.assertIsInstance(result, str)
+
+
+class TestPrewarmClassification(unittest.TestCase):
+    """Decision logic for when recall should run."""
+
+    def test_skip_ack_message(self) -> None:
+        decision = pw._classify_prewarm("好的", ["好的"])
+        self.assertFalse(decision["trigger"])
+
+    def test_continue_always_triggers(self) -> None:
+        decision = pw._classify_prewarm("继续上次的 auth bug 修复", ["继续", "auth", "bug", "修复"])
+        self.assertTrue(decision["trigger"])
+        self.assertEqual(decision["reason"], "continuation")
+
+    def test_structural_query_enables_graph_hint(self) -> None:
+        decision = pw._classify_prewarm("帮我看这个模块的调用链和影响半径", ["模块", "调用链", "影响半径"])
+        self.assertTrue(decision["trigger"])
+        self.assertTrue(decision["graph_hint"])
+
+    def test_same_topic_recent_follow_up_is_silent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                cwd = Path(tmp) / "repo"
+                cwd.mkdir()
+                pw._save_prewarm_state("fix auth refresh bug", ["refresh", "auth", "bug"], "new-topic", cwd)
+                decision = pw._classify_prewarm("auth refresh token 再补一个测试", ["refresh", "auth", "token", "测试"], cwd=cwd)
+        self.assertFalse(decision["trigger"])
+        self.assertEqual(decision["reason"], "same-topic")
+
+    def test_new_topic_after_recent_state_triggers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(Path, "home", return_value=Path(tmp)):
+                cwd = Path(tmp) / "repo"
+                cwd.mkdir()
+                pw._save_prewarm_state("auth refresh bug", ["auth", "refresh", "bug"], "new-topic", cwd)
+                decision = pw._classify_prewarm("数据库迁移脚本怎么组织", ["数据库", "迁移", "脚本", "组织"], cwd=cwd)
+        self.assertTrue(decision["trigger"])
+        self.assertEqual(decision["reason"], "new-topic")
+
+
+class TestRecallQueries(unittest.TestCase):
+    """Query planning should avoid long all-terms strings."""
+
+    def test_build_recall_queries_prefers_short_anchor_queries(self) -> None:
+        queries = pw._build_recall_queries(
+            "how did we fix the auth refresh token expiry bug in production",
+            ["production", "refresh", "expiry", "token", "auth", "bug"],
+        )
+        self.assertGreaterEqual(len(queries), 2)
+        self.assertLessEqual(max(len(q.split()) for q in queries), 2)
+
+    def test_build_recall_queries_keeps_single_term_fallbacks(self) -> None:
+        queries = pw._build_recall_queries(
+            "数据库 迁移 脚本 组织",
+            ["数据库", "迁移", "脚本", "组织"],
+        )
+        self.assertTrue(any(" " not in q for q in queries))
 
 
 class TestPrewarmFromStdin(unittest.TestCase):
@@ -301,6 +363,19 @@ class TestInjectScfPolicy(unittest.TestCase):
         result = pw._inject_scf_policy(Path("/nonexistent/dir/AGENTS.md"))
         self.assertFalse(result)
 
+    def test_replaces_old_policy_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "AGENTS.md"
+            target.write_text(
+                "<!-- SCF:CONTEXT-FIRST:START -->\nold policy\n<!-- SCF:CONTEXT-FIRST:END -->\n",
+                encoding="utf-8",
+            )
+            result = pw._inject_scf_policy(target)
+            self.assertTrue(result)
+            content = target.read_text(encoding="utf-8")
+            self.assertIn("Smart Recall Policy", content)
+            self.assertNotIn("old policy", content)
+
 
 class TestRemoveScfPolicy(unittest.TestCase):
     """SCF policy removal from Markdown files."""
@@ -407,19 +482,19 @@ class TestPrewarmWithOutput(unittest.TestCase):
 
     def test_format_memory_no_tags(self) -> None:
         results = [{"title": "Test", "date": "2025-01-01", "snippet": "hello"}]
-        out = pw._format_prewarm_output(results, "", 0.1, ["test"])
+        out = pw._format_prewarm_output(results, "", 0.1, ["test"], reason="new-topic")
         self.assertIn("Test", out)
         self.assertNotIn("tags:", out)
 
     def test_format_memory_with_content_fallback(self) -> None:
         results = [{"title": "Test", "date": "2025-01-01", "content": "body text here"}]
-        out = pw._format_prewarm_output(results, "", 0.1, ["test"])
+        out = pw._format_prewarm_output(results, "", 0.1, ["test"], reason="new-topic")
         self.assertIn("body text here", out)
 
     def test_format_session_single_result(self) -> None:
         session = "Found 1 sessions (local index):\nsome data here"
-        out = pw._format_prewarm_output([], session, 0.2, ["deploy"])
-        self.assertIn("1 条历史会话记录", out)
+        out = pw._format_prewarm_output([], session, 0.2, ["deploy"], reason="continuation")
+        self.assertIn("历史会话", out)
 
 
 class TestSetupClaudeMd(unittest.TestCase):
@@ -572,6 +647,7 @@ class TestSetupAllKeys(unittest.TestCase):
             "Antigravity",
             "Accio",
             "GitHub Copilot",
+            "Cursor",
         }
         self.assertEqual(set(results.keys()), expected_keys)
 
@@ -587,6 +663,7 @@ class TestSetupAllKeys(unittest.TestCase):
             "Antigravity",
             "Accio",
             "GitHub Copilot",
+            "Cursor",
         }
         self.assertEqual(set(results.keys()), expected_keys)
 
@@ -638,7 +715,9 @@ class TestPrewarmStdoutCapture(unittest.TestCase):
         """Message with exactly 4 chars after strip should be processed."""
         mock_stdin.read.return_value = json.dumps({"prompt": {"content": "abcd"}})  # type: ignore[union-attr]
         pw.prewarm_from_stdin()
-        mock_prewarm.assert_called_once_with("abcd")  # type: ignore[union-attr]
+        mock_prewarm.assert_called_once()  # type: ignore[union-attr]
+        self.assertEqual(mock_prewarm.call_args.args[0], "abcd")  # type: ignore[union-attr]
+        self.assertIn("cwd", mock_prewarm.call_args.kwargs)  # type: ignore[union-attr]
 
 
 class TestPrewarmTimeout(unittest.TestCase):

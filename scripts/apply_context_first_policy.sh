@@ -38,25 +38,29 @@ readonly END_MARK="<!-- SCF:CONTEXT-FIRST:END -->"
 
 read -r -d '' POLICY_BLOCK <<'EOF' || true
 <!-- SCF:CONTEXT-FIRST:START -->
-## Unified Context First (enforced)
+## Unified Smart Recall (enforced)
 
-When a task involves existing codebase optimization/debugging, historical
-decision lookup, cross-terminal handoff, or quantitative system location,
-run a context prewarm BEFORE any directory scan.
+Use ContextGO only when it materially helps:
+- cold start / new window
+- continuation / handoff / project history
+- new topic with low overlap to the current task
+- structural questions: architecture, dependency, call graph, blast radius
 
-Execution order (hard constraint):
-1. Run the built-in exact-match search at least once:
-   contextgo search "<query>" --limit 20 --literal
-2. If no hits, optionally follow up with semantic search:
-   contextgo semantic "<query>" --limit 5
-3. Narrow scope based on results BEFORE running ls / rg on large directories.
-4. Prohibited pattern: exhaustive scan of ~/, /Volumes/*, or other large trees
-   without a prior context prewarm.
+Do NOT use ContextGO for:
+- same-topic back-and-forth
+- short acknowledgements
+- pure rewrite / translation / chat
 
-Task start checklist:
-- [ ] context_cli exact search executed
-- [ ] Hits recorded, or "no hits" noted
-- [ ] Scan scope constrained by context results
+Execution order:
+1. Exact identifiers, file paths, stack traces, function names:
+   contextgo search "<query>" --limit 5 --literal
+2. Continuations, history, broad task recall:
+   contextgo semantic "<topic>" --limit 3
+3. If a code graph is available and the task is structural, use graph first for
+   structure and ContextGO second for historical decisions.
+4. Summarize in 2-3 sentences. Never paste raw long output.
+5. Prohibited pattern: exhaustive scan of ~/, /Volumes/*, or other large trees
+   without narrowing scope first.
 <!-- SCF:CONTEXT-FIRST:END -->
 EOF
 
