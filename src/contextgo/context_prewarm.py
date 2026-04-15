@@ -851,6 +851,15 @@ _SCF_POLICY_BLOCK = f"""{_SCF_MARKER_START}
 4. 结果必须压缩成 2-3 句；禁止粘贴原始长输出
 5. 在没有命中时静默继续，不要为了“显得勤奋”重复检索
 
+### 检索启发
+- 用户说“昨天 / 今天 / 上次 / 前天”时，先转成绝对日期再检索
+- 若当前工作区明确，给查询补一个工作区锚点（如 `ContextGO`、`QuantX` 或当前目录名）
+- 先试 2-3 条紧凑查询，不要一上来堆很多词：
+  - `contextgo search "2026-04-14 ContextGO codex" --limit 5 --literal`
+  - `contextgo search "2026-04-14 127.0.0.1:5050 monitoring codex" --limit 5 --literal`
+  - `contextgo semantic "2026-04-14 Codex progress in ContextGO" --limit 3`
+- 只有这些紧凑查询都无效时，才考虑回退到平台原生 session 查询或原始会话文件
+
 ### 强约束
 - 禁止每次聊天都跑 ContextGO
 - 禁止在没有历史需求时先扫全仓再说“我去查一下”

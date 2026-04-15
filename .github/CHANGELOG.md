@@ -9,6 +9,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.4] — 2026-04-15
+
+### Recall Quality / 召回质量
+- **Relative-date normalization guidance**: Smart recall policy now tells agents to convert phrases like “昨天 / 上次 / yesterday” into absolute dates before querying ContextGO. / 相对时间先转绝对日期
+- **Workspace-anchor guidance**: Smart recall policy now recommends adding one workspace anchor such as `ContextGO` or the current directory name before broad recall. / 检索时补工作区锚点
+- **Compact-query guidance**: Policy now explicitly prefers 2-3 compact ContextGO queries over one long keyword string, reducing noisy misses and wasted token budget. / 明确优先短查询，避免长关键词串
+
+### Skills / 技能
+- **`contextgo-recall` updated**: Added guidance for absolute-date conversion, workspace anchors, and compact query planning. / recall 技能文档已更新
+- **`contextgo-gsd` updated**: Recall phase now documents the same compact-query heuristics so GSD users inherit the improved retrieval behavior. / gsd 技能文档已更新
+
+### Platform Rollout / 平台推送
+- **Re-applied `contextgo setup`**: The updated smart-recall policy has been pushed back to all detected local platforms: Claude Code, Codex, OpenCode, Hermes, Factory/Droid, Antigravity, GitHub Copilot, and Cursor. / 已重新下发到所有本机已接入平台
+
+### Dependencies / 依赖
+- **No dependency changes required**: This release updates retrieval heuristics, prompt policy, and skill documentation only. / 本次无需修改依赖
+
+---
+
 ## [0.12.3] — 2026-04-15
 
 ### Platform Coverage / 平台覆盖
@@ -860,7 +879,8 @@ Foundational release of the local-first `contextgo` runtime. All context capture
 
 ---
 
-[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/dunova/ContextGO/compare/v0.12.4...HEAD
+[0.12.4]: https://github.com/dunova/ContextGO/compare/v0.12.3...v0.12.4
 [0.12.3]: https://github.com/dunova/ContextGO/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/dunova/ContextGO/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/dunova/ContextGO/compare/v0.12.0...v0.12.1

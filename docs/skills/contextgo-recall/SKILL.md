@@ -56,10 +56,21 @@ contextgo search "<keywords>" --limit 10
 1. Start with `semantic` for broad context / 先用 `semantic` 获取宽泛上下文
 2. If too noisy, switch to `search` with specific keywords / 结果过多时换 `search` 加精确词
 3. If exact match needed, add `--literal` / 需要精确匹配时加 `--literal`
-4. For high-speed scan on large indexes / 大索引高速扫描：
+4. If the user says "yesterday", "last time", or similar relative dates, convert to an absolute date first / 用户说“昨天”“上次”等相对时间时，先转成绝对日期
+5. If the workspace is clear, add one workspace anchor such as `ContextGO` or the current directory name / 如果当前工作区明确，给查询补一个工作区锚点
+6. Prefer 2-3 compact queries over one long keyword string / 优先使用 2-3 条紧凑查询，不要把很多关键词拼成一长串
+7. For high-speed scan on large indexes / 大索引高速扫描：
    ```bash
    contextgo native-scan --query "<keyword>" --json
    ```
+
+Examples:
+
+```bash
+contextgo search "2026-04-14 ContextGO codex" --limit 5 --literal
+contextgo search "2026-04-14 127.0.0.1:5050 monitoring codex" --limit 5 --literal
+contextgo semantic "2026-04-14 Codex progress in ContextGO" --limit 3
+```
 
 ---
 

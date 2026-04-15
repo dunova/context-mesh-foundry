@@ -35,6 +35,16 @@ contextgo search "<keyword>" --limit 5
 contextgo search "<exact phrase>" --limit 5 --literal
 ```
 
+When the user uses relative dates such as "昨天 / yesterday / 上次", normalize them to an absolute date first, then add one workspace anchor if known. Prefer 2-3 compact queries rather than one long keyword string.
+
+用户使用“昨天 / 上次 / yesterday”这类相对时间时，先转成绝对日期；若工作区明确，再补一个工作区锚点。优先尝试 2-3 条紧凑查询，而不是一条很长的关键词串。
+
+```bash
+contextgo search "2026-04-14 ContextGO codex" --limit 5 --literal
+contextgo search "2026-04-14 127.0.0.1:5050 monitoring codex" --limit 5 --literal
+contextgo semantic "2026-04-14 Codex progress in ContextGO" --limit 3
+```
+
 `semantic` checks saved memory files first, then falls back to session history index.
 `search` queries the index directly.
 
